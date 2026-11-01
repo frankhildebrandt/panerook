@@ -155,7 +155,7 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
             let bookmarks = try owner.remote.savedBookmarks()
             if !bookmarks.isEmpty { label("Verbindungen", in: favorites) }
             for bookmark in bookmarks.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
-                add(bookmark.name + " · " + (bookmark.kind == .shell ? "SSH" : bookmark.kind.rawValue.uppercased()), to: favorites, symbol: "server.rack", tooltip: "\(bookmark.host):\(bookmark.port)\(bookmark.path)") { [weak self] in
+                add(bookmark.name + " · " + ConnectionEditorDialog.title(bookmark.kind), to: favorites, symbol: "server.rack", tooltip: ConnectionEditorDialog.address(bookmark) + "\n" + bookmark.path) { [weak self] in
                     guard let self else { return }; self.owner.remote.openSavedBookmark(bookmark, pane: self.pane)
                 }
             }

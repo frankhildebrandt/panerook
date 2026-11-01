@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-public enum RemoteProtocol: String, Codable, Sendable { case ftp, sftp, shell }
+public enum RemoteProtocol: String, Codable, Sendable { case ftp, sftp, shell, nextcloud }
 
 public struct RemoteConnection: Sendable {
     public let kind: RemoteProtocol
@@ -11,9 +11,21 @@ public struct RemoteConnection: Sendable {
     public let password: String
     public let identityFile: String
     public let timeout: Int
-    public var displayName: String { "\(kind.rawValue)://\(user.isEmpty ? "" : user + "@")\(host):\(port)" }
+    public var displayName: String {
+        if kind == .nextcloud, var url = URLComponents(string: host) {
+            url.port = port == 443 ? nil : port
+            return "Nextcloud · \(user) · \(url.string ?? host)"
+        }
+        return "\(kind.rawValue)://\(user.isEmpty ? "" : user + "@")\(host):\(port)"
+    }
 
     public init(kind: RemoteProtocol, host: String, port: Int, user: String, password: String = "", identityFile: String = "", timeout: Int = 20) throws {
+        if kind == .nextcloud {
+            let endpoint = try NextcloudEndpoint(host: host, port: port, user: user, password: password)
+            self.kind = kind; self.host = endpoint.host; self.port = endpoint.port; self.user = user
+            self.password = password; self.identityFile = ""; self.timeout = max(3, min(timeout, 300))
+            return
+        }
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:")
         guard !host.isEmpty, !host.hasPrefix("-"), host.unicodeScalars.allSatisfy(allowed.contains),
               (1...65535).contains(port), !user.hasPrefix("-"),
@@ -36,10 +48,11 @@ public struct RemoteEntry: Equatable, Sendable {
 }
 
 public enum RemoteError: LocalizedError {
-    case invalidConnection, invalidPath, cancelled, unsupportedListing, symbolicLink, specialFile, collision(String), process(String)
+    case invalidConnection, invalidNextcloudConnection, invalidPath, cancelled, unsupportedListing, symbolicLink, specialFile, collision(String), process(String)
     public var errorDescription: String? {
         switch self {
         case .invalidConnection: return "Verbindungsdaten sind ungültig."
+        case .invalidNextcloudConnection: return "Bitte eine gültige HTTPS-Serveradresse ohne Zugangsdaten, Suchparameter oder Fragment, einen Port von 1–65535 und den Nextcloud-Benutzernamen eingeben."
         case .invalidPath: return "Der Remote-Pfad ist ungültig."
         case .cancelled: return "Vorgang abgebrochen."
         case .unsupportedListing: return "Die Verzeichnisliste des Servers konnte nicht gelesen werden."
@@ -143,6 +156,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         let path = try Self.normalizedPath(path)
         var data: Data
         switch connection.kind {
+        case .nextcloud: return try NextcloudWebDAV(connection: connection, runner: runner).list(path, token: cancellation)
         case .shell: data = try ssh("LC_ALL=C ls -lan \(Self.shellQuote(path))", token: cancellation)
         case .sftp: data = try sftp("cd \(Self.sftpQuote(path))\n@ls -lan", token: cancellation)
         case .ftp:
@@ -209,6 +223,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         guard path != "/" else { throw RemoteError.collision(path) }
         try available(path, token: cancellation)
         switch connection.kind {
+        case .nextcloud: try NextcloudWebDAV(connection: connection, runner: runner).createDirectory(path, token: cancellation)
         case .shell: _ = try ssh("mkdir \(Self.shellQuote(path))", token: cancellation)
         case .sftp: _ = try sftp("mkdir \(Self.sftpQuote(path))", token: cancellation)
         case .ftp: _ = try ftp(path: "/", options: ["quote = \(Self.curlQuote("MKD " + path))", "list-only"], token: cancellation)
@@ -238,6 +253,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
             }
         } else {
             switch connection.kind {
+            case .nextcloud: try NextcloudWebDAV(connection: connection, runner: runner).download(path, to: destination, token: token)
             case .shell: _ = try ssh("cat \(Self.shellQuote(path))", token: token, output: destination)
             case .sftp: _ = try sftp("get \(Self.sftpQuote(path)) \(Self.sftpQuote(destination.path))", token: token)
             case .ftp: _ = try ftp(path: path, token: token, output: destination)
@@ -260,6 +276,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
             guard values.isRegularFile == true else { throw RemoteError.symbolicLink }
             try available(path, token: token)
             switch connection.kind {
+            case .nextcloud: try NextcloudWebDAV(connection: connection, runner: runner).upload(source, to: path, token: token)
             case .shell: _ = try ssh("umask 077; set -C; cat > \(Self.shellQuote(path))", token: token, input: source)
             case .sftp: _ = try sftp("put \(Self.sftpQuote(source.path)) \(Self.sftpQuote(path))", token: token)
             case .ftp: _ = try ftp(path: path, options: ["upload-file = \(Self.curlQuote(source.path))"], token: token)
@@ -279,6 +296,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         }
         let directory = entry.isDirectory && !entry.isSymbolicLink
         switch connection.kind {
+        case .nextcloud: try NextcloudWebDAV(connection: connection, runner: runner).remove(path, token: token)
         case .shell: _ = try ssh("\(directory ? "rmdir" : "rm") \(Self.shellQuote(path))", token: token)
         case .sftp: _ = try sftp("\(directory ? "rmdir" : "rm") \(Self.sftpQuote(path))", token: token)
         case .ftp: _ = try ftp(path: "/", options: ["quote = \(Self.curlQuote((directory ? "RMD " : "DELE ") + path))", "list-only"], token: token)

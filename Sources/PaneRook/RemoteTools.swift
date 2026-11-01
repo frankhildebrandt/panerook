@@ -3,7 +3,7 @@ import PaneRookCore
 
 /// Remote browsers have their own focus and operation lifetime; local panels remain usable.
 final class RemoteTools {
-    enum ConnectionKind { case ftp, sftp, shell }
+    enum ConnectionKind { case ftp, sftp, shell, nextcloud }
     private unowned let owner: CommanderController
     private var browsers: [UUID: RemoteBrowser] = [:]
     private let bookmarkStore = ConnectionBookmarkStore(fileURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -15,7 +15,7 @@ final class RemoteTools {
     func openSavedBookmark(_ bookmark: ConnectionBookmark, pane: PaneController) {
         guard !owner.isPerformingOperation, owner.view.window?.attachedSheet == nil else { return }
         owner.activate(pane)
-        if bookmark.kind == .ftp { showConnection(.ftp, pane: pane, bookmark: bookmark) }
+        if bookmark.kind == .ftp || bookmark.kind == .nextcloud { showConnection(bookmark.kind, pane: pane, bookmark: bookmark) }
         else {
             do {
                 let timeout = UserDefaults.standard.object(forKey: "remoteTimeout") as? Int ?? 20
@@ -27,7 +27,14 @@ final class RemoteTools {
 
     func connect(_ kind: ConnectionKind, pane: PaneController) {
         guard owner.canUseMenus else { return }
-        showConnection(kind == .ftp ? .ftp : kind == .shell ? .shell : .sftp, pane: pane)
+        let remoteKind: RemoteProtocol
+        switch kind {
+        case .ftp: remoteKind = .ftp
+        case .sftp: remoteKind = .sftp
+        case .shell: remoteKind = .shell
+        case .nextcloud: remoteKind = .nextcloud
+        }
+        showConnection(remoteKind, pane: pane)
     }
 
     private func showConnection(_ kind: RemoteProtocol, pane: PaneController, bookmark: ConnectionBookmark? = nil) {
@@ -279,7 +286,14 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     @objc private func deleteSelected() {
         guard !busy, !selection.isEmpty else { return }
         let selected = selection, path = directory
-        let alert = NSAlert(); alert.alertStyle = .warning; alert.messageText = "\(selected.count) Remote-Einträge endgültig löschen?"; alert.informativeText = "Ordner werden mit ihrem Inhalt gelöscht. Auf dem Server gibt es keinen Papierkorb."
+        let alert = NSAlert(); alert.alertStyle = .warning
+        if fileSystem.connection.kind == .nextcloud {
+            alert.messageText = "\(selected.count) Nextcloud-Einträge löschen?"
+            alert.informativeText = "Ordner werden mit ihrem Inhalt gelöscht. Eine Wiederherstellung hängt vom Papierkorb und den Einstellungen der Nextcloud-Instanz ab."
+        } else {
+            alert.messageText = "\(selected.count) Remote-Einträge endgültig löschen?"
+            alert.informativeText = "Ordner werden mit ihrem Inhalt gelöscht. PaneRook verwendet dabei keinen Papierkorb."
+        }
         alert.addButton(withTitle: "Löschen"); alert.addButton(withTitle: "Abbrechen"); alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
