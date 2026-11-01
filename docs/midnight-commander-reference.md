@@ -31,9 +31,9 @@ Gelesene Referenzen aus `master` (nicht als exakt versionsgleich mit der install
 
 Das Zweipanel-Prinzip und die wichtigsten Funktionstasten werden übernommen. AppKit liefert die native Oberfläche; Foundation-Dateioperationen ersetzen die MC-Ausführung. Quick Look, Standard-Apps, TextEdit und Papierkorb integrieren die macOS-Konventionen. Es wurde kein MC-Quellcode übernommen und MC ist keine Laufzeitabhängigkeit. Die Referenz nennt GPL-3.0-or-later für MC; eine spätere Übernahme von MC-Code wäre eine separate Architektur- und Lizenzentscheidung.
 
-Für spätere VFS-Anbindungen lässt sich das isolierte Dateisystemmodul um ein Provider-Protokoll erweitern, sobald konkrete Remote- oder Archivfunktionen feststehen.
+Lokale Operationen und Remote-Transporte sind getrennte Core-Bausteine. FTP, SSH und SFTP verwenden die Systemwerkzeuge `curl`, `ssh` und `sftp`; MC bleibt auch dafür keine Laufzeitabhängigkeit. Die Remote-Oberfläche ist ein eigenes natives Fenster, kein Ersatz eines lokalen Hauptpanels und noch kein allgemeines Archiv-/VFS-Provider-System.
 
-## Verifikation des Bootstraps
+## Verifikation des ursprünglichen Bootstraps
 
 Sieben XCTest-Fälle prüfen natürliche Dateisortierung/versteckte Dateien, Kopieren und Verschieben, vollständige Konfliktprüfung vor einer Auswahl, rekursive Ziele einschließlich Symlinks, vorhandene defekte Symlinks, rekursive Ordnerkopien und ungültige Namen/Pfade. Alle bestanden auf dem Entwicklungsrechner.
 
@@ -46,3 +46,44 @@ Ein weiterer kontrollierter REA-Lauf der installierten MC-Version zeigte den F5-
 PaneRook verwendet jetzt einen eigenen nativen Kopier-/Verschiebedialog mit bearbeitbarer Quellmaske und Zielpfad. Eine einzelne Datei oder ein Ordner kann dabei einen neuen Namen erhalten. Quellmasken filtern die Auswahl über Shell-Muster; Regex-Transformationen und MCs weitere Kopieroptionen sind noch nicht umgesetzt. Attribute und symbolische Links bleiben erhalten.
 
 Elf Dateisystemtests bestanden einschließlich Zielumbenennung, Quellmasken, ungültigen Eingaben und rekursiven Zielen über Symlinks. Native UI-Prüfung: Esc aus dem aktiven Zieltextfeld, Rückkehr des Fokus in die Dateiliste und erneutes F5, Bestätigung eines geänderten Zielnamens mit Enter, inline angezeigter Konflikt ohne Überschreiben, Ctrl-G und F10 zum Abbrechen. Die mit Enter erzeugte Testkopie wurde byteweise geprüft. Es wurde keine Datei im Projekt durch die Tests kopiert oder verschoben.
+
+## MC-Menüs
+
+Die deutsche Menüstruktur der installierten 4.8.33 wurde mit F9, Abwärtspfeil und vier Menüwechseln beobachtet. Der Lauf führte keine Menüaktion aus und endete mit Exitcode 0. REA Evidence: `ev_3dc0e272eca8402fb776dcc124d0c028bcfbec0563ced10835e7a2c2c03b9ded`.
+
+Die Reihenfolge wurde zusätzlich gegen die [Menüdefinitionen des Tags 4.8.33](https://github.com/MidnightCommander/mc/blob/4.8.33/src/filemanager/filemanager.c) geprüft. PaneRook übernimmt die fünf Kategorien und ihre Einträge/Gruppierung als native AppKit-Menüs. macOS-Bearbeiten und Hilfe sowie bestehende ⌘-Kurzbefehle ergänzen sie. F9 öffnet einen nativen Menü-Popup mit diesen Kategorien, ohne eine zusätzliche permanente Zeile im Dateibereich. Die Navigation im Popup folgt den nativen verschachtelten macOS-Menüs. Es gibt keinen Terminal-Wrapper und keine kopierte MC-Implementierung.
+
+Die Menüeinträge sind mit nativen Funktionen verbunden; ihre Semantik wird dort an macOS angepasst, wo MC Terminalzustand oder seine eigenen Konfigurationsformate verwendet. „Löschen“ verwendet lokal den macOS-Papierkorb. F10 ist kontextabhängig: Menü/Dialog abbrechen, sonst App beenden. Esc und Ctrl-G brechen ebenfalls ab. Im Remote-Browser dient F10 zum Abbrechen beziehungsweise Schließen des Fensters.
+
+## Ergänzte Menüfunktionen und native Adaptionen
+
+| MC-Bereich | Umsetzung in PaneRook |
+| --- | --- |
+| Links / Rechts | Dateiliste, Schnellansicht, Info und nachgeladenes Baum-Panel; Voll-/Kompaktliste, Sortierung, Filter und Codierung. Inspektoren folgen der Auswahl des gegenüberliegenden Panels. Elternordner und Verzeichnisse bleiben bei Dateimasken sichtbar. |
+| Datei | Gefilterte Ansicht als ausdrücklich gestarteter Shell-Filter; native Chmod-/Chown-Sheets, harte/absolute/relative symbolische Links und Bearbeitung bestehender Linkziele. Rechte und Eigentümer werden ohne Rechteerhöhung geändert; ausgewählte Symlinks werden dabei nicht verfolgt. |
+| Befehl | F2-Benutzermenü, Datei-/Inhaltssuche, Datei-/Verzeichnisvergleich, Ordnergrößen, Panelübernahme von Suchtreffern oder extern ausgegebenen Pfaden, Historien und Hotlist. |
+| Panels an/aus | Ctrl-O blendet die Hauptpanels aus und zeigt eine native Befehlseingabe. Ergebnisse erscheinen in separaten Fenstern; es gibt keine interaktive PTY-Subshell. |
+| Hintergrundaufgaben | Liste der Shell-Aufgaben und sichtbaren Such-/Vergleichsfenster. Lokale Dateioperationen zeigen ihren Status im Hauptfenster; laufende Shell- und Inspektionsaufgaben lassen sich abbrechen. |
+| Bildschirmliste | Auswahl der sichtbaren App-Fenster statt MCs Terminalbildschirme. |
+| Konfigurationsdateien | Native JSON-Dateien für Benutzermenü, Dateimuster/App-Zuordnungen und farbliche Hervorhebungen; keine Parser für MCs bestehende Menü-/Erweiterungsformate. |
+| Optionen | Befehlschronik, Panelwiederherstellung, horizontales/vertikales Layout, Toolbar/Funktionsleiste, Zeilenhöhe, Symbole, Status, Papierkorbrückfrage, System/Hell/Dunkel sowie anlernbare Funktionstasten. „Darstellungsbits“ öffnet die Textcodierung statt Terminal-Bitoptionen. |
+
+Standardkürzel ergänzen den bisherigen Ablauf: F2 öffnet das Benutzermenü, ⌘⇧F die Suche, Ctrl-D die Hotlist und Ctrl-O die Befehlseingabe. **Optionen → Tasten lernen** kann die Aktionen von F1–F10 neu belegen; Esc und Ctrl-G bleiben reserviert. Der kompakte Kopier-/Verschiebedialog behält Quellmaske, Ziel, Enter und die Abbruchwege Esc/F10/Ctrl-G bei. Zusätzliche Kopieroptionen für Überschreiben/Zusammenführen, Regex-Umbenennung, Folgen von Links und Attributumschaltung sind weiterhin offen. Eine gestartete lokale Kopie hat weiterhin keinen Abbruch oder prozentualen Fortschritt; Laufzeitfehler können eine teilweise abgeschlossene Auswahl hinterlassen.
+
+Benutzerbefehle laufen mit `/bin/zsh -l -c` im Panelordner und erhalten `PANEROOK_FILE`, `PANEROOK_DIRECTORY`, `PANEROOK_OTHER_DIRECTORY` und `PANEROOK_SELECTION_JSON`. Das Anordnen erwartet einen vorhandenen Dateipfad pro Standardausgabezeile. Die Dateien `menu.json`, `extensions.json` und `highlight.json` liegen unter `~/Library/Application Support/PaneRook/` und werden über das Befehl-Menü in TextEdit geöffnet. Erweiterungsregeln wählen eine App; Dateinamen oder Dateizuordnungen lösen keine automatische Shell-Ausführung aus.
+
+## Remote-Verbindungen
+
+FTP-/Shell-/SFTP-Menüaktionen öffnen einen nativen Remote-Browser und binden ihn an das lokale Panel, aus dessen Menü sie gestartet wurden. Downloads gehen in dessen aktuellen Ordner; Uploads verwenden dessen aktuelle Auswahl. Navigation, Aktualisieren, rekursive Datei-/Ordnertransfers, Ordnererstellung und endgültiges Löschen sind implementiert. Aktive Verbindungen lassen sich über die VFS-Liste anzeigen oder trennen. Remote-Löschen verwendet keinen Papierkorb. Symbolische Links und Spezialdateien werden bei Remote-Dateiaktionen nicht unterstützt.
+
+SSH/SFTP verwenden Schlüssel oder SSH-Agent, `BatchMode=yes` und `StrictHostKeyChecking=yes`; unbekannte Hosts müssen zuvor außerhalb der App bestätigt worden sein. Interaktive SSH-Passwortanmeldung ist nicht enthalten. FTP verwendet Klartext für Dateien und Zugangsdaten. Verbindungskennwörter werden nicht persistiert; FTP-Zugangsdaten gelangen über die Standardeingabe in `curl`, nicht in dessen Argumentliste.
+
+Remote-Kollisionen werden vor dem jeweiligen Transfer geprüft. Diese Vorprüfung ist keine allgemeine atomare Nichtüberschreibgarantie: parallele Serveränderungen können insbesondere bei SFTP/FTP-Uploads zu Überschreiben führen. Abbruch und Fehler können bereits übertragene Remote-Einträge zurücklassen. Ein abgeschlossener Download wird aus einem lokalen temporären Staging-Verzeichnis an seinen Zielpfad verschoben.
+
+## Grenzen und Verifikation der Ergänzungen
+
+Die eigene Textvorschau und Inhaltssuche lesen bis 1 MiB je Datei. Die Suche ist auf 10.000 Treffer und 250.000 geprüfte Einträge begrenzt. Reguläre Dateien werden bis 1 GiB byteweise verglichen; ein Verzeichnisvergleich verarbeitet bis 100.000 Einträge je Seite. Die Größenberechnung endet spätestens nach 1.000.000 Einträgen. Rekursive Werkzeuge verfolgen keine symbolischen Links; Dateivergleiche vergleichen bei Symlinks das Linkziel. Ergebnisfenster melden Grenzen, ausgelassene Dateien und Lesefehler. Die eigene Textansicht zeigt dekodierten Text; für andere Formate wird Quick Look verwendet.
+
+Core-Tests decken unter anderem Suchmasken und Inhaltsgrenzen, Abbruch, byteweise Vergleiche, Symlink-Zyklen, Rechte-Masken, Linkkollisionen, atomare Linkzielbearbeitung und Prozessausführung einschließlich begrenzter Ausgabe ab. Transporttests prüfen Pfadquotierung, die Übergabe von FTP-Zugangsdaten, Abbruch sowie unvollständige Downloads. Der SFTP-Integrationstest startet `/usr/libexec/sftp-server` direkt über den Systemclient und prüft echte Listings, Upload/Download/Löschen, rekursive Verzeichnisse und literale Sonderzeichen in Dateinamen. Er prüft weder SSH-Authentifizierung noch die Verbindung zu einem externen Netzwerkserver. Für Live-FTP-/SSH-/SFTP-Server lagen keine Testzugangsdaten vor.
+
+Die historischen UI-Prüfungen oben belegen den jeweiligen Bootstrap-Stand. Die Ergänzungen behaupten keine vollständige MC-Parität: Archiv-VFS, interaktives Terminal/PTY, interner Editor, Tabs, Drag & Drop, Dateisystembeobachtung und die erweiterten Kopier-/Konfliktoptionen bleiben nächste Entwicklungsschritte.

@@ -27,7 +27,7 @@ final class TransferDialog: NSWindowController {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 22, left: 24, bottom: 20, right: 24)
         func label(_ title: String) -> NSTextField {
             let label = NSTextField(labelWithString: title)
@@ -36,13 +36,13 @@ final class TransferDialog: NSWindowController {
         }
         func hint(_ title: String) -> NSTextField {
             let label = NSTextField(wrappingLabelWithString: title)
-            label.font = .systemFont(ofSize: 11)
+            label.font = .systemFont(ofSize: 12)
             label.textColor = .secondaryLabelColor
             return label
         }
         let selection = NSTextField(wrappingLabelWithString: sources.count == 1
             ? sources[0].lastPathComponent : "\(sources.count) ausgewählte Einträge")
-        selection.font = .systemFont(ofSize: 15, weight: .semibold)
+        selection.font = .systemFont(ofSize: 18, weight: .semibold)
         selection.maximumNumberOfLines = 2
         selection.lineBreakMode = .byTruncatingMiddle
         let source = hint("Aus: \(sourceDirectory.path)")
@@ -50,17 +50,17 @@ final class TransferDialog: NSWindowController {
         source.lineBreakMode = .byTruncatingMiddle
         stack.addArrangedSubview(selection)
         stack.addArrangedSubview(source)
-        stack.setCustomSpacing(18, after: source)
+        stack.setCustomSpacing(16, after: source)
         stack.addArrangedSubview(label("Quellmaske"))
         mask.setAccessibilityLabel("Quellmaske")
+        mask.toolTip = "Filtert die Auswahl: * für alle, z. B. *.txt oder Bild?.png."
         stack.addArrangedSubview(mask)
-        stack.addArrangedSubview(hint("Filtert die Auswahl: * für alle, z. B. *.txt oder Bild?.png."))
         stack.addArrangedSubview(label("Nach"))
         destination.stringValue = destinationDirectory.path + (destinationDirectory.path == "/" ? "" : "/")
         destination.setAccessibilityLabel("Zielpfad")
+        destination.toolTip = "Ordner oder neuer Name für einen Eintrag. Relative Pfade gelten ab dem Quellordner."
         stack.addArrangedSubview(destination)
-        stack.addArrangedSubview(hint("Ordner oder neuer Name für einen Eintrag. Relative Pfade gelten ab dem Quellordner."))
-        stack.addArrangedSubview(hint("Unterordner, Attribute und symbolische Links werden beibehalten. Bestehende Ziele werden nicht überschrieben."))
+        stack.addArrangedSubview(hint("Vorhandene Dateien werden nicht überschrieben."))
 
         errorLabel.textColor = .systemRed
         errorLabel.font = .systemFont(ofSize: 12)
@@ -71,11 +71,11 @@ final class TransferDialog: NSWindowController {
         buttons.spacing = 10
         buttons.addArrangedSubview(NSView())
         let cancel = NSButton(title: "Abbrechen", target: self, action: #selector(cancel(_:)))
-        cancel.bezelStyle = .rounded
+        AppStyle.configureButton(cancel)
         cancel.keyEquivalent = "\u{1b}"
         cancel.keyEquivalentModifierMask = []
         let submit = NSButton(title: kind == .copy ? "Kopieren" : "Verschieben", target: self, action: #selector(confirm(_:)))
-        submit.bezelStyle = .rounded
+        AppStyle.configureButton(submit)
         submit.keyEquivalent = "\r"
         submit.keyEquivalentModifierMask = []
         buttons.addArrangedSubview(cancel)
@@ -85,17 +85,18 @@ final class TransferDialog: NSWindowController {
             child.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true
         }
         for field in [mask, destination] {
+            AppStyle.configureField(field)
             field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
             field.cell?.isScrollable = true
             field.target = self
             field.action = #selector(confirm(_:))
-            field.heightAnchor.constraint(equalToConstant: 26).isActive = true
+            field.heightAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
         }
         mask.nextKeyView = destination
         destination.nextKeyView = cancel
         cancel.nextKeyView = submit
         submit.nextKeyView = mask
-        panel.contentView = NSView()
+        panel.contentView = AppStyle.background(material: .sheet)
         stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([

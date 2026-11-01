@@ -2,22 +2,45 @@ import AppKit
 import Quartz
 import PaneRookCore
 
-final class CommanderController: NSViewController, QLPreviewPanelDataSource {
+final class CommanderController: NSViewController, QLPreviewPanelDataSource, NSToolbarDelegate {
     let left: PaneController
     let right: PaneController
     private(set) var active: PaneController!
-    private let status = NSTextField(labelWithString: "Bereit")
+    private let status = NSTextField(labelWithString: "")
+    private let statusBar = NSStackView()
     private let progress = NSProgressIndicator()
     private let hiddenButton = NSButton()
     private let operationQueue = DispatchQueue(label: "app.panerook.file-operations", qos: .userInitiated)
     private var busy = false
     private var transferDialog: TransferDialog?
+    private var sparseFileDialog: SparseFileDialog?
     private var previewURLs: [URL] = []
     private var actions: [NSButton] = []
+    private var splitController: NSSplitViewController!
+    private var actionDock: NSView!
+    private var console: NSStackView!
+    private let commandInput = NSTextField()
+    private var panelsHidden = false
+    var arePanelsHidden: Bool { panelsHidden }
+    lazy var workflow = WorkflowTools(owner: self)
+    lazy var preferences = PreferencesTools(owner: self)
+    lazy var localTools = LocalTools(owner: self)
+    lazy var metadata = FileMetadataTools(owner: self)
+    lazy var remote = RemoteTools(owner: self)
+    private let favoriteDestinations = FavoriteDestinationCache()
+    private var favoritesMenus: [PanelFavoritesController] = []
+    var onShowMenu: (() -> Void)?
+    var menuIsTracking: (() -> Bool)?
+    var onKeyBindingsChanged: (() -> Void)?
+    var canUseMenus: Bool { !busy && view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
+    var canUseSelection: Bool { canUseMenus && !panelsHidden && !active.selectedFiles.isEmpty }
+    var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.mode != .network }
+    var isPerformingOperation: Bool { busy }
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         func restored(_ key: String, fallback: URL) -> URL {
+            if UserDefaults.standard.object(forKey: "restorePanels") as? Bool == false { return fallback }
             guard let path = UserDefaults.standard.string(forKey: key),
                   let directory = try? FileSystem.directory(from: path, relativeTo: home) else { return fallback }
             return directory
@@ -28,50 +51,55 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         active = left
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
-    private var other: PaneController { active === left ? right : left }
+    var other: PaneController { active === left ? right : left }
 
     override func loadView() {
-        view = NSView()
+        view = AppStyle.background()
         let root = NSStackView()
         root.orientation = .vertical
         root.spacing = 0
         root.alignment = .leading
         root.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(root)
-        NSLayoutConstraint.activate([root.topAnchor.constraint(equalTo: view.topAnchor), root.bottomAnchor.constraint(equalTo: view.bottomAnchor), root.leadingAnchor.constraint(equalTo: view.leadingAnchor), root.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
+        NSLayoutConstraint.activate([
+            root.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
+            root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14)
+        ])
 
-        let toolbar = NSStackView()
-        toolbar.spacing = 8
-        toolbar.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
-        toolbar.addArrangedSubview(button("Benutzerordner", symbol: "house", action: #selector(goHome)))
-        toolbar.addArrangedSubview(button("Aktualisieren", symbol: "arrow.clockwise", action: #selector(refresh)))
-        toolbar.addArrangedSubview(button("Panels tauschen", symbol: "arrow.left.arrow.right", action: #selector(swapPanels)))
-        toolbar.addArrangedSubview(NSView())
-        hiddenButton.title = "Versteckte Dateien"
+        hiddenButton.title = ""
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)
-        hiddenButton.imagePosition = .imageLeading
-        hiddenButton.bezelStyle = .texturedRounded
+        hiddenButton.imagePosition = .imageOnly
+        hiddenButton.setAccessibilityLabel("Versteckte Dateien")
+        hiddenButton.toolTip = "Versteckte Dateien · ⌘⇧."
+        AppStyle.configureButton(hiddenButton)
         hiddenButton.setButtonType(.pushOnPushOff)
         hiddenButton.target = self
         hiddenButton.action = #selector(toggleHidden)
         hiddenButton.state = UserDefaults.standard.bool(forKey: "showHidden") ? .on : .off
-        toolbar.addArrangedSubview(hiddenButton)
-        toolbar.addArrangedSubview(button("Hilfe", symbol: "questionmark.circle", action: #selector(showHelp)))
-        root.addArrangedSubview(toolbar)
-        toolbar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
 
         let split = NSSplitViewController()
+        splitController = split
         for pane in [left, right] {
+            favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
             pane.showHidden = hiddenButton.state == .on
             pane.onActivate = { [weak self, weak pane] in
                 guard let self, let pane else { return }
                 self.active = pane
                 self.left.isActive = pane === self.left
                 self.right.isActive = pane === self.right
+                self.updateDirectoryActionAvailability()
             }
             pane.onKey = { [weak self] in self?.handleKey($0) ?? false }
             pane.onError = { [weak self] in self?.showError($0) }
+            pane.onOpenSelection = { [weak self] in self?.openSelection() }
             pane.onDirectoryChanged = { [weak self] in self?.saveDirectories() }
+            pane.onSelectionChanged = { [weak self, weak pane] url in
+                guard let self, let pane else { return }
+                (pane === self.left ? self.right : self.left).showInspection(of: url)
+                self.updateDirectoryActionAvailability()
+            }
             let item = NSSplitViewItem(viewController: pane)
             item.minimumThickness = 390
             split.addSplitViewItem(item)
@@ -84,10 +112,31 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         split.view.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         split.view.setContentHuggingPriority(.defaultLow, for: .vertical)
 
+        console = NSStackView()
+        console.orientation = .vertical
+        console.alignment = .leading
+        console.spacing = 8
+        AppStyle.configureField(commandInput)
+        commandInput.placeholderString = "Shell-Befehl"
+        commandInput.setAccessibilityLabel("Befehl")
+        commandInput.target = self
+        commandInput.action = #selector(runConsoleCommand)
+        let execute = NSButton(title: "Ausführen", target: self, action: #selector(runConsoleCommand))
+        AppStyle.configureButton(execute)
+        let commandRow = NSStackView(views: [commandInput, execute])
+        commandRow.spacing = 8
+        console.addArrangedSubview(commandRow)
+        console.addArrangedSubview(NSView())
+        root.addArrangedSubview(console)
+        console.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        commandRow.widthAnchor.constraint(equalTo: console.widthAnchor).isActive = true
+        console.isHidden = true
+
         let functionBar = NSStackView()
-        functionBar.spacing = 8
+        functionBar.spacing = 6
         functionBar.distribution = .fillEqually
-        functionBar.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 10, right: 14)
+        functionBar.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
+        functionBar.heightAnchor.constraint(equalToConstant: 26).isActive = true
         for (title, action) in [
             ("F3  Vorschau", #selector(previewSelection)),
             ("F4  Bearbeiten", #selector(editSelection)),
@@ -97,16 +146,22 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
             ("F8  Papierkorb", #selector(trashSelection))
         ] {
             let control = NSButton(title: title, target: self, action: action)
-            control.bezelStyle = .rounded
-            control.font = .systemFont(ofSize: 12, weight: .medium)
+            AppStyle.configureButton(control)
+            control.isBordered = false
+            control.contentTintColor = .labelColor
+            control.controlSize = .small
+            control.font = .systemFont(ofSize: 11, weight: .regular)
+            control.heightAnchor.constraint(equalToConstant: 22).isActive = true
             functionBar.addArrangedSubview(control)
             actions.append(control)
         }
-        root.addArrangedSubview(functionBar)
-        functionBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-        let statusBar = NSStackView()
+        actionDock = AppStyle.glass(around: functionBar, cornerRadius: 8)
+        root.setCustomSpacing(6, after: split.view)
+        root.addArrangedSubview(actionDock)
+        actionDock.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        root.setCustomSpacing(10, after: actionDock)
         statusBar.spacing = 8
-        statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 12, right: 16)
+        statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
         status.font = .systemFont(ofSize: 11)
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingMiddle
@@ -116,36 +171,111 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         statusBar.addArrangedSubview(progress)
         statusBar.addArrangedSubview(status)
         statusBar.addArrangedSubview(NSView())
-        let hint = NSTextField(labelWithString: "Tab  Panel wechseln    ↵  Öffnen    ⌘L  Pfad")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .tertiaryLabelColor
-        statusBar.addArrangedSubview(hint)
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        statusBar.isHidden = true
         left.isActive = true
+        preferences.restorePanels()
+        preferences.apply()
     }
 
-    private func button(_ title: String, symbol: String, action: Selector) -> NSButton {
-        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: self, action: action)
-        button.bezelStyle = .texturedRounded
-        button.toolTip = title
-        return button
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        preferences.apply()
+    }
+
+    func applyLayout(vertical: Bool, functionBar: Bool, toolbar: Bool) {
+        guard splitController != nil else { return }
+        splitController.splitView.isVertical = vertical
+        for item in splitController.splitViewItems { item.minimumThickness = vertical ? 320 : 140 }
+        actionDock.isHidden = !functionBar
+        view.window?.toolbar?.isVisible = toolbar
+    }
+    func togglePanels() {
+        panelsHidden.toggle()
+        splitController.view.isHidden = panelsHidden
+        console.isHidden = !panelsHidden
+        if panelsHidden { view.window?.makeFirstResponder(commandInput) }
+        else { activate(active) }
+    }
+    @objc private func runConsoleCommand() {
+        let command = commandInput.stringValue
+        commandInput.stringValue = ""
+        workflow.runCommand(command)
+    }
+
+    private enum ToolbarID {
+        static let home = NSToolbarItem.Identifier("PaneRook.Home")
+        static let refresh = NSToolbarItem.Identifier("PaneRook.Refresh")
+        static let swap = NSToolbarItem.Identifier("PaneRook.Swap")
+        static let hidden = NSToolbarItem.Identifier("PaneRook.Hidden")
+        static let help = NSToolbarItem.Identifier("PaneRook.Help")
+        static let menu = NSToolbarItem.Identifier("PaneRook.Menu")
+    }
+
+    func makeToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: "PaneRook.Navigation")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        return toolbar
+    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [ToolbarID.home, ToolbarID.refresh, ToolbarID.swap, ToolbarID.menu, .flexibleSpace, ToolbarID.hidden, ToolbarID.help]
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: id)
+        if id == ToolbarID.hidden {
+            item.label = "Versteckte Dateien"
+            item.view = hiddenButton
+            item.visibilityPriority = .high
+            return item
+        }
+        let title: String
+        let symbol: String
+        let action: Selector
+        switch id {
+        case ToolbarID.home: (title, symbol, action) = ("Benutzerordner", "house", #selector(goHome))
+        case ToolbarID.refresh: (title, symbol, action) = ("Aktualisieren", "arrow.clockwise", #selector(refresh))
+        case ToolbarID.swap: (title, symbol, action) = ("Panels tauschen", "arrow.left.arrow.right", #selector(swapPanels))
+        case ToolbarID.help: (title, symbol, action) = ("Hilfe", "questionmark.circle", #selector(showHelp))
+        case ToolbarID.menu: (title, symbol, action) = ("Menü · F9", "line.3.horizontal", #selector(showMenu))
+        default: return nil
+        }
+        item.label = title
+        item.toolTip = title
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        item.target = self
+        item.action = action
+        item.isBordered = true
+        item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu
+        return item
     }
 
     func activate(_ pane: PaneController) {
         active = pane
         left.isActive = pane === left
         right.isActive = pane === right
-        view.window?.makeFirstResponder(pane.table)
+        pane.focus()
+        updateDirectoryActionAvailability()
     }
-    @objc func openSelection() { active.openSelection() }
+    private func updateDirectoryActionAvailability() {
+        if actions.indices.contains(4) { actions[4].isEnabled = !busy && active.mode != .network }
+    }
+    @objc func openSelection() {
+        if active.selectedEntries.contains(where: { !$0.isDirectory && !$0.isParent }), workflow.openUsingExtension(active.selectedFiles) { return }
+        active.openSelection()
+    }
     @objc func goUp() { active.goUp() }
     @objc func goHome() { active.navigate(to: FileManager.default.homeDirectoryForCurrentUser) }
     @objc func focusPath() {
         view.window?.makeFirstResponder(active.pathField)
         active.pathField.selectText(nil)
     }
-    @objc func refresh() { left.refresh(); right.refresh() }
+    @objc func refresh() { left.refresh(); right.refresh(); workflow.applyHighlights() }
     @objc func swapPanels() {
         let url = left.directory
         left.navigate(to: right.directory)
@@ -164,6 +294,14 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
+        guard menuIsTracking?() != true, !favoritesMenus.contains(where: \.isTracking) else { return false }
+        if event.keyCode == 125 && event.modifierFlags.intersection([.command, .control, .option, .shift]) == .option {
+            active.showFavorites(); return true
+        }
+        if let action = AppKeyBinding.saved.first(where: { $0.value.matches(event) })?.key {
+            performHotkey(action)
+            return true
+        }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard modifiers.intersection([.command, .control, .option]).isEmpty else { return false }
         switch event.keyCode {
@@ -171,22 +309,94 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         case 36, 76: openSelection()
         case 51, 117: goUp()
         case 49: previewSelection()
-        case 99: previewSelection() // F3
-        case 120: showHelp() // F2
-        case 122: showHelp() // F1
-        case 118: editSelection() // F4
-        case 96: copySelection() // F5
-        case 97: moveSelection() // F6
-        case 98: makeDirectory() // F7
-        case 100: trashSelection() // F8
         default: return false
         }
         return true
     }
+    func performHotkey(_ action: String) {
+        switch action {
+        case "help": showHelp()
+        case "userMenu": workflow.userMenu()
+        case "preview": previewSelection()
+        case "edit": editSelection()
+        case "copy": copySelection()
+        case "move": moveSelection()
+        case "mkdir": makeDirectory()
+        case "trash": trashSelection()
+        case "menu": showMenu()
+        case "exit": exitOrCancelDialog()
+        default: break
+        }
+    }
+    func hotkeysChanged() {
+        let names = [("preview", "Vorschau"), ("edit", "Bearbeiten"), ("copy", "Kopieren"),
+                     ("move", "Verschieben"), ("mkdir", "Neuer Ordner"), ("trash", "Papierkorb")]
+        for (button, action) in zip(actions, names) {
+            button.title = "\(AppKeyBinding.saved[action.0]?.label ?? "")  \(action.1)"
+        }
+        onKeyBindingsChanged?()
+    }
+
+    @objc func showMenu() {
+        guard canUseMenus else { return }
+        onShowMenu?()
+    }
+    func exitOrCancelDialog() {
+        guard !busy else { return }
+        if let window = view.window, let sheet = window.attachedSheet {
+            if let panel = sheet as? TransferPanel { panel.cancelOperation(nil) }
+            else { window.endSheet(sheet, returnCode: .cancel) }
+        } else {
+            NSApp.terminate(nil)
+        }
+    }
+    func selectGroup(select: Bool) {
+        guard canUseMenus, let window = view.window else { return }
+        let pane = active!
+        let alert = NSAlert()
+        alert.messageText = select ? "Gruppe auswählen" : "Gruppe abwählen"
+        let pattern = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 30))
+        AppStyle.configureField(pattern)
+        pattern.stringValue = "*"
+        pattern.setAccessibilityLabel("Dateimaske")
+        pattern.toolTip = "Shell-Muster, z. B. *.txt oder Bild?.png"
+        alert.accessoryView = pattern
+        alert.addButton(withTitle: select ? "Auswählen" : "Abwählen")
+        alert.addButton(withTitle: "Abbrechen")
+        alert.configureKeyboardShortcuts()
+        alert.window.initialFirstResponder = pattern
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { pane.selectMatching(pattern.stringValue, select: select) }
+            self?.activate(pane)
+        }
+    }
+    func choosePreviewFile() {
+        guard canUseMenus, let window = view.window else { return }
+        let chooser = NSOpenPanel()
+        chooser.title = "Datei anzeigen"
+        chooser.prompt = "Anzeigen"
+        chooser.directoryURL = active.directory
+        chooser.canChooseDirectories = false
+        chooser.allowsMultipleSelection = false
+        chooser.beginSheetModal(for: window) { [weak self] result in
+            guard let self, result == .OK, let url = chooser.url else { return }
+            self.previewFiles([url])
+        }
+    }
+    func saveSetup() {
+        saveDirectories()
+        UserDefaults.standard.set(left.showHidden, forKey: "showHidden")
+        view.window?.saveFrame(usingName: "PaneRook.MainWindow")
+        preferences.savePanels()
+    }
 
     @objc func previewSelection() {
-        previewURLs = active.selectedFiles
+        previewFiles(active.selectedFiles)
+    }
+    func previewFiles(_ urls: [URL]) {
+        previewURLs = urls
         guard !previewURLs.isEmpty else { NSSound.beep(); return }
+        workflow.recordFiles(urls)
         guard let panel = QLPreviewPanel.shared() else { return }
         panel.makeKeyAndOrderFront(nil)
         panel.reloadData()
@@ -200,6 +410,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
     @objc func editSelection() {
         let files = active.selectedEntries.filter { !$0.isParent && !$0.isDirectory }.map(\.url)
         guard !files.isEmpty else { NSSound.beep(); return }
+        workflow.recordFiles(files)
         let app = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
         NSWorkspace.shared.open(files, withApplicationAt: app, configuration: .init()) { [weak self] _, error in
             if let error { DispatchQueue.main.async { self?.showError(error) } }
@@ -208,7 +419,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
     @objc func copySelection() { transfer(.copy) }
     @objc func moveSelection() { transfer(.move) }
     private func transfer(_ kind: TransferKind) {
-        guard !busy, let window = view.window, window.attachedSheet == nil else { return }
+        guard canUseSelection, let window = view.window else { return }
         let sources = active.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
         let destination = other.directory
@@ -228,7 +439,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         dialog.begin(on: window)
     }
     @objc func makeDirectory() {
-        guard !busy, view.window?.attachedSheet == nil else { return }
+        guard canUseLocalDirectory else { return }
         let directory = active.directory
         let pane = active!
         let alert = NSAlert()
@@ -249,10 +460,38 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
             }) { try FileActions.createDirectory(named: name, in: directory) }
         }
     }
+    func createSparseFile() {
+        guard canUseLocalDirectory, let window = view.window else { return }
+        let pane = active!
+        let directory = pane.directory
+        let dialog = SparseFileDialog(directory: directory) { [weak self] request in
+            guard let self else { return }
+            self.sparseFileDialog = nil
+            self.activate(pane)
+            guard let request else { return }
+            self.runOperation("Sparse-Datei erstellen …", completion: {
+                pane.setMode(.listing)
+                if !pane.filterPattern.isEmpty && !LocalInspection.matches(request.name, pattern: pane.filterPattern) {
+                    pane.setFilter("")
+                }
+                pane.refresh(select: directory.appendingPathComponent(request.name))
+            }, errorDetail: "") {
+                try SparseFile.create(named: request.name, in: directory, logicalSize: request.logicalSize)
+            }
+        }
+        sparseFileDialog = dialog
+        dialog.begin(on: window)
+    }
     @objc func trashSelection() {
-        guard !busy, view.window?.attachedSheet == nil else { return }
+        guard canUseSelection else { return }
         let sources = active.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
+        if UserDefaults.standard.object(forKey: "confirmTrash") as? Bool == false {
+            runOperation("In den Papierkorb legen …") {
+                for source in sources { try FileManager.default.trashItem(at: source, resultingItemURL: nil) }
+            }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "\(sources.count) Einträge in den Papierkorb legen?"
@@ -267,11 +506,14 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
             }
         }
     }
-    private func runOperation(_ title: String, completion: (() -> Void)? = nil, work: @escaping () throws -> Void) {
+    func runOperation(_ title: String, completion: (() -> Void)? = nil,
+                      errorDetail: String = "Bei mehreren Einträgen können vorherige Schritte bereits abgeschlossen sein. Bitte beide Panels prüfen.",
+                      work: @escaping () throws -> Void) {
         guard !busy else { return }
         busy = true
         actions.forEach { $0.isEnabled = false }
         status.stringValue = title
+        statusBar.isHidden = false
         progress.startAnimation(nil)
         operationQueue.async { [weak self] in
             let result = Result { try work() }
@@ -279,15 +521,17 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
                 guard let self else { return }
                 self.busy = false
                 self.actions.forEach { $0.isEnabled = true }
+                self.updateDirectoryActionAvailability()
                 self.progress.stopAnimation(nil)
                 self.refresh()
                 switch result {
                 case .success:
-                    self.status.stringValue = "Fertig"
+                    self.status.stringValue = ""
+                    self.statusBar.isHidden = true
                     completion?()
                 case .failure(let error):
-                    self.status.stringValue = "Vorgang angehalten · Panels aktualisiert"
-                    self.showError(error, detail: "Bei mehreren Einträgen können vorherige Schritte bereits abgeschlossen sein. Bitte beide Panels prüfen.")
+                    self.status.stringValue = error.localizedDescription
+                    self.showError(error, detail: errorDetail)
                 }
             }
         }
@@ -299,7 +543,10 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
         alert.informativeText = detail
         alert.configureKeyboardShortcuts()
         if let window = view.window, window.attachedSheet == nil { alert.beginSheetModal(for: window) }
-        else { status.stringValue = error.localizedDescription }
+        else {
+            status.stringValue = error.localizedDescription
+            statusBar.isHidden = false
+        }
     }
     private func saveDirectories() {
         UserDefaults.standard.set(left.directory.path, forKey: "leftDirectory")
@@ -308,8 +555,8 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource {
     @objc func showHelp() {
         guard view.window?.attachedSheet == nil else { return }
         let alert = NSAlert()
-        alert.messageText = "PaneRook · Die ersten Schritte"
-        alert.informativeText = "Tab: aktives Panel wechseln\nPfeiltasten: auswählen · ⇧/⌘-Klick: Mehrfachauswahl\nEnter / Doppelklick: öffnen\nRücktaste / ⌘↑: übergeordneter Ordner\nLeertaste / F3: Quick Look\nF4: mit TextEdit bearbeiten\nF5 / F6: in das andere Panel kopieren / verschieben\nF7: Ordner anlegen · F8: Papierkorb\n⌘L: Pfad eingeben · ⌘R: aktualisieren\n⌘⇧.: versteckte Dateien · ⌘U: Panels tauschen\n\nAuf Apple-Tastaturen ggf. fn zusammen mit F1–F8 drücken.\n\nLokale Dateien sind die Grundlage. Terminal, Archive und Remote-Verbindungen folgen in weiteren Schritten."
+        alert.messageText = "Tastenkürzel"
+        alert.informativeText = "Tab: Panel wechseln\nEnter: öffnen · Rücktaste: übergeordneter Ordner\nLeertaste / F3: Quick Look\nF2: Benutzermenü · F4: TextEdit\nF5 / F6: Kopieren / Verschieben\nF7: Ordner anlegen · F8: Papierkorb\nF9: Menü · F10: Verlassen\nEsc / F10 / Ctrl-G: Dialog oder Menü abbrechen\n⌘L: Pfad · ⌘R: aktualisieren · ⌘U: Panels tauschen\nCtrl-O: Panels an/aus\n\nEigene Belegung: Optionen → Tasten lernen.\nAuf Apple-Tastaturen ggf. zusätzlich fn drücken."
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: view.window!)
     }
