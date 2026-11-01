@@ -2,23 +2,26 @@ import AppKit
 import PaneRookCore
 import Darwin
 
+private struct CommandTaskFailure: LocalizedError {
+    let status: Int32
+    var errorDescription: String? { "Befehl beendet mit Exit \(status)." }
+}
+
+private final class CommandOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: CommandResult?
+    func store(_ result: CommandResult) { lock.lock(); value = result; lock.unlock() }
+    var result: CommandResult? { lock.lock(); defer { lock.unlock() }; return value }
+}
+
 final class WorkflowTools {
     private unowned let owner: CommanderController
-    private final class Job {
-        let id = UUID()
-        let title: String
-        let task = CommandExecution()
-        let window: TextResultWindow
-        var finished = false
-        init(title: String) { self.title = title; window = TextResultWindow(title: title) }
-    }
-    private var jobs: [Job] = []
     private var results: [TextResultWindow] = []
     private var fileHistory: [URL] = []
     private var invalidConfigurations: [String: Data] = [:]
     private let defaults = UserDefaults.standard
     init(owner: CommanderController) { self.owner = owner }
-    func cancelAll() { for job in jobs where !job.finished { job.task.cancel() } }
+    func cancelAll() { owner.tasks.cancelAll() }
     private var configDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PaneRook", isDirectory: true)
@@ -80,8 +83,8 @@ final class WorkflowTools {
                 let urls = output.split(separator: "\n").map(String.init).map {
                     $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : base.appendingPathComponent($0).standardizedFileURL
                 }.filter { (try? FileManager.default.attributesOfItem(atPath: $0.path)) != nil }
+                guard target.canApplyTaskResult(in: base) else { return }
                 target.panelize(Array(Set(urls)))
-                self.owner.activate(target)
             }
         }
     }
@@ -97,40 +100,31 @@ final class WorkflowTools {
             history.removeAll { $0 == command }; history.insert(command, at: 0)
             defaults.set(Array(history.prefix(100)), forKey: "commandHistory")
         }
-        let job = Job(title: title)
-        jobs.removeAll { $0.finished && !$0.window.window!.isVisible }
-        jobs.append(job)
-        job.window.setContent(command, status: "Läuft · \(cwd.path)", running: true)
-        job.window.onCancel = { [weak job] in job?.task.cancel() }
-        job.window.present()
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try job.task.run(command, in: cwd, environment: environment) }
-            DispatchQueue.main.async { [weak self] in
-                job.finished = true
-                switch result {
-                case .success(let value):
+        let task = CommandExecution()
+        let output = CommandOutput()
+        let window = TextResultWindow(title: title)
+        results.append(window)
+        owner.tasks.submit(title: title, detail: "\(command)\n\(cwd.path)", cancellation: { task.cancel() },
+            work: { report in
+                // Arbitrary shell commands do not expose a reliable total.
+                report(OperationProgress(currentPath: cwd.path))
+                let value = try task.run(command, in: cwd, environment: environment)
+                output.store(value)
+                guard value.status == 0 || value.wasCancelled else { throw CommandTaskFailure(status: value.status) }
+                return value
+            }, onReveal: { window.present() }, completion: { [weak self] result in
+                if let value = output.result {
                     let text = value.output + (value.errorOutput.isEmpty ? "" : "\n" + value.errorOutput)
                     let status = value.wasCancelled ? "Abgebrochen" : "Exit \(value.status)" + (value.truncated ? " · Ausgabe gekürzt" : "")
-                    job.window.setContent(text, status: status, running: false)
-                    if value.status == 0 && !value.wasCancelled && !value.truncated { success?(value.output) }
-                case .failure(let error): job.window.setContent(error.localizedDescription, status: "Fehler", running: false)
+                    window.setContent(text, status: status, running: false)
+                    if case .success = result, value.status == 0 && !value.wasCancelled && !value.truncated { success?(value.output) }
+                } else if case .failure(let error) = result {
+                    window.setContent(error.localizedDescription, status: "Fehler", running: false)
                 }
-                self?.owner.refresh()
-            }
-        }
+                self?.owner.refreshAfterTask()
+            })
     }
-    func backgroundJobs() {
-        if owner.isPerformingOperation {
-            let window = TextResultWindow(title: "Hintergrundaufgaben", content: "Eine Dateioperation läuft. Ihr Status steht im Hauptfenster.")
-            results.append(window); window.present(); return
-        }
-        let windows = jobs.compactMap { $0.window.window } + owner.localTools.taskWindows
-        let labels = jobs.map { ($0.finished ? "✓ " : "● ") + $0.title } + owner.localTools.taskWindows.map(\.title)
-        ToolUI.choose(owner: owner, title: "Hintergrundaufgaben", labels: labels) { index, _ in
-            guard windows.indices.contains(index) else { return }
-            windows[index].makeKeyAndOrderFront(nil)
-        }
-    }
+    func backgroundJobs() { owner.tasks.showQueue() }
     func commandHistory() {
         let history = defaults.stringArray(forKey: "commandHistory") ?? []
         ToolUI.choose(owner: owner, title: "Befehlschronik", labels: history, accept: "Bearbeiten …", extra: "Chronik leeren") { [weak self] index, extra in

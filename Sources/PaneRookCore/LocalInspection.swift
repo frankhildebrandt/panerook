@@ -100,11 +100,14 @@ public enum LocalInspection {
 
     /// Walks without following symbolic links. All reads are bounded, including a changing file.
     public static func search(in directory: URL, query: FileSearchQuery,
-                              cancellation: InspectionCancellation = .init()) throws -> FileSearchResult {
+                              cancellation: InspectionCancellation = .init(),
+                              progress: (OperationProgress) -> Void = { _ in }) throws -> FileSearchResult {
         var found: [URL] = []; var skipped = 0; var truncated = 0; var visited = 0; var limited = false
+        progress(OperationProgress(currentPath: directory.path))
         try walk(directory, recursive: query.recursive, hidden: query.includeHidden,
                  maximumEntries: query.maximumEntries, cancellation: cancellation, onError: { _ in skipped += 1 }) { url, values, _ in
             visited += 1
+            progress(OperationProgress(completedItems: visited, currentPath: url.path))
             guard matches(url.lastPathComponent, pattern: query.namePattern.isEmpty ? "*" : query.namePattern, caseSensitive: query.caseSensitive) else { return true }
             if !query.content.isEmpty {
                 guard values.isRegularFile == true, values.isSymbolicLink != true else { return true }
@@ -124,38 +127,59 @@ public enum LocalInspection {
             if found.count >= query.maximumResults { limited = true; return false }
             return true
         }
+        try cancellation.check()
+        progress(OperationProgress(completedItems: visited, totalItems: visited, currentPath: directory.path))
         return FileSearchResult(urls: found.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending },
                                 resultLimitReached: limited, skippedFiles: skipped, truncatedFiles: truncated, visitedEntries: visited)
     }
 
-    public static func byteCount(of url: URL, cancellation: InspectionCancellation = .init(), maximumEntries: Int = 1_000_000) throws -> Int64 {
+    public static func byteCount(of url: URL, cancellation: InspectionCancellation = .init(), maximumEntries: Int = 1_000_000,
+                                 progress: (OperationProgress) -> Void = { _ in }) throws -> Int64 {
         try cancellation.check()
+        progress(OperationProgress(currentPath: url.path))
         let values = try url.resourceValues(forKeys: keys)
-        if values.isSymbolicLink == true { return 0 }
-        if values.isDirectory != true { return values.isRegularFile == true ? Int64(values.fileSize ?? 0) : 0 }
-        var total: Int64 = 0
-        try walk(url, recursive: true, hidden: true, maximumEntries: maximumEntries, cancellation: cancellation) { _, values, _ in
+        if values.isSymbolicLink == true || values.isDirectory != true {
+            let bytes = values.isSymbolicLink != true && values.isRegularFile == true ? Int64(values.fileSize ?? 0) : 0
+            progress(OperationProgress(completedItems: 1, totalItems: 1, completedBytes: bytes, currentPath: url.path))
+            try cancellation.check()
+            return bytes
+        }
+        var total: Int64 = 0; var visited = 0
+        try walk(url, recursive: true, hidden: true, maximumEntries: maximumEntries, cancellation: cancellation) { child, values, _ in
+            visited += 1
             if values.isRegularFile == true && values.isSymbolicLink != true {
                 let size = Int64(values.fileSize ?? 0)
                 let addition = total.addingReportingOverflow(size)
                 if addition.overflow { throw InspectionError.entryLimit(maximumEntries) }
                 total = addition.partialValue
             }
+            progress(OperationProgress(completedItems: visited, completedBytes: total, currentPath: child.path))
             return true
         }
+        progress(OperationProgress(completedItems: visited, totalItems: visited, completedBytes: total, currentPath: url.path))
         return total
     }
 
     public static func compareFiles(_ left: URL, _ right: URL, cancellation: InspectionCancellation = .init(),
-                                    maximumBytes: Int64 = 1_073_741_824) throws -> FileComparison {
+                                    maximumBytes: Int64 = 1_073_741_824,
+                                    progress: (OperationProgress) -> Void = { _ in }) throws -> FileComparison {
         try cancellation.check()
         let a = try left.resourceValues(forKeys: keys), b = try right.resourceValues(forKeys: keys)
         let leftSize = Int64(a.fileSize ?? 0), rightSize = Int64(b.fileSize ?? 0)
+        let bound = max(leftSize, rightSize)
+        func report(_ bytes: Int64, finished: Bool = false) {
+            progress(OperationProgress(completedItems: finished ? 1 : 0, totalItems: 1,
+                completedBytes: bytes, totalBytes: bound, currentPath: left.path,
+                currentFileBytes: bytes, currentFileTotalBytes: bound))
+        }
+        report(0)
         if a.isSymbolicLink == true || b.isSymbolicLink == true {
             var same = false
             if a.isSymbolicLink == true && b.isSymbolicLink == true {
                 same = try FileManager.default.destinationOfSymbolicLink(atPath: left.path) == FileManager.default.destinationOfSymbolicLink(atPath: right.path)
             }
+            report(bound, finished: true)
+            try cancellation.check()
             return FileComparison(equal: same, firstDifferentOffset: same ? nil : 0, leftSize: leftSize, rightSize: rightSize, symbolicLinks: true)
         }
         guard a.isRegularFile == true else { throw InspectionError.notRegularFile(left.path) }
@@ -165,11 +189,12 @@ public enum LocalInspection {
         let bh = try FileHandle(forReadingFrom: right); defer { try? bh.close() }
         var offset: Int64 = 0
         // Include the initial lengths in the bound, so concurrently growing files cannot keep a comparison alive.
-        let bound = max(leftSize, rightSize)
         while offset < bound {
             try cancellation.check()
             let count = Int(min(65_536, bound - offset))
             let ad = try ah.read(upToCount: count) ?? Data(), bd = try bh.read(upToCount: count) ?? Data()
+            report(offset + Int64(max(ad.count, bd.count)))
+            try cancellation.check()
             if ad != bd {
                 let common = min(ad.count, bd.count)
                 let mismatch = (0..<common).first { ad[$0] != bd[$0] } ?? common
@@ -178,26 +203,40 @@ public enum LocalInspection {
             if ad.isEmpty { break }
             offset += Int64(ad.count)
         }
+        report(offset, finished: true)
+        try cancellation.check()
         return FileComparison(equal: leftSize == rightSize, firstDifferentOffset: leftSize == rightSize ? nil : min(leftSize, rightSize), leftSize: leftSize, rightSize: rightSize, symbolicLinks: false)
     }
 
     public static func compareDirectories(_ left: URL, _ right: URL, recursive: Bool = true,
-                                          cancellation: InspectionCancellation = .init(), maximumEntries: Int = 100_000) throws -> DirectoryComparison {
+                                          cancellation: InspectionCancellation = .init(), maximumEntries: Int = 100_000,
+                                          progress: (OperationProgress) -> Void = { _ in }) throws -> DirectoryComparison {
         struct Item { let url: URL; let directory: Bool; let link: Bool }
+        var scanned = 0
+        progress(OperationProgress(currentPath: left.path))
         func inventory(_ root: URL) throws -> [String: Item] {
             let root = root.resolvingSymlinksInPath().standardizedFileURL
             var items: [String: Item] = [:]
             try walk(root, recursive: recursive, hidden: true, maximumEntries: maximumEntries, cancellation: cancellation) { url, values, relativePath in
                 items[relativePath] = Item(url: url, directory: values.isDirectory == true, link: values.isSymbolicLink == true)
+                scanned += 1
+                progress(OperationProgress(completedItems: scanned, currentPath: url.path))
                 return true
             }
             return items
         }
         let a = try inventory(left), b = try inventory(right)
         var differences: [DirectoryDifference] = []; var compared = 0
-        for path in Set(a.keys).union(b.keys).sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+        let paths = Set(a.keys).union(b.keys).sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending })
+        var completed = 0
+        progress(OperationProgress(totalItems: paths.count, currentPath: left.path))
+        for path in paths {
             try cancellation.check()
             let ai = a[path], bi = b[path]
+            defer {
+                completed += 1
+                progress(OperationProgress(completedItems: completed, totalItems: paths.count, currentPath: (ai?.url ?? bi!.url).path))
+            }
             let kind: DirectoryDifference.Kind
             var detail: String?
             if ai == nil { kind = .onlyRight }
@@ -206,7 +245,10 @@ public enum LocalInspection {
             else if ai!.directory && !ai!.link { continue }
             else {
                 do {
-                    let result = try compareFiles(ai!.url, bi!.url, cancellation: cancellation)
+                    let result = try compareFiles(ai!.url, bi!.url, cancellation: cancellation) { file in
+                        progress(OperationProgress(completedItems: completed, totalItems: paths.count, currentPath: file.currentPath,
+                            currentFileBytes: file.currentFileBytes, currentFileTotalBytes: file.currentFileTotalBytes))
+                    }
                     compared += 1
                     if result.equal { continue }
                     kind = .different
@@ -216,6 +258,7 @@ public enum LocalInspection {
             }
             differences.append(DirectoryDifference(relativePath: path, kind: kind, left: ai?.url, right: bi?.url, detail: detail))
         }
+        try cancellation.check()
         return DirectoryComparison(differences: differences, comparedFiles: compared)
     }
 

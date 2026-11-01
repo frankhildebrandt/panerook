@@ -49,20 +49,18 @@ final class LocalTools {
                     guard let pane else { return }; pane.panelize(urls); owner?.activate(pane)
                 }
                 let token = results.cancellation
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let result = Result { try LocalInspection.search(in: directory, query: query, cancellation: token) }
-                    DispatchQueue.main.async {
-                        guard !token.isCancelled else { return }
-                        switch result {
-                        case .success(let found):
-                            let rows = found.urls.map { InspectionRow(path: $0.path, status: "", left: $0, right: nil) }
-                            var status = "\(rows.count) Treffer · \(found.visitedEntries) Einträge geprüft"
-                            if found.resultLimitReached { status += " · Treffergrenze erreicht" }
-                            if found.truncatedFiles > 0 { status += " · \(found.truncatedFiles) Dateien nur bis 1 MiB gelesen" }
-                            if found.skippedFiles > 0 { status += " · \(found.skippedFiles) nicht lesbar/dekodierbar" }
-                            results.setResults(rows, status: status)
-                        case .failure(let error): results.setResults([], status: error.localizedDescription)
-                        }
+                owner.tasks.submit(title: "Dateien suchen", detail: directory.path, cancellation: { token.cancel() }, work: { progress in
+                    try LocalInspection.search(in: directory, query: query, cancellation: token, progress: progress)
+                }, onReveal: { results.showWindow(nil); results.window?.makeKeyAndOrderFront(nil) }) { result in
+                    switch result {
+                    case .success(let found):
+                        let rows = found.urls.map { InspectionRow(path: $0.path, status: "", left: $0, right: nil) }
+                        var status = "\(rows.count) Treffer · \(found.visitedEntries) Einträge geprüft"
+                        if found.resultLimitReached { status += " · Treffergrenze erreicht" }
+                        if found.truncatedFiles > 0 { status += " · \(found.truncatedFiles) Dateien nur bis 1 MiB gelesen" }
+                        if found.skippedFiles > 0 { status += " · \(found.skippedFiles) nicht lesbar/dekodierbar" }
+                        results.setResults(rows, status: status)
+                    case .failure(let error): results.setResults([], status: error.localizedDescription)
                     }
                 }
             } catch { owner.showError(error) }
@@ -86,26 +84,24 @@ final class LocalTools {
                 owner?.activate(row.left == nil ? right : left)
             }
             let token = results.cancellation
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = Result { try LocalInspection.compareDirectories(a, b, recursive: recurse, cancellation: token) }
-                DispatchQueue.main.async {
-                    guard !token.isCancelled else { return }
-                    switch result {
-                    case .success(let compared):
-                        let rows = compared.differences.map { item -> InspectionRow in
-                            let status: String
-                            switch item.kind {
-                            case .onlyLeft: status = "Nur links"
-                            case .onlyRight: status = "Nur rechts"
-                            case .different: status = "Inhalt verschieden"
-                            case .differentType: status = "Typ verschieden"
-                            case .unreadable: status = item.detail ?? "Nicht lesbar"
-                            }
-                            return InspectionRow(path: item.relativePath, status: status, left: item.left, right: item.right)
+            owner.tasks.submit(title: "Ordnervergleich", detail: "\(a.path) ↔ \(b.path)", cancellation: { token.cancel() }, work: { progress in
+                try LocalInspection.compareDirectories(a, b, recursive: recurse, cancellation: token, progress: progress)
+            }, onReveal: { results.showWindow(nil); results.window?.makeKeyAndOrderFront(nil) }) { result in
+                switch result {
+                case .success(let compared):
+                    let rows = compared.differences.map { item -> InspectionRow in
+                        let status: String
+                        switch item.kind {
+                        case .onlyLeft: status = "Nur links"
+                        case .onlyRight: status = "Nur rechts"
+                        case .different: status = "Inhalt verschieden"
+                        case .differentType: status = "Typ verschieden"
+                        case .unreadable: status = item.detail ?? "Nicht lesbar"
                         }
-                        results.setResults(rows, status: rows.isEmpty ? "Identisch · \(compared.comparedFiles) Dateien byteweise verglichen" : "\(rows.count) Unterschiede · \(compared.comparedFiles) Dateien byteweise verglichen")
-                    case .failure(let error): results.setResults([], status: error.localizedDescription)
+                        return InspectionRow(path: item.relativePath, status: status, left: item.left, right: item.right)
                     }
+                    results.setResults(rows, status: rows.isEmpty ? "Identisch · \(compared.comparedFiles) Dateien byteweise verglichen" : "\(rows.count) Unterschiede · \(compared.comparedFiles) Dateien byteweise verglichen")
+                case .failure(let error): results.setResults([], status: error.localizedDescription)
                 }
             }
             owner.activate(owner.active)
@@ -124,18 +120,24 @@ final class LocalTools {
             return
         }
         let a = active === owner.left ? first.url : second.url, b = active === owner.left ? second.url : first.url
-        let result = FileComparisonWindow(left: a, right: b, leftEncoding: owner.left.textEncoding, rightEncoding: owner.right.textEncoding)
-        retain(result); result.showWindow(nil); result.window?.makeKeyAndOrderFront(nil)
-        let token = result.cancellation
-        DispatchQueue.global(qos: .userInitiated).async {
-            let comparison = Result { try LocalInspection.compareFiles(a, b, cancellation: token) }
-            DispatchQueue.main.async {
-                guard !token.isCancelled else { return }
-                switch comparison {
-                case .success(let value):
-                    result.finish(value.equal ? "Identischer Inhalt" : "Inhalt verschieden · erster Unterschied bei Byte \(value.firstDifferentOffset ?? 0)", detail: "\(ByteCountFormatter.string(fromByteCount: value.leftSize, countStyle: .file)) ↔ \(ByteCountFormatter.string(fromByteCount: value.rightSize, countStyle: .file))")
-                case .failure(let error): result.finish("Vergleich nicht abgeschlossen", detail: error.localizedDescription)
-                }
+        let leftEncoding = owner.left.textEncoding, rightEncoding = owner.right.textEncoding
+        let token = InspectionCancellation()
+        var resultWindow: FileComparisonWindow?
+        var message = "", detail = ""
+        owner.tasks.submit(title: "Dateivergleich", detail: "\(a.path) ↔ \(b.path)", cancellation: { token.cancel() }, work: { progress in
+            try LocalInspection.compareFiles(a, b, cancellation: token, progress: progress)
+        }, onReveal: { [weak self] in
+            if resultWindow == nil {
+                let viewer = FileComparisonWindow(left: a, right: b, leftEncoding: leftEncoding, rightEncoding: rightEncoding)
+                viewer.finish(message, detail: detail); self?.retain(viewer); resultWindow = viewer
+            }
+            resultWindow?.showWindow(nil); resultWindow?.window?.makeKeyAndOrderFront(nil)
+        }) { comparison in
+            switch comparison {
+            case .success(let value):
+                message = value.equal ? "Identischer Inhalt" : "Inhalt verschieden · erster Unterschied bei Byte \(value.firstDifferentOffset ?? 0)"
+                detail = "\(ByteCountFormatter.string(fromByteCount: value.leftSize, countStyle: .file)) ↔ \(ByteCountFormatter.string(fromByteCount: value.rightSize, countStyle: .file))"
+            case .failure(let error): message = "Vergleich nicht abgeschlossen"; detail = error.localizedDescription
             }
         }
     }
@@ -152,19 +154,27 @@ final class LocalTools {
             pane.navigate(to: url.deletingLastPathComponent(), select: url); owner?.activate(pane)
         }
         let token = results.cancellation
-        DispatchQueue.global(qos: .userInitiated).async {
+        let originalDirectory = pane.directory
+        owner.tasks.submit(title: "Ordnergrößen", detail: "\(directories.count) Ordner · \(originalDirectory.path)", cancellation: { token.cancel() }, work: { progress in
             var sizes: [URL: Int64] = [:]; var rows: [InspectionRow] = []
-            for url in directories {
-                if token.isCancelled { return }
+            for (index, url) in directories.enumerated() {
+                try token.check()
                 do {
-                    let bytes = try LocalInspection.byteCount(of: url, cancellation: token)
+                    let bytes = try LocalInspection.byteCount(of: url, cancellation: token) { current in
+                        progress(OperationProgress(completedItems: index, totalItems: directories.count, currentPath: current.currentPath))
+                    }
                     sizes[url] = bytes; rows.append(InspectionRow(path: url.path, status: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file), left: url, right: nil))
-                } catch { rows.append(InspectionRow(path: url.path, status: error.localizedDescription, left: url, right: nil)) }
+                } catch InspectionError.cancelled { throw InspectionError.cancelled }
+                catch { rows.append(InspectionRow(path: url.path, status: error.localizedDescription, left: url, right: nil)) }
+                progress(OperationProgress(completedItems: index + 1, totalItems: directories.count, currentPath: url.path))
             }
-            DispatchQueue.main.async {
-                guard !token.isCancelled else { return }
-                pane.showDirectorySizes(sizes)
+            return (sizes, rows)
+        }, onReveal: { results.showWindow(nil); results.window?.makeKeyAndOrderFront(nil) }) { [weak pane] outcome in
+            switch outcome {
+            case .success(let (sizes, rows)):
+                if pane?.directory == originalDirectory { pane?.showDirectorySizes(sizes) }
                 results.setResults(rows, status: "\(sizes.count) Ordner berechnet · symbolische Links nicht verfolgt")
+            case .failure(let error): results.setResults([], status: error.localizedDescription)
             }
         }
     }
@@ -181,7 +191,7 @@ final class LocalTools {
     }
     private func resultsWindow(title: String, status: String, panelize: Bool = false) -> InspectionResultsWindow {
         let results = InspectionResultsWindow(title: title, status: status, panelize: panelize)
-        retain(results); results.showWindow(nil); results.window?.makeKeyAndOrderFront(nil)
+        retain(results)
         return results
     }
 }

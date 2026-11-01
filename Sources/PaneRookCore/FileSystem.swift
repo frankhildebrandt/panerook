@@ -127,14 +127,15 @@ public struct TransferPlan: Sendable {
         self.kind = kind
     }
 
-    /// FileManager refuses existing destinations. A failed batch can have completed earlier items.
-    public func execute() throws {
-        for item in items {
-            switch kind {
-            case .copy: try FileManager.default.copyItem(at: item.source, to: item.destination)
-            case .move: try FileManager.default.moveItem(at: item.source, to: item.destination)
-            }
-        }
+    /// Completed items remain after a later failure. The current copy is staged and
+    /// committed exclusively, so cancellation never leaves a partial destination.
+    public func execute(cancellation: TransferCancellation = .init(),
+                        progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
+        try cancellation.check()
+        // Queuing separates the input dialog from execution. In particular, a
+        // destination ancestor symlink may now point into one of the sources.
+        let current = try TransferPlan(sources: items.map(\.source), outputs: items.map(\.destination), kind: kind)
+        try TransferWorker(plan: current, cancellation: cancellation, progress: progress).run()
     }
 }
 
