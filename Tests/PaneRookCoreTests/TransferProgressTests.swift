@@ -1,3 +1,4 @@
+import PaneRookTasks
 import XCTest
 import Darwin
 @testable import PaneRookCore

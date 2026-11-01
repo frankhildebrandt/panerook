@@ -1,0 +1,59 @@
+import AppKit
+import PaneRookPanels
+
+extension CommanderController {
+    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: PaneController) {
+        for (index, pair) in [
+            ("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree),
+        ].enumerated() {
+            let (title, mode) = pair
+            registry.add(
+                menu, title, id: "\(menu.rawValue).mode.\(index)", order: index,
+                enabled: { [weak self] in
+                    guard let self else { return false }
+                    return self.canUseMenus && (mode != .tree || !pane.isArchiveDirectory)
+                }, checked: { pane.mode == mode }
+            ) { [weak self] in
+                guard let self else { return }
+                pane.setMode(mode)
+                pane.showInspection(of: (pane === self.left ? self.right : self.left).selectedFiles.first)
+                self.activate(pane)
+            }
+        }
+        for (index, title) in ["Vollständig", "Kompakt"].enumerated() {
+            registry.add(
+                menu, title, id: "\(menu.rawValue).listing.\(index)", order: 10 + index, group: 1,
+                submenu: "Listenformat",
+                enabled: { [weak self] in
+                    guard let self else { return false }
+                    return self.canUseMenus
+                }, checked: { pane.isBriefListing == (index == 1) }
+            ) { pane.setBriefListing(index == 1) }
+        }
+        for (index, pair) in [("Name", "name"), ("Größe", "size"), ("Änderungsdatum", "modified")].enumerated() {
+            let (title, key) = pair
+            registry.add(
+                menu, title, id: "\(menu.rawValue).sort.\(key)", order: 20 + index, group: 1,
+                submenu: "Sortierreihenfolge",
+                enabled: { [weak self] in
+                    guard let self else { return false }
+                    return self.canUseMenus
+                }, checked: { pane.sortKey == key }
+            ) { pane.setSort(key: key, ascending: pane.sortAscending) }
+        }
+        registry.add(
+            menu, "Umgekehrt", id: "\(menu.rawValue).sort.reverse", order: 24, group: 1, submenu: "Sortierreihenfolge",
+            enabled: { [weak self] in
+                guard let self else { return false }
+                return self.canUseMenus
+            }, checked: { !pane.sortAscending }
+        ) { pane.setSort(key: pane.sortKey, ascending: !pane.sortAscending) }
+        registry.add(
+            menu, "Neu einlesen", id: "\(menu.rawValue).refresh", order: 100, group: 3,
+            enabled: { [weak self] in
+                guard let self else { return false }
+                return self.canUseMenus
+            }
+        ) { pane.refresh() }
+    }
+}
