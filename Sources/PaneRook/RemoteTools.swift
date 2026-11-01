@@ -75,7 +75,7 @@ final class RemoteTools {
     }
 
     private func openBrowser(_ connection: RemoteConnection, directory: String, pane: PaneController) {
-        let browser = RemoteBrowser(connection: connection, peer: pane)
+        let browser = RemoteBrowser(connection: connection, peer: pane, tasks: owner.tasks)
         let id = UUID(); browsers[id] = browser
         browser.onClose = { [weak self] in self?.browsers.removeValue(forKey: id) }
         browser.show(directory: directory)
@@ -149,6 +149,8 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     var onClose: (() -> Void)?
     private weak var peer: PaneController?
     private let fileSystem: RemoteFileSystem
+    private let tasks: TaskCenter
+    private var queuedTask: UUID?
     private let table = RemoteTable()
     private let pathField = NSTextField()
     private let status = NSTextField(labelWithString: "")
@@ -161,7 +163,8 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     private var buttons: [NSButton] = []
     private var busy: Bool { cancellation != nil }
 
-    init(connection: RemoteConnection, peer: PaneController) {
+    init(connection: RemoteConnection, peer: PaneController, tasks: TaskCenter) {
+        self.tasks = tasks
         self.peer = peer; fileSystem = RemoteFileSystem(connection: connection)
         window = RemoteWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 600), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
@@ -232,9 +235,14 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     @objc private func download() {
         guard !busy, let peer, !selection.isEmpty else { return }
         let selected = selection, destination = peer.directory, path = directory
-        perform("Laden nach \(destination.path)", work: { token in
-            for entry in selected { try self.fileSystem.download(entry, from: path, to: destination.appendingPathComponent(entry.name), cancellation: token) }
-        }) { [weak peer, weak self] _ in peer?.refresh(); self?.status.stringValue = "\(selected.count) Einträge geladen" }
+        performQueued("Laden nach \(destination.path)", paths: selected.map { path + "/" + $0.name }, work: { token, report in
+            for (index, entry) in selected.enumerated() {
+                try token.check()
+                report(OperationProgress(completedItems: index, totalItems: selected.count, currentPath: entry.name))
+                try self.fileSystem.download(entry, from: path, to: destination.appendingPathComponent(entry.name), cancellation: token)
+                report(OperationProgress(completedItems: index + 1, totalItems: selected.count, currentPath: entry.name))
+            }
+        }) { [weak peer, weak self] _ in peer?.refreshAfterTask(); self?.status.stringValue = "\(selected.count) Einträge geladen" }
     }
     @objc private func upload() {
         guard !busy, let peer else { return }
@@ -244,7 +252,14 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         alert.addButton(withTitle: "Hochladen"); alert.addButton(withTitle: "Abbrechen"); alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.perform("Dateien werden hochgeladen", work: { token in for source in sources { try self.fileSystem.upload(source, to: path, cancellation: token) } }) { [weak self] _ in self?.reload() }
+            self.performQueued("Dateien hochladen", paths: sources.map(\.path), work: { token, report in
+                for (index, source) in sources.enumerated() {
+                    try token.check()
+                    report(OperationProgress(completedItems: index, totalItems: sources.count, currentPath: source.path))
+                    try self.fileSystem.upload(source, to: path, cancellation: token)
+                    report(OperationProgress(completedItems: index + 1, totalItems: sources.count, currentPath: source.path))
+                }
+            }) { [weak self] _ in self?.reload() }
         }
     }
     @objc private func makeDirectory() {
@@ -268,10 +283,41 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         alert.addButton(withTitle: "Löschen"); alert.addButton(withTitle: "Abbrechen"); alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.perform("Dateien werden gelöscht", work: { token in for entry in selected { try self.fileSystem.remove(entry, from: path, cancellation: token) } }) { [weak self] _ in self?.reload() }
+            self.performQueued("Remote-Dateien löschen", paths: selected.map { path + "/" + $0.name }, work: { token, report in
+                for (index, entry) in selected.enumerated() {
+                    try token.check()
+                    report(OperationProgress(completedItems: index, totalItems: selected.count, currentPath: entry.name))
+                    try self.fileSystem.remove(entry, from: path, cancellation: token)
+                    report(OperationProgress(completedItems: index + 1, totalItems: selected.count, currentPath: entry.name))
+                }
+            }) { [weak self] _ in self?.reload() }
         }
     }
-    @objc private func cancelOperation() { cancellation?.cancel() }
+    @objc private func cancelOperation() {
+        if let queuedTask { tasks.cancel(queuedTask) }
+        else { cancellation?.cancel() }
+    }
+    private func performQueued<Value>(_ title: String, paths: [String],
+                                      work: @escaping (RemoteCancellation, @escaping (OperationProgress) -> Void) throws -> Value,
+                                      completion: @escaping (Value) -> Void) {
+        guard !busy else { return }
+        let token = RemoteCancellation(); cancellation = token
+        buttons.forEach { $0.isEnabled = false }; table.isEnabled = false; pathField.isEnabled = false
+        cancel.isHidden = false; status.stringValue = title; spinner.startAnimation(nil)
+        queuedTask = tasks.submit(title: title, detail: window.title + "\n" + paths.joined(separator: "\n") + "\nBereits übertragene Remote-Einträge bleiben bei Abbruch erhalten.",
+            cancellation: { token.cancel() }, work: { report in try work(token, report) }, completion: { [weak self] result in
+                guard let self else { return }
+                self.queuedTask = nil; self.cancellation = nil
+                self.buttons.forEach { $0.isEnabled = true }; self.table.isEnabled = true; self.pathField.isEnabled = true
+                self.cancel.isHidden = true; self.spinner.stopAnimation(nil)
+                // Refresh local panels even if this browser was closed during work.
+                self.peer?.refreshAfterTask()
+                switch result {
+                case .success(let value): if self.window.isVisible { completion(value) }
+                case .failure(let error): self.status.stringValue = error.localizedDescription
+                }
+            })
+    }
     private func perform<Value>(_ title: String, work: @escaping (RemoteCancellation) throws -> Value, completion: @escaping (Value) -> Void) {
         guard !busy else { return }
         let token = RemoteCancellation(); cancellation = token
@@ -287,7 +333,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
                 case .failure(let error):
                     self.status.stringValue = error.localizedDescription
                     if !token.isCancelled { self.showError(error) }
-                    self.peer?.refresh()
+                    self.peer?.refreshAfterTask()
                 }
             }
         }
@@ -314,7 +360,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         }
         return true
     }
-    func windowWillClose(_ notification: Notification) { cancellation?.cancel(); onClose?() }
+    func windowWillClose(_ notification: Notification) { cancelOperation(); onClose?() }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard entries.indices.contains(row), let id = tableColumn?.identifier.rawValue else { return nil }
