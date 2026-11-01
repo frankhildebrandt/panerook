@@ -131,7 +131,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private func panelMenu(_ title: String, pane: PaneController) -> NSMenu {
         let menu = makeMenu(title)
         for (title, mode) in [("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree)] {
-            add(menu, title, checked: { pane.mode == mode }) {
+            add(menu, title, enabled: { self.commander.canUseMenus && (mode != .tree || !pane.isArchiveDirectory) }, checked: { pane.mode == mode }) {
                 pane.setMode(mode)
                 pane.showInspection(of: (pane === self.commander.left ? self.commander.right : self.commander.left).selectedFiles.first)
                 self.commander.activate(pane)
@@ -156,7 +156,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         add(menu, "Shell-Verbindung …") { self.commander.remote.connect(.shell, pane: pane) }
         add(menu, "SFTP-Verbindung …") { self.commander.remote.connect(.sftp, pane: pane) }
         add(menu, "Verbindungsarchiv …") { self.commander.remote.showArchive(pane: pane) }
-        add(menu, "Anordnen") { self.commander.workflow.panelize(external: false, pane: pane) }
+        add(menu, "Anordnen", enabled: { self.commander.canUseMenus && !pane.isArchiveDirectory }) { self.commander.workflow.panelize(external: false, pane: pane) }
         menu.addItem(.separator())
         add(menu, "Neu einlesen") { pane.refresh() }
         return menu
@@ -164,25 +164,26 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private func fileMenu() -> NSMenu {
         let menu = makeMenu("Datei")
         let selected = { self.commander.canUseSelection }
+        let nativeSelected = { self.commander.canUseNativeSelection }
         add(menu, "Ansicht", key: functionKey(NSF3FunctionKey), modifiers: [], enabled: selected) { self.commander.previewSelection() }
         add(menu, "Datei anzeigen …") { self.commander.choosePreviewFile() }
-        add(menu, "Gefilterte Ansicht", enabled: selected) { self.commander.workflow.filteredView() }
+        add(menu, "Gefilterte Ansicht", enabled: nativeSelected) { self.commander.workflow.filteredView() }
         add(menu, "Bearbeiten", key: functionKey(NSF4FunctionKey), modifiers: [], enabled: {
-            self.commander.canUseMenus && self.commander.active.selectedEntries.contains { !$0.isParent && !$0.isDirectory }
+            self.commander.canUseNativeSelection && self.commander.active.selectedEntries.contains { !$0.isParent && !$0.isDirectory }
         }) { self.commander.editSelection() }
         add(menu, "Kopieren …", key: functionKey(NSF5FunctionKey), modifiers: [], enabled: selected) { self.commander.copySelection() }
-        add(menu, "Chmod", enabled: selected) { self.commander.metadata.chmod() }
-        add(menu, "Link", enabled: selected) { self.commander.metadata.createHardLink() }
-        add(menu, "Symbolischer Link", enabled: selected) { self.commander.metadata.createSymbolicLink(relative: false) }
-        add(menu, "Relativer symbolischer Link", enabled: selected) { self.commander.metadata.createSymbolicLink(relative: true) }
-        add(menu, "Symbolischen Link bearbeiten", enabled: { selected() && self.commander.active.selectedEntries.count == 1 && self.commander.active.selectedEntries.first?.isSymbolicLink == true }) { self.commander.metadata.editSymbolicLink() }
-        add(menu, "Chown", enabled: selected) { self.commander.metadata.chown(advanced: false) }
-        add(menu, "Erweitertes chown", enabled: selected) { self.commander.metadata.chown(advanced: true) }
+        add(menu, "Chmod", enabled: nativeSelected) { self.commander.metadata.chmod() }
+        add(menu, "Link", enabled: nativeSelected) { self.commander.metadata.createHardLink() }
+        add(menu, "Symbolischer Link", enabled: nativeSelected) { self.commander.metadata.createSymbolicLink(relative: false) }
+        add(menu, "Relativer symbolischer Link", enabled: nativeSelected) { self.commander.metadata.createSymbolicLink(relative: true) }
+        add(menu, "Symbolischen Link bearbeiten", enabled: { nativeSelected() && self.commander.active.selectedEntries.count == 1 && self.commander.active.selectedEntries.first?.isSymbolicLink == true }) { self.commander.metadata.editSymbolicLink() }
+        add(menu, "Chown", enabled: nativeSelected) { self.commander.metadata.chown(advanced: false) }
+        add(menu, "Erweitertes chown", enabled: nativeSelected) { self.commander.metadata.chown(advanced: true) }
         add(menu, "Umbenennen/Verschieben …", key: functionKey(NSF6FunctionKey), modifiers: [], enabled: selected) { self.commander.moveSelection() }
         add(menu, "Neues Verzeichnis erstellen …", key: functionKey(NSF7FunctionKey), modifiers: [], enabled: { self.commander.canUseLocalDirectory }) { self.commander.makeDirectory() }
-        add(menu, "Sparse-Datei erstellen …", key: "n", modifiers: [.command, .option], enabled: { self.commander.canUseLocalDirectory }) { self.commander.createSparseFile() }
-        let delete = add(menu, "In den Papierkorb …", key: functionKey(NSF8FunctionKey), modifiers: [], enabled: selected) { self.commander.trashSelection() }
-        delete.toolTip = "MC: Löschen. PaneRook verwendet den macOS-Papierkorb."
+        add(menu, "Sparse-Datei erstellen …", key: "n", modifiers: [.command, .option], enabled: { self.commander.canUseNativeDirectory }) { self.commander.createSparseFile() }
+        let delete = add(menu, "Löschen / Papierkorb …", key: functionKey(NSF8FunctionKey), modifiers: [], enabled: selected) { self.commander.trashSelection() }
+        delete.toolTip = "Lokale Dateien kommen in den Papierkorb. Archiveinträge werden nach Rückfrage endgültig gelöscht."
         add(menu, "Schnelles cd", key: "l") { self.commander.focusPath() }
         menu.addItem(.separator())
         add(menu, "Gruppe auswählen …") { self.commander.selectGroup(select: true) }
@@ -196,15 +197,15 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
     private func commandMenu() -> NSMenu {
         let menu = makeMenu("Befehl")
-        add(menu, "Benutzermenü", key: functionKey(NSF2FunctionKey), modifiers: []) { self.commander.workflow.userMenu() }.identifier = .init("userMenu")
-        add(menu, "Verzeichnisbaum") { self.commander.localTools.directoryTree() }
-        add(menu, "Datei suchen", key: "f", modifiers: [.command, .shift]) { self.commander.localTools.findFiles() }
+        add(menu, "Benutzermenü", key: functionKey(NSF2FunctionKey), modifiers: [], enabled: { self.commander.canUseNativeDirectory }) { self.commander.workflow.userMenu() }.identifier = .init("userMenu")
+        add(menu, "Verzeichnisbaum", enabled: { self.commander.canUseNativeDirectory }) { self.commander.localTools.directoryTree() }
+        add(menu, "Datei suchen", key: "f", modifiers: [.command, .shift], enabled: { self.commander.canUseNativeDirectory }) { self.commander.localTools.findFiles() }
         add(menu, "Panels vertauschen", key: "u") { self.commander.swapPanels() }
         add(menu, "Panels an/aus", key: "o", modifiers: .control, checked: { self.commander.arePanelsHidden }) { self.commander.togglePanels() }
-        add(menu, "Verzeichnisse vergleichen") { self.commander.localTools.compareDirectories() }
-        add(menu, "Dateien vergleichen") { self.commander.localTools.compareFiles() }
-        add(menu, "Externes Anordnen") { self.commander.workflow.panelize() }
-        add(menu, "Verzeichnisgrößen anzeigen") { self.commander.localTools.directorySizes() }
+        add(menu, "Verzeichnisse vergleichen", enabled: { self.commander.canUseMenus && !self.commander.left.isArchiveDirectory && !self.commander.right.isArchiveDirectory }) { self.commander.localTools.compareDirectories() }
+        add(menu, "Dateien vergleichen", enabled: { self.commander.canUseMenus && !self.commander.left.isArchiveDirectory && !self.commander.right.isArchiveDirectory }) { self.commander.localTools.compareFiles() }
+        add(menu, "Externes Anordnen", enabled: { self.commander.canUseNativeDirectory }) { self.commander.workflow.panelize() }
+        add(menu, "Verzeichnisgrößen anzeigen", enabled: { self.commander.canUseNativeDirectory }) { self.commander.localTools.directorySizes() }
         menu.addItem(.separator())
         add(menu, "Befehlschronik") { self.commander.workflow.commandHistory() }
         add(menu, "Chronik der angezeigten/bearbeiteten Dateien") { self.commander.workflow.showFileHistory() }
@@ -218,7 +219,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         add(menu, "Menüdatei bearbeiten") { self.commander.workflow.editConfiguration("menu") }
         add(menu, "Hervorgehobene Gruppendatei bearbeiten") { self.commander.workflow.editConfiguration("highlight") }
         add(menu, "Hotlist bearbeiten …") { self.commander.workflow.manageHotlist() }
-        add(menu, "Befehl ausführen …") { self.commander.workflow.commandPrompt() }
+        add(menu, "Befehl ausführen …", enabled: { self.commander.canUseNativeDirectory }) { self.commander.workflow.commandPrompt() }
         // Native companions retain PaneRook's established shortcuts.
         menu.addItem(.separator())
         add(menu, "Öffnen", key: "o") { self.commander.openSelection() }
@@ -228,7 +229,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         add(menu, "Im Finder zeigen", key: "r", modifiers: [.command, .shift]) { self.commander.revealInFinder() }
         add(menu, "Aktualisieren", key: "r") { self.commander.refresh() }
         add(menu, "Neuer Ordner …", key: "n", modifiers: [.command, .shift], enabled: { self.commander.canUseLocalDirectory }) { self.commander.makeDirectory() }
-        add(menu, "In den Papierkorb …", key: "\u{8}", enabled: { self.commander.canUseMenus && !self.commander.active.selectedFiles.isEmpty }) { self.commander.trashSelection() }
+        add(menu, "Löschen / Papierkorb …", key: "\u{8}", enabled: { self.commander.canUseMenus && !self.commander.active.selectedFiles.isEmpty }) { self.commander.trashSelection() }
         return menu
     }
     private func optionsMenu() -> NSMenu {

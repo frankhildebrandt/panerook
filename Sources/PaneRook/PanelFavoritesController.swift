@@ -162,7 +162,10 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         } catch { label("Verbindungsarchiv nicht lesbar", in: favorites) }
         favorites.addItem(.separator())
         add("Aktuellen Ordner hinzufügen", to: favorites, symbol: "star.badge.plus", tooltip: pane.directory.path,
-            enabled: { [weak self] in self?.pane.mode != .network }) { [weak self] in
+            enabled: { [weak self] in
+                guard let self else { return false }
+                return self.pane.mode != .network && !self.pane.isArchiveDirectory
+            }) { [weak self] in
             guard let self else { return }
             do { try self.store.addFolder(self.pane.directory) } catch { self.owner.showError(error) }
         }
@@ -186,7 +189,7 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         let chooser = NSOpenPanel()
         chooser.title = title; chooser.prompt = "Auswählen"
         chooser.canChooseFiles = false; chooser.canChooseDirectories = true; chooser.allowsMultipleSelection = false
-        chooser.directoryURL = start
+        chooser.directoryURL = start.flatMap { ArchiveFileSystem.location(for: $0)?.archiveURL.deletingLastPathComponent() ?? $0 }
         chooser.beginSheetModal(for: window) { [weak self] result in
             guard let self else { return }; self.owner.activate(self.pane)
             if result == .OK, let url = chooser.url { completion(url) }

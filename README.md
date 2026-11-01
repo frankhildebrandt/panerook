@@ -31,6 +31,7 @@ CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache" swift test --disable-sa
 
 - Zwei native Dateilisten mit Systemicons, Größe, Datum, Sortierung und vollständigem oder kompaktem Listenformat. Pfade verstehen absolute und relative Angaben sowie `~`; Verlauf, Hotlist und Finder-Anbindung ergänzen die Navigation.
 - Pro Panel: Dateiliste, Schnellansicht, Info oder ein beim Aufklappen nachgeladener Verzeichnisbaum. Schnellansicht und Info folgen der Auswahl des anderen Panels. Dateimasken filtern Dateien; Ordner bleiben zum Navigieren sichtbar. Gruppen lassen sich per Maske markieren, abwählen oder umkehren.
+- ZIP-, TAR- und tar.gz-/TGZ-Archive als virtuelle Ordner direkt in den Hauptpanels: Unterordner öffnen, Dateien hinein- und herauskopieren, verschieben/umbenennen, Ordner anlegen und Einträge löschen.
 - Rekursives Kopieren/Verschieben, neue Ordner, Papierkorb, harte und symbolische Links einschließlich relativer Links und Linkzielbearbeitung. Chmod und Chown arbeiten mit den Benutzerrechten von macOS; Chmod unterstützt gemischte Mehrfachauswahlen und Sonderbits.
 - Rekursive Datei- und Textsuche mit Übernahme der Treffer ins Panel, byteweise Datei- und Verzeichnisvergleiche sowie berechnete Ordnergrößen. Diese Werkzeuge laufen in abbrechbaren Ergebnisfenstern.
 - Quick Look, eingebaute Textvorschau mit wählbarer Codierung, Bearbeiten über TextEdit und Öffnen mit der Standard-App oder einer konfigurierten App-Zuordnung.
@@ -55,7 +56,7 @@ Der Kopier-/Verschiebedialog behält den bisherigen Ablauf: Quellmaske (`*`, `?`
 | ↑ / ↓, ⇧, ⌘A | Auswählen / Mehrfachauswahl |
 | Page Up / Page Down (fn↑ / fn↓) | Auswahl im Dateipanel eine sichtbare Seite zurück / weiter |
 | Home / End (fn← / fn→) | Ersten / letzten Eintrag auswählen und anzeigen |
-| Enter / Doppelklick | Ordner oder Datei öffnen |
+| Enter / Doppelklick | Ordner, Archiv oder Datei öffnen |
 | Rücktaste / ⌘↑ | Übergeordneter Ordner |
 | F1 | Tastaturhilfe |
 | F2 | Benutzermenü |
@@ -64,7 +65,7 @@ Der Kopier-/Verschiebedialog behält den bisherigen Ablauf: Quellmaske (`*`, `?`
 | F5 / F6 | Ins andere Panel kopieren / verschieben |
 | F7 / ⌘⇧N | Neuer Ordner |
 | ⌘⌥N | Sparse-Datei erstellen |
-| F8 / ⌘⌫ | In den Papierkorb legen |
+| F8 / ⌘⌫ | Lokal in den Papierkorb legen; Archiveinträge nach Rückfrage löschen |
 | F9 | MC-Menüs öffnen; Pfeiltasten navigieren, Enter wählt, Esc / F10 / Ctrl-G brechen ab |
 | F10 | In der Dateiliste beenden; in Menüs und Dialogen abbrechen |
 | ⌘L | Pfad eingeben |
@@ -79,6 +80,21 @@ Der Kopier-/Verschiebedialog behält den bisherigen Ablauf: Quellmaske (`*`, `?`
 | Ctrl-D | Verzeichnis-Hotlist |
 
 Dies ist die Standardbelegung. **Optionen → Tasten lernen** ändert die Funktionsaktionen; Esc und Ctrl-G bleiben zum Abbrechen reserviert. Auf Apple-Tastaturen brauchen die Funktionstasten je nach Systemeinstellung zusätzlich **fn**.
+
+## Dateiarchive
+
+**Enter oder Doppelklick** öffnet ZIP-, TAR-, tar.gz- und TGZ-Dateien im jeweiligen Panel wie einen Ordner. Die Pfadzeile zeigt den Archivpfad mit dem inneren Ordner, etwa `/Users/name/Downloads/paket.zip/dokumente`. Unterordner, Sortierung, Filter, versteckte Dateien, Verlauf, Rücktaste und **⌘↑** funktionieren wie in lokalen Ordnern; am Archivanfang führt „..“ zurück in den Ordner der Archivdatei. Das Auflisten liest die Archiveinträge, ohne das gesamte Archiv in einen Ordner zu entpacken. Komprimierte TAR-Dateien müssen dafür trotzdem durchlaufen und dekomprimiert werden.
+
+- **F5** kopiert ausgewählte Dateien oder Ordner zwischen Archiv und lokalem Ordner sowie zwischen Archiven. Um Dateien hinzuzufügen, im Zielpanel das Archiv öffnen und im Quellpanel F5 verwenden.
+- **F6** verschiebt Einträge oder benennt sie mit einem neuen Zielnamen um. Die Quelle wird erst nach erfolgreichem Schreiben des Ziels entfernt.
+- **F7** legt einen Ordner im Archiv an.
+- **F8 / ⌘⌫** löscht Archiveinträge einschließlich gewählter Unterordner nach ausdrücklicher Rückfrage endgültig. Für Archiveinträge gibt es keinen Papierkorb und kein Undo.
+
+Bestehende Zielnamen werden nicht überschrieben. Änderungen schreiben das jeweilige Archiv zunächst in eine temporäre Datei neben dem Original und ersetzen es erst nach Erfolg. Das benötigt Zeit und freien Speicher für die neue Archivdatei und die zwischengespeicherte Auswahl; parallele Änderungen an der Archivdatei werden vor dem Ersetzen geprüft. Ein Transfer zwischen verschiedenen Archiven ist keine gemeinsame Transaktion über beide Dateien.
+
+**F3 / Leertaste** und das Öffnen einer enthaltenen Datei stellen nur die ausgewählten Inhalte als temporäre Kopien bereit. Änderungen in einer externen App werden nicht automatisch ins Archiv zurückgeschrieben; **F4** ist innerhalb von Archiven deaktiviert. Zum Bearbeiten zuerst in einen lokalen Ordner kopieren. Verschlüsselte Archive, das direkte Öffnen verschachtelter Archive sowie Archivfunktionen für Rechte, Eigentümer, Links, Sparse-Dateien, Shell-Befehle und lokale Such-/Vergleichswerkzeuge sind nicht unterstützt. Enthaltene Archive können zunächst herauskopiert und anschließend geöffnet werden. Remote-Transfers verwenden weiterhin lokale Ordner als Zwischenstation.
+
+Archive mit Links oder Spezialdateien lassen sich auflisten, aber nicht ändern; beim Herauskopieren werden nur reguläre Dateien und Ordner unterstützt. Unsichere oder mehrdeutige Eintragspfade werden abgewiesen. Die Verarbeitung ist auf 100.000 Einträge, 16 GiB je Datei und 64 GiB je Schreib- oder Entpackvorgang begrenzt. Dateirechte einschließlich Ausführbarkeit bleiben beim Transfer erhalten; Sonderbits werden nicht übernommen.
 
 ## Befehle und Konfiguration
 
@@ -121,7 +137,7 @@ Remote-Transfers unterstützen reguläre Dateien und Verzeichnisse, keine symbol
 
 - `Sources/PaneRook/`: App-Lifecycle, Menüs, Zweipanel-Controller, native Dateilisten, Inspektoren, Werkzeugfenster, Einstellungen und Remote-Browser.
 - `Sources/PaneRook/AppStyle.swift`: native Materialien, Rundungen und an die Systemdarstellung angepasste Leseflächen; ohne eigene Eventbehandlung.
-- `Sources/PaneRookCore/`: lokale Dateioperationen/Metadaten, Suche und Vergleich, Prozessausführung sowie FTP/SSH/SFTP-Transport, unabhängig von der Oberfläche.
+- `Sources/PaneRookCore/`: lokale Dateioperationen/Metadaten, Archiv-VFS über die macOS-Systembibliothek libarchive, Suche und Vergleich, Prozessausführung sowie FTP/SSH/SFTP-Transport, unabhängig von der Oberfläche.
 - `Tests/PaneRookCoreTests/`: isolierte Dateisystem-, Such-, Vergleichs-, Prozess- und Transporttests; ein SFTP-Test spricht den lokalen System-`sftp-server` direkt an. Netzwerkzugänge zu realen SSH-/FTP-Servern werden dadurch nicht geprüft.
 - `Resources/Info.plist` und `scripts/build-app.sh`: lokales macOS-App-Bundle.
 - `scripts/generate-icon.swift`: reproduzierbares App-Icon (SVG, PNG und alle macOS-Icongrößen in `Resources/PaneRook.icns`); erneut erzeugen mit `swift scripts/generate-icon.swift`.
@@ -135,4 +151,4 @@ Kopier- und Verschiebeaktionen fragen nach und überschreiben keine bestehenden 
 
 Inhaltssuche und die eigene Textvorschau lesen höchstens 1 MiB pro Datei. Die Suche endet bei 10.000 Treffern oder 250.000 geprüften Einträgen. Datei- und Verzeichnisvergleiche vergleichen reguläre Dateien bis 1 GiB pro Datei; der Verzeichnisvergleich ist auf 100.000 Einträge je Seite begrenzt. Ordnergrößen werden bis 1.000.000 Einträge berechnet. Symbolische Links werden bei diesen rekursiven Werkzeugen nicht verfolgt. Begrenzungen und nicht lesbare Einträge werden im Ergebnis gemeldet. Shell-Ausgaben werden zur Anzeige auf 4 MiB je Ausgabestrom begrenzt.
 
-Noch offen: Archiv-VFS, interaktives Terminal/PTY, interner Editor, Tabs, Drag & Drop, automatische Dateisystembeobachtung und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Abbruch während einer laufenden lokalen Kopie. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
+Noch offen: interaktives Terminal/PTY, interner Editor, Tabs, Drag & Drop, automatische Dateisystembeobachtung und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Abbruch während einer laufenden lokalen Kopie. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.

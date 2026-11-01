@@ -35,6 +35,12 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     var canUseMenus: Bool { !busy && view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
     var canUseSelection: Bool { canUseMenus && !panelsHidden && !active.selectedFiles.isEmpty }
     var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.mode != .network }
+    var canUseNativeDirectory: Bool { canUseLocalDirectory && !active.isArchiveDirectory }
+    var canUseNativeSelection: Bool {
+        canUseSelection && !active.selectedFiles.contains {
+            ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false
+        }
+    }
     var isPerformingOperation: Bool { busy }
 
     init() {
@@ -264,8 +270,28 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     }
     private func updateDirectoryActionAvailability() {
         if actions.indices.contains(4) { actions[4].isEnabled = !busy && active.mode != .network }
+        if actions.indices.contains(1) { actions[1].isEnabled = !busy && !active.isArchiveDirectory }
+        if actions.indices.contains(5) {
+            let title = active.isArchiveDirectory ? "Löschen" : "Papierkorb"
+            actions[5].title = "\(AppKeyBinding.saved["trash"]?.label ?? "F8")  \(title)"
+        }
     }
     @objc func openSelection() {
+        guard !busy, let entry = active.selectedEntries.first else { return }
+        // Archives enter the panel before extension-to-app associations are considered.
+        if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {
+            active.openSelection()
+            return
+        }
+        if let location = ArchiveFileSystem.location(for: entry.url), !location.memberPath.isEmpty {
+            withReadableFiles([entry.url]) { [weak self] files in
+                guard let self else { return }
+                if !self.workflow.openUsingExtension(files), let file = files.first, !NSWorkspace.shared.open(file) {
+                    self.showError(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Die Archivdatei konnte nicht geöffnet werden."]))
+                }
+            }
+            return
+        }
         if active.selectedEntries.contains(where: { !$0.isDirectory && !$0.isParent }), workflow.openUsingExtension(active.selectedFiles) { return }
         active.openSelection()
     }
@@ -290,7 +316,9 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         refresh()
     }
     @objc func revealInFinder() {
-        NSWorkspace.shared.activateFileViewerSelecting(active.selectedFiles.isEmpty ? [active.directory] : active.selectedFiles)
+        let urls = active.selectedFiles.isEmpty ? [active.directory] : active.selectedFiles
+        let local = urls.map { ArchiveFileSystem.location(for: $0)?.archiveURL ?? $0 }
+        NSWorkspace.shared.activateFileViewerSelecting(Array(Set(local)))
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
@@ -375,7 +403,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         let chooser = NSOpenPanel()
         chooser.title = "Datei anzeigen"
         chooser.prompt = "Anzeigen"
-        chooser.directoryURL = active.directory
+        chooser.directoryURL = ArchiveFileSystem.location(for: active.directory)?.archiveURL.deletingLastPathComponent() ?? active.directory
         chooser.canChooseDirectories = false
         chooser.allowsMultipleSelection = false
         chooser.beginSheetModal(for: window) { [weak self] result in
@@ -394,9 +422,41 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         previewFiles(active.selectedFiles)
     }
     func previewFiles(_ urls: [URL]) {
+        withReadableFiles(urls) { [weak self] files in
+            self?.workflow.recordFiles(urls)
+            self?.showPreviewFiles(files)
+        }
+    }
+    private func withReadableFiles(_ urls: [URL], completion: @escaping ([URL]) -> Void) {
+        guard !busy, !urls.isEmpty else { NSSound.beep(); return }
+        guard urls.contains(where: { ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false }) else {
+            completion(urls)
+            return
+        }
+        busy = true
+        actions.forEach { $0.isEnabled = false }
+        status.stringValue = "Archivvorschau vorbereiten …"
+        statusBar.isHidden = false
+        progress.startAnimation(nil)
+        operationQueue.async { [weak self] in
+            let result = Result { try urls.map { try ArchivePreviewStore.shared.readableURL(for: $0) } }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.busy = false
+                self.actions.forEach { $0.isEnabled = true }
+                self.updateDirectoryActionAvailability()
+                self.progress.stopAnimation(nil)
+                self.statusBar.isHidden = true
+                switch result {
+                case .success(let files): completion(files)
+                case .failure(let error): self.showError(error)
+                }
+            }
+        }
+    }
+    private func showPreviewFiles(_ urls: [URL]) {
         previewURLs = urls
         guard !previewURLs.isEmpty else { NSSound.beep(); return }
-        workflow.recordFiles(urls)
         guard let panel = QLPreviewPanel.shared() else { return }
         panel.makeKeyAndOrderFront(nil)
         panel.reloadData()
@@ -408,6 +468,13 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! { previewURLs[index] as NSURL }
 
     @objc func editSelection() {
+        guard canUseNativeSelection else {
+            if active.isArchiveDirectory {
+                showError(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Zum Bearbeiten die Datei zuerst in einen lokalen Ordner kopieren."]),
+                          detail: "Dateien aus Archiven werden als temporäre Lesekopien geöffnet. Änderungen werden nicht automatisch ins Archiv zurückgeschrieben.")
+            }
+            return
+        }
         let files = active.selectedEntries.filter { !$0.isParent && !$0.isDirectory }.map(\.url)
         guard !files.isEmpty else { NSSound.beep(); return }
         workflow.recordFiles(files)
@@ -461,7 +528,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         }
     }
     func createSparseFile() {
-        guard canUseLocalDirectory, let window = view.window else { return }
+        guard canUseNativeDirectory, let window = view.window else { return }
         let pane = active!
         let directory = pane.directory
         let dialog = SparseFileDialog(directory: directory) { [weak self] request in
@@ -486,6 +553,23 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         guard canUseSelection else { return }
         let sources = active.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
+        if sources.contains(where: { ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false }) {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "\(sources.count) Einträge endgültig aus dem Archiv löschen?"
+            alert.informativeText = sources.prefix(5).map(\.lastPathComponent).joined(separator: "\n")
+                + "\n\nArchiv-Inhalte werden nicht in den Papierkorb gelegt. Diese Aktion lässt sich nicht widerrufen."
+            alert.addButton(withTitle: "Aus Archiv löschen")
+            alert.addButton(withTitle: "Abbrechen")
+            alert.configureKeyboardShortcuts()
+            alert.beginSheetModal(for: view.window!) { [weak self] response in
+                guard response == .alertFirstButtonReturn else { return }
+                self?.runOperation("Aus Archiv löschen …", errorDetail: "Das Archiv wird erst nach erfolgreichem Schreiben ersetzt.") {
+                    try ArchiveFileSystem.remove(sources)
+                }
+            }
+            return
+        }
         if UserDefaults.standard.object(forKey: "confirmTrash") as? Bool == false {
             runOperation("In den Papierkorb legen …") {
                 for source in sources { try FileManager.default.trashItem(at: source, resultingItemURL: nil) }

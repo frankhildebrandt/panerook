@@ -18,6 +18,7 @@ final class LocalTools {
 
     func findFiles() {
         guard let owner, owner.canUseMenus, let window = owner.view.window else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveToolError); return }
         let pane = owner.active!
         let root = ToolUI.field(pane.directory.path)
         let name = ToolUI.field("*")
@@ -37,6 +38,7 @@ final class LocalTools {
             guard result == .alertFirstButtonReturn else { return }
             do {
                 let directory = try FileSystem.directory(from: root.stringValue, relativeTo: pane.directory)
+                guard ArchiveFileSystem.location(for: directory) == nil else { throw self.archiveToolError }
                 let query = FileSearchQuery(namePattern: name.stringValue, content: content.stringValue,
                     recursive: recursive.state == .on, includeHidden: hidden.state == .on,
                     caseSensitive: sensitive.state == .on, encoding: pane.textEncoding)
@@ -71,6 +73,7 @@ final class LocalTools {
 
     func compareDirectories() {
         guard let owner, owner.canUseMenus, let window = owner.view.window else { return }
+        guard !owner.left.isArchiveDirectory, !owner.right.isArchiveDirectory else { owner.showError(archiveToolError); return }
         let left = owner.left, right = owner.right
         let recursive = NSButton(checkboxWithTitle: "Unterordner vergleichen", target: nil, action: nil); recursive.state = .on
         let alert = NSAlert(); alert.messageText = "Ordner vergleichen"
@@ -114,6 +117,7 @@ final class LocalTools {
 
     func compareFiles() {
         guard let owner, owner.canUseMenus else { return }
+        guard !owner.left.isArchiveDirectory, !owner.right.isArchiveDirectory else { owner.showError(archiveToolError); return }
         // The active selection wins; the opposite selection is the counterpart, with same-name fallback.
         let active = owner.active!, other = active === owner.left ? owner.right : owner.left
         guard let first = active.selectedEntries.first(where: { !$0.isParent && !$0.isDirectory }) else { NSSound.beep(); return }
@@ -142,6 +146,7 @@ final class LocalTools {
 
     func directorySizes() {
         guard let owner, owner.canUseMenus else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveToolError); return }
         let pane = owner.active!
         let selected = pane.selectedEntries.filter { $0.isDirectory && !$0.isParent && !$0.isSymbolicLink }
         let directories = (selected.isEmpty ? pane.entries.filter { $0.isDirectory && !$0.isParent && !$0.isSymbolicLink } : selected).map(\.url)
@@ -171,10 +176,15 @@ final class LocalTools {
 
     func directoryTree() {
         guard let owner, owner.canUseMenus else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveToolError); return }
         owner.active.setMode(owner.active.mode == .tree ? .listing : .tree)
         owner.active.focus()
     }
 
+    private var archiveToolError: NSError {
+        NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            "Dieses Werkzeug benötigt lokale Dateien und Ordner. Bitte Archiveinträge zuerst in einen lokalen Ordner kopieren."])
+    }
     private func retain(_ controller: NSWindowController) {
         windows.removeAll { $0.window?.isVisible == false }
         windows.append(controller)

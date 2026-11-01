@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         commander.workflow.cancelAll()
         commander.localTools.closeAll()
         commander.remote.closeAll()
+        ArchivePreviewStore.shared.cleanUp()
         if let dialogKeys { NSEvent.removeMonitor(dialogKeys) }
     }
 

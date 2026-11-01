@@ -43,6 +43,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var textEncoding: String.Encoding = .utf8 { didSet { if mode == .quickView { showInspection(of: inspectionURL) } } }
     var visitedDirectories: [URL] { Array((history + [directory]).reversed().reduce(into: [URL]()) { if !$0.contains($1) { $0.append($1) } }) }
     private(set) var directory: URL
+    var isArchiveDirectory: Bool { ArchiveFileSystem.location(for: directory) != nil }
     private(set) var entries: [FileEntry] = []
     var onActivate: (() -> Void)?
     var onKey: ((NSEvent) -> Bool)?
@@ -202,6 +203,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func setMode(_ mode: PanelMode) {
         _ = view
+        if mode == .tree && isArchiveDirectory {
+            onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Im Archiv bitte die Dateiliste zur Ordnernavigation verwenden."]))
+            return
+        }
         if self.mode == .network && mode != .network { network.stop() }
         self.mode = mode
         listing.isHidden = mode != .listing
@@ -326,6 +331,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 case .success(let files):
                     if recordHistory && oldDirectory != url { self.history.append(oldDirectory) }
                     self.directory = url
+                    if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
                     self.panelized = false
                     self.directorySizes = [:]
                     self.allEntries = files
@@ -361,7 +367,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     func showFavorites() { favoritesButton.performClick(nil) }
     @objc func goUp() {
         if mode == .network { setMode(.listing); return }
-        navigate(to: directory.deletingLastPathComponent(), select: directory)
+        let archive = ArchiveFileSystem.location(for: directory)
+        let parent = archive?.memberPath.isEmpty == true
+            ? archive!.archiveURL.deletingLastPathComponent() : directory.deletingLastPathComponent()
+        navigate(to: parent, select: directory)
     }
     @objc private func goBack() {
         if mode == .network { setMode(.listing); return }
@@ -378,7 +387,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     @objc private func openFromTable() { onActivate?(); onOpenSelection?() }
     @objc func openSelection() {
         guard !loading, let entry = selectedEntries.first else { return }
-        if entry.isDirectory { navigate(to: entry.url) }
+        if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {
+            navigate(to: entry.url)
+        }
         else if !NSWorkspace.shared.open(entry.url) {
             onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Die Datei konnte nicht geöffnet werden."]))
         }
@@ -422,7 +433,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             if iconsVisible {
             let image = NSImageView()
             image.translatesAutoresizingMaskIntoConstraints = false
-            image.image = entry.isParent ? NSImage(systemSymbolName: "arrow.turn.up.left", accessibilityDescription: nil) : NSWorkspace.shared.icon(forFile: entry.url.path)
+            if entry.isParent {
+                image.image = NSImage(systemSymbolName: "arrow.turn.up.left", accessibilityDescription: nil)
+            } else if isArchiveDirectory {
+                image.image = NSImage(systemSymbolName: entry.isDirectory ? "folder" : "doc", accessibilityDescription: nil)
+            } else {
+                image.image = NSWorkspace.shared.icon(forFile: entry.url.path)
+            }
             cell.addSubview(image)
             NSLayoutConstraint.activate([image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2), image.centerYAnchor.constraint(equalTo: cell.centerYAnchor), image.widthAnchor.constraint(equalToConstant: 18), image.heightAnchor.constraint(equalToConstant: 18)])
             leading = 28
@@ -475,5 +492,6 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             + (selected.isEmpty ? "" : "  ·  \(selected.count) ausgewählt")
             + (filterPattern.isEmpty ? "" : "  ·  \(filterPattern)")
             + (panelized ? "  ·  Suchergebnisse" : "")
+            + (isArchiveDirectory ? "  ·  Archiv" : "")
     }
 }

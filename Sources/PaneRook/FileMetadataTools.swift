@@ -116,6 +116,7 @@ final class FileMetadataTools {
         guard owner.canUseMenus else { return }
         let urls = owner.active.selectedFiles
         guard !urls.isEmpty else { NSSound.beep(); return }
+        guard owner.canUseNativeSelection else { owner.showError(archiveError); return }
         do { body(urls, try urls.map(FileMetadata.inspect)) }
         catch { owner.showError(error) }
     }
@@ -128,6 +129,7 @@ final class FileMetadataTools {
             owner.showError(error)
             return
         }
+        guard owner.canUseNativeSelection else { owner.showError(archiveError); return }
         guard urls[0].isFileURL else { owner.showError(FileMetadataError.localFilesOnly); return }
         body(urls[0])
     }
@@ -178,7 +180,7 @@ final class FileMetadataTools {
     }
     private func defaultLinkURL(for source: URL) -> URL {
         let other = owner.active === owner.left ? owner.right.directory : owner.left.directory
-        let base = other.isFileURL ? other : owner.active.directory
+        let base = other.isFileURL && ArchiveFileSystem.location(for: other) == nil ? other : owner.active.directory
         let target = base.appendingPathComponent(source.lastPathComponent)
         return target.standardizedFileURL == source.standardizedFileURL
             ? base.appendingPathComponent(source.lastPathComponent + ".link") : target
@@ -196,7 +198,12 @@ final class FileMetadataTools {
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
             url.appendPathComponent(name)
         }
+        guard ArchiveFileSystem.location(for: url) == nil else { throw archiveError }
         return url
+    }
+    private var archiveError: NSError {
+        NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            "Rechte, Eigentümer und Links lassen sich innerhalb von Archiven nicht bearbeiten. Bitte zuerst in einen lokalen Ordner kopieren."])
     }
 }
 

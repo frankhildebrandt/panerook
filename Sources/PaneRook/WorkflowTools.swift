@@ -46,6 +46,8 @@ final class WorkflowTools {
         UserCommand(title: "Git-Status", command: "/usr/bin/git status --short")
     ]
     func userMenu() {
+        guard owner.canUseMenus else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveCommandError); return }
         let commands = load("menu.json", fallback: defaultCommands)
         ToolUI.choose(owner: owner, title: "Benutzermenü", labels: commands.map(\.title), accept: "Ausführen", extra: "Befehl eingeben …") { [weak self] index, extra in
             guard let self else { return }
@@ -54,6 +56,8 @@ final class WorkflowTools {
         }
     }
     func commandPrompt(initial: String = "") {
+        guard owner.canUseMenus else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveCommandError); return }
         ToolUI.prompt(owner: owner, title: "Befehl ausführen", label: "Shell-Befehl · aktueller Panelordner", value: initial, accept: "Ausführen") { [weak self] command in
             guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             self?.execute(command, title: command)
@@ -64,6 +68,8 @@ final class WorkflowTools {
         execute(command, title: command)
     }
     func filteredView() {
+        guard owner.canUseMenus else { return }
+        guard !owner.active.isArchiveDirectory else { owner.showError(archiveCommandError); return }
         guard let source = owner.active.selectedFiles.first else { return }
         ToolUI.prompt(owner: owner, title: "Gefilterte Ansicht", label: "Filter · Datei steht in $PANEROOK_FILE",
                       value: "/usr/bin/sed -n '1,200p' \"$PANEROOK_FILE\"", accept: "Anzeigen") { [weak self] command in
@@ -72,6 +78,7 @@ final class WorkflowTools {
     }
     func panelize(external: Bool = true, pane: PaneController? = nil) {
         let target = pane ?? owner.active!
+        guard !target.isArchiveDirectory else { owner.showError(archiveCommandError); return }
         ToolUI.prompt(owner: owner, title: external ? "Externes Anordnen" : "Anordnen", label: "Befehl mit einem Dateipfad pro Ausgabezeile",
                       value: "/usr/bin/find . -maxdepth 1 -type f -print", accept: "Anordnen") { [weak self, weak target] command in
             guard let self, let target else { return }
@@ -89,6 +96,10 @@ final class WorkflowTools {
                          directory: URL? = nil, success: ((String) -> Void)? = nil) {
         let cwd = directory ?? owner.active.directory
         let files = selection ?? owner.active.selectedFiles
+        guard ArchiveFileSystem.location(for: cwd) == nil,
+              !files.contains(where: { ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false }) else {
+            owner.showError(archiveCommandError); return
+        }
         let environment = ["PANEROOK_FILE": files.first?.path ?? "", "PANEROOK_DIRECTORY": cwd.path,
                            "PANEROOK_OTHER_DIRECTORY": owner.other.directory.path,
                            "PANEROOK_SELECTION_JSON": String(data: (try? JSONEncoder().encode(files.map(\.path))) ?? Data(), encoding: .utf8) ?? "[]"]
@@ -118,6 +129,10 @@ final class WorkflowTools {
                 self?.owner.refresh()
             }
         }
+    }
+    private var archiveCommandError: NSError {
+        NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            "Shell-Befehle benötigen einen lokalen Ordner. Bitte Archiveinträge zuerst dorthin kopieren."])
     }
     func backgroundJobs() {
         if owner.isPerformingOperation {
