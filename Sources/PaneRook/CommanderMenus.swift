@@ -155,6 +155,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         add(menu, "FTP-Verbindung …") { self.commander.remote.connect(.ftp, pane: pane) }
         add(menu, "Shell-Verbindung …") { self.commander.remote.connect(.shell, pane: pane) }
         add(menu, "SFTP-Verbindung …") { self.commander.remote.connect(.sftp, pane: pane) }
+        add(menu, "Nextcloud-Verbindung …") { self.commander.remote.connect(.nextcloud, pane: pane) }
         add(menu, "Verbindungsarchiv …") { self.commander.remote.showArchive(pane: pane) }
         add(menu, "Anordnen", enabled: { self.commander.canUseMenus && !pane.isArchiveDirectory }) { self.commander.workflow.panelize(external: false, pane: pane) }
         menu.addItem(.separator())
