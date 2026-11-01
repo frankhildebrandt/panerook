@@ -18,6 +18,9 @@ public struct FileEntry: Sendable {
 
 public enum FileSystem {
     public static func list(_ directory: URL, showHidden: Bool) throws -> [FileEntry] {
+        if ArchiveFileSystem.location(for: directory) != nil {
+            return try ArchiveFileSystem.list(directory, showHidden: showHidden)
+        }
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
         let urls = try FileManager.default.contentsOfDirectory(at: directory,
             includingPropertiesForKeys: Array(keys), options: showHidden ? [] : [.skipsHiddenFiles])
@@ -38,6 +41,10 @@ public enum FileSystem {
     public static func directory(from path: String, relativeTo base: URL) throws -> URL {
         let expanded = (path as NSString).expandingTildeInPath
         let url = (expanded.hasPrefix("/") ? URL(fileURLWithPath: expanded) : base.appendingPathComponent(expanded)).standardizedFileURL
+        if ArchiveFileSystem.location(for: url) != nil {
+            guard try ArchiveFileSystem.isDirectory(url) else { throw FileActionError.invalidDirectory(url.path) }
+            return url
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw FileActionError.invalidDirectory(url.path)
@@ -89,7 +96,8 @@ public struct TransferPlan: Sendable {
         let target = (expanded.hasPrefix("/") ? URL(fileURLWithPath: expanded) : base.appendingPathComponent(expanded)).standardizedFileURL
         var directory: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &directory)
-        if exists && directory.boolValue {
+        let archiveDirectory = try ArchiveFileSystem.isDirectory(target)
+        if (exists && directory.boolValue) || archiveDirectory {
             try self.init(sources: matched, outputs: matched.map { target.appendingPathComponent($0.lastPathComponent) }, kind: kind)
         } else {
             guard matched.count == 1, !destinationPath.hasSuffix("/") else {
@@ -106,6 +114,7 @@ public struct TransferPlan: Sendable {
         var destinations = Set<String>()
         var items: [Item] = []
         for (source, output) in zip(sources, outputs) {
+            try ArchiveFileSystem.validateBackingSource(source, destination: output)
             let canonicalSource = source.resolvingSymlinksInPath().standardizedFileURL.path
             // Resolve the existing parent first: Foundation may leave symlinks unresolved
             // when the final component does not exist yet.
@@ -113,29 +122,43 @@ public struct TransferPlan: Sendable {
                 .appendingPathComponent(output.lastPathComponent).standardizedFileURL.path
             guard destinations.insert(canonicalOutput).inserted else { throw FileActionError.duplicateName }
             guard canonicalSource != canonicalOutput else { throw FileActionError.sameLocation }
-            let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            if values.isDirectory == true && values.isSymbolicLink != true {
+            let isSourceDirectory: Bool
+            let isSourceLink: Bool
+            if ArchiveFileSystem.memberLocation(source) != nil {
+                guard let entry = try ArchiveFileSystem.entry(source) else { throw CocoaError(.fileNoSuchFile) }
+                isSourceDirectory = entry.isDirectory; isSourceLink = entry.isSymbolicLink
+            } else {
+                let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                isSourceDirectory = values.isDirectory == true; isSourceLink = values.isSymbolicLink == true
+            }
+            if isSourceDirectory && !isSourceLink {
                 if canonicalOutput.hasPrefix(canonicalSource == "/" ? "/" : canonicalSource + "/") {
                     throw FileActionError.recursiveDestination
                 }
             }
             // attributesOfItem also detects dangling symlinks, which fileExists follows.
-            if (try? fm.attributesOfItem(atPath: output.path)) != nil { throw FileActionError.collision(output.lastPathComponent) }
+            let archiveOutput = try ArchiveFileSystem.entry(output)
+            if (try? fm.attributesOfItem(atPath: output.path)) != nil || archiveOutput != nil { throw FileActionError.collision(output.lastPathComponent) }
             items.append(Item(source: source, destination: output))
         }
         self.items = items
         self.kind = kind
     }
 
-    /// Completed items remain after a later failure. The current copy is staged and
-    /// committed exclusively, so cancellation never leaves a partial destination.
+    /// Completed items remain after a later failure. Copies and archive changes
+    /// are staged and committed only after their cancellation checks succeed.
     public func execute(cancellation: TransferCancellation = .init(),
                         progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
         try cancellation.check()
-        // Queuing separates the input dialog from execution. In particular, a
-        // destination ancestor symlink may now point into one of the sources.
+        // Queueing separates validation from execution; source and destination
+        // paths (including symlink ancestors) may have changed in the meantime.
         let current = try TransferPlan(sources: items.map(\.source), outputs: items.map(\.destination), kind: kind)
-        try TransferWorker(plan: current, cancellation: cancellation, progress: progress).run()
+        try cancellation.check()
+        if current.items.contains(where: { ArchiveFileSystem.memberLocation($0.source) != nil || ArchiveFileSystem.memberLocation($0.destination) != nil }) {
+            try ArchiveFileSystem.transfer(current.items, kind: kind, cancellation: cancellation, progress: progress)
+        } else {
+            try TransferWorker(plan: current, cancellation: cancellation, progress: progress).run()
+        }
     }
 }
 
@@ -147,8 +170,13 @@ public enum FileActions {
         }
     }
 
-    @discardableResult public static func createDirectory(named name: String, in directory: URL) throws -> URL {
+    @discardableResult public static func createDirectory(named name: String, in directory: URL,
+        cancellation: TransferCancellation = .init(), progress: @escaping (OperationProgress) -> Void = { _ in }) throws -> URL {
+        try cancellation.check()
         try validateName(name)
+        if ArchiveFileSystem.location(for: directory) != nil {
+            return try ArchiveFileSystem.createDirectory(named: name, in: directory, cancellation: cancellation, progress: progress)
+        }
         let url = directory.appendingPathComponent(name, isDirectory: true)
         if (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil { throw FileActionError.collision(name) }
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)

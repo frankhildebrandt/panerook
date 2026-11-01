@@ -69,8 +69,21 @@ final class PanelInspectionView: NSView {
         guard let url else { text.string = "Keine Datei ausgewählt"; return }
         text.string = ""
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var readableURL = url
             let result: Result<String?, Error> = Result {
-                let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey, .isReadableKey, .isWritableKey, .contentTypeKey])
+                if let location = ArchiveFileSystem.location(for: url), !location.memberPath.isEmpty {
+                    let entry = try FileSystem.list(url.deletingLastPathComponent(), showHidden: true).first { $0.url.standardizedFileURL == url.standardizedFileURL }
+                    if let entry, information || entry.isDirectory || entry.isSymbolicLink {
+                        let type = entry.isSymbolicLink ? "Symbolischer Link" : (entry.isDirectory ? "Ordner" : "Datei")
+                        var lines = [entry.name, "", "Archiv\t\(location.archiveURL.path)", "Pfad\t\(location.memberPath)",
+                                     "Typ\t\(type)", "Größe\t\(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))"]
+                        if let date = entry.modified { lines.append("Geändert\t\(DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .medium))") }
+                        lines.append("\nArchivdateien werden zur Vorschau als temporäre Lesekopie geöffnet.")
+                        return lines.joined(separator: "\n")
+                    }
+                    readableURL = try ArchivePreviewStore.shared.readableURL(for: url)
+                }
+                let values = try readableURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey, .isReadableKey, .isWritableKey, .contentTypeKey])
                 if information || values.isDirectory == true {
                     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
                     let type = values.isSymbolicLink == true ? "Symbolischer Link" : (values.isDirectory == true ? "Ordner" : "Datei")
@@ -86,7 +99,7 @@ final class PanelInspectionView: NSView {
                 }
                 guard values.isRegularFile == true else { return nil }
                 if let type = values.contentType, type.conforms(to: .image) || type.conforms(to: .pdf) || type.conforms(to: .audio) || type.conforms(to: .movie) || type.conforms(to: .archive) { return nil }
-                let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }
+                let handle = try FileHandle(forReadingFrom: readableURL); defer { try? handle.close() }
                 let data = try handle.read(upToCount: 1_048_576) ?? Data()
                 // NULs identify common binary formats before an arbitrary legacy encoding can decode them.
                 let unicodeWithNULs = encoding == .utf16 || encoding == .utf16LittleEndian || encoding == .utf16BigEndian || encoding == .utf32 || encoding == .utf32LittleEndian || encoding == .utf32BigEndian
@@ -95,6 +108,7 @@ final class PanelInspectionView: NSView {
                 let suffix = (values.fileSize ?? 0) > data.count ? "\n\n… Vorschau auf 1 MiB begrenzt." : ""
                 return decoded + suffix
             }
+            let renderedURL = readableURL
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == request else { return }
                 switch result {
@@ -103,7 +117,7 @@ final class PanelInspectionView: NSView {
                     if let preview = QLPreviewView(frame: self.bounds, style: .compact) {
                         preview.autostarts = false
                         preview.shouldCloseWithWindow = false
-                        self.preview = preview; self.install(preview); preview.previewItem = url as NSURL
+                        self.preview = preview; self.install(preview); preview.previewItem = renderedURL as NSURL
                         self.scroll.isHidden = true
                     } else { self.text.string = "Keine Vorschau verfügbar." }
                 case .failure(let error): self.text.string = error.localizedDescription

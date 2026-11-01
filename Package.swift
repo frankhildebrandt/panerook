@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "PaneRook", targets: ["PaneRook"])],
     targets: [
-        .target(name: "PaneRookCore"),
+        .systemLibrary(name: "CArchive"),
+        .target(name: "PaneRookCore", dependencies: ["CArchive"]),
         .executableTarget(name: "PaneRook", dependencies: ["PaneRookCore"]),
         .testTarget(name: "PaneRookCoreTests", dependencies: ["PaneRookCore"])
     ]

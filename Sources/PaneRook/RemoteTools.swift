@@ -241,6 +241,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     private var selection: [RemoteEntry] { table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil } }
     @objc private func download() {
         guard !busy, let peer, !selection.isEmpty else { return }
+        guard !peer.isArchiveDirectory else { showArchiveTransferError(); return }
         let selected = selection, destination = peer.directory, path = directory
         performQueued("Laden nach \(destination.path)", paths: selected.map { path + "/" + $0.name }, work: { token, report in
             for (index, entry) in selected.enumerated() {
@@ -253,6 +254,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     }
     @objc private func upload() {
         guard !busy, let peer else { return }
+        guard !peer.isArchiveDirectory else { showArchiveTransferError(); return }
         let sources = peer.selectedFiles, path = directory
         guard !sources.isEmpty else { status.stringValue = "Zuerst Dateien im lokalen Panel auswählen."; return }
         let alert = NSAlert(); alert.messageText = "\(sources.count) Einträge hochladen?"; alert.informativeText = "\(peer.directory.path) → \(directory)"
@@ -306,6 +308,10 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
                 }
             }) { [weak self] _ in self?.reload() }
         }
+    }
+    private func showArchiveTransferError() {
+        showError(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey:
+            "Remote-Transfers benötigen einen lokalen Ordner. Bitte Archiveinträge zuerst dorthin kopieren beziehungsweise vor dem Download einen lokalen Ordner im Panel öffnen."]))
     }
     @objc private func cancelOperation() {
         if let queuedTask { tasks.cancel(queuedTask) }
