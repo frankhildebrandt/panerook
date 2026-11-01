@@ -19,7 +19,7 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
     private var editor: ConnectionEditorDialog?
     private var chosen: ConnectionBookmark?
     private var creationKind: RemoteProtocol
-    private let kinds: [RemoteProtocol] = [.sftp, .shell, .ftp]
+    private let kinds: [RemoteProtocol] = [.sftp, .shell, .ftp, .nextcloud]
     private var keyMonitor: Any?
 
     init(store: ConnectionBookmarkStore, initialKind: RemoteProtocol? = nil, completion: @escaping (ConnectionBookmark?) -> Void) {
@@ -201,8 +201,8 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
         let bookmark = visible[row]
         let value: String
         switch tableColumn?.identifier.rawValue {
-        case "kind": value = bookmark.kind == .shell ? "Shell" : bookmark.kind.rawValue.uppercased()
-        case "server": value = (bookmark.user.isEmpty ? "" : bookmark.user + "@") + bookmark.host + ":" + String(bookmark.port)
+        case "kind": value = ConnectionEditorDialog.title(bookmark.kind)
+        case "server": value = ConnectionEditorDialog.address(bookmark)
         default: value = bookmark.name
         }
         let field = NSTextField(labelWithString: value)

@@ -2,7 +2,7 @@ import AppKit
 import PaneRookCore
 
 /// The same fields serve an ad-hoc connection and the bookmark editor. Passwords
-/// are only shown for an actual FTP connection and never enter a bookmark.
+/// are only shown for FTP/Nextcloud connections and never enter a bookmark.
 final class ConnectionEditorDialog: NSWindowController {
     enum Purpose { case connection, bookmark }
     enum Outcome {
@@ -14,7 +14,7 @@ final class ConnectionEditorDialog: NSWindowController {
     private let bookmarks: [ConnectionBookmark]
     private let saveBookmark: (ConnectionBookmark) throws -> Void
     private let completion: (Outcome?) -> Void
-    private let protocols: [RemoteProtocol] = [.sftp, .shell, .ftp]
+    private let protocols: [RemoteProtocol] = [.sftp, .shell, .ftp, .nextcloud]
     private var kind: RemoteProtocol
     private var bookmarkID: UUID?
     private var outcome: Outcome?
@@ -33,6 +33,7 @@ final class ConnectionEditorDialog: NSWindowController {
     private var nameRow: NSView!
     private var identityRow: NSView!
     private var passwordRow: NSView!
+    private var passwordLabel: NSTextField!
     private var focusPassword = false
 
     init(kind: RemoteProtocol, bookmark: ConnectionBookmark? = nil, bookmarks: [ConnectionBookmark] = [],
@@ -44,7 +45,7 @@ final class ConnectionEditorDialog: NSWindowController {
         self.bookmarkID = bookmark?.id
         self.saveBookmark = saveBookmark
         self.completion = completion
-        focusPassword = purpose == .connection && bookmark?.kind == .ftp
+        focusPassword = purpose == .connection && (bookmark?.kind == .ftp || bookmark?.kind == .nextcloud)
         let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 530, height: 470), styleMask: [.titled], backing: .buffered, defer: false)
         super.init(window: panel)
         panel.isReleasedWhenClosed = false
@@ -65,7 +66,7 @@ final class ConnectionEditorDialog: NSWindowController {
         }
         if purpose == .connection {
             preset.addItem(withTitle: "Neue Verbindung")
-            preset.addItems(withTitles: self.bookmarks.map { "\($0.name) · \($0.host):\($0.port)" })
+            preset.addItems(withTitles: self.bookmarks.map { "\($0.name) · \(Self.address($0))" })
             preset.target = self; preset.action = #selector(presetChanged)
             row("Gespeichert", preset).isHidden = self.bookmarks.isEmpty
         } else {
@@ -78,6 +79,7 @@ final class ConnectionEditorDialog: NSWindowController {
         _ = row("Port", port)
         _ = row("Benutzer", user)
         passwordRow = row("Passwort", password)
+        passwordLabel = (passwordRow as? NSStackView)?.arrangedSubviews.first as? NSTextField
         identityRow = row("Schlüsseldatei", identity)
         identity.placeholderString = "SSH-Agent / ~/.ssh/config"
         identity.toolTip = "Optionaler Pfad zum privaten SSH-Schlüssel. Der Schlüsselinhalt wird nicht gespeichert."
@@ -129,14 +131,31 @@ final class ConnectionEditorDialog: NSWindowController {
         panel.initialFirstResponder = purpose == .bookmark ? name : (focusPassword ? password : host)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
-    static func title(_ kind: RemoteProtocol) -> String { kind == .shell ? "Shell (SSH)" : kind.rawValue.uppercased() }
+    static func title(_ kind: RemoteProtocol) -> String {
+        switch kind {
+        case .shell: return "Shell (SSH)"
+        case .nextcloud: return "Nextcloud"
+        default: return kind.rawValue.uppercased()
+        }
+    }
+    static func address(_ bookmark: ConnectionBookmark) -> String {
+        (try? bookmark.connection())?.displayName ?? bookmark.host
+    }
+    private static func defaultPort(_ kind: RemoteProtocol) -> Int {
+        switch kind {
+        case .ftp: return 21
+        case .nextcloud: return 443
+        default: return 22
+        }
+    }
+    private var usesPassword: Bool { kind == .ftp || kind == .nextcloud }
     private func fill(_ bookmark: ConnectionBookmark?) {
         bookmarkID = bookmark?.id
         if let bookmark { kind = bookmark.kind }
         protocolPicker.selectItem(at: protocols.firstIndex(of: kind) ?? 0)
         name.stringValue = bookmark?.name ?? ""
         host.stringValue = bookmark?.host ?? ""
-        port.stringValue = String(bookmark?.port ?? (kind == .ftp ? 21 : 22))
+        port.stringValue = String(bookmark?.port ?? Self.defaultPort(kind))
         user.stringValue = bookmark?.user ?? NSUserName()
         path.stringValue = bookmark?.path ?? "/"
         identity.stringValue = bookmark?.identityFile ?? ""
@@ -148,9 +167,19 @@ final class ConnectionEditorDialog: NSWindowController {
     private func updateForm() {
         window?.title = purpose == .bookmark ? (bookmarkID == nil ? "Verbindung speichern" : "Verbindung bearbeiten") : Self.title(kind) + "-Verbindung"
         nameRow.isHidden = purpose == .connection && remember.state != .on
-        passwordRow.isHidden = purpose != .connection || kind != .ftp
-        identityRow.isHidden = kind == .ftp
-        notice.stringValue = kind == .ftp ? "FTP überträgt Dateien und Passwort unverschlüsselt." : "SSH-Schlüssel/Agent · bekannte Hosts erforderlich."
+        passwordRow.isHidden = purpose != .connection || !usesPassword
+        identityRow.isHidden = usesPassword
+        host.placeholderString = kind == .nextcloud ? "https://cloud.example.org/nextcloud" : "server.example.org"
+        host.toolTip = kind == .nextcloud ? "HTTPS-Adresse der Nextcloud-Installation, bei Bedarf mit Unterverzeichnis. Ohne /remote.php/dav. Ein Port in der URL hat Vorrang vor dem Port-Feld." : nil
+        passwordLabel.stringValue = kind == .nextcloud ? "App-Passwort" : "Passwort"
+        password.setAccessibilityLabel(kind == .nextcloud ? "Nextcloud-App-Passwort" : "Passwort")
+        password.toolTip = kind == .nextcloud ? "App-Passwort aus Nextcloud → Persönliche Einstellungen → Sicherheit. Wird nicht gespeichert." : nil
+        path.toolTip = kind == .nextcloud ? "Pfad innerhalb der eigenen Nextcloud-Dateien. / öffnet deren Wurzelverzeichnis." : nil
+        switch kind {
+        case .ftp: notice.stringValue = "FTP überträgt Dateien und Passwort unverschlüsselt."
+        case .nextcloud: notice.stringValue = "WebDAV über HTTPS · Nextcloud-Benutzername und App-Passwort. Startpfad / öffnet die eigenen Dateien. Das Passwort wird nicht gespeichert."
+        default: notice.stringValue = "SSH-Schlüssel/Agent · bekannte Hosts erforderlich."
+        }
         resize()
     }
     private func resize() {
@@ -170,10 +199,11 @@ final class ConnectionEditorDialog: NSWindowController {
         let index = preset.indexOfSelectedItem - 1
         fill(bookmarks.indices.contains(index) ? bookmarks[index] : nil)
         errorLabel.isHidden = true; resize()
+        if purpose == .connection && usesPassword && index >= 0 { password.selectText(nil) }
     }
     @objc private func protocolChanged() {
         let next = protocols[protocolPicker.indexOfSelectedItem]
-        if port.stringValue == String(kind == .ftp ? 21 : 22) { port.stringValue = String(next == .ftp ? 21 : 22) }
+        if port.stringValue == String(Self.defaultPort(kind)) { port.stringValue = String(Self.defaultPort(next)) }
         kind = next; password.stringValue = ""; updateForm()
     }
     @objc private func rememberChanged() {
@@ -189,8 +219,8 @@ final class ConnectionEditorDialog: NSWindowController {
         guard outcome == nil else { return }
         do {
             let connection = try RemoteConnection(kind: kind, host: host.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
-                port: Int(port.stringValue) ?? 0, user: user.stringValue, password: purpose == .connection && kind == .ftp ? password.stringValue : "",
-                identityFile: kind == .ftp ? "" : identity.stringValue,
+                port: Int(port.stringValue) ?? 0, user: user.stringValue, password: purpose == .connection && usesPassword ? password.stringValue : "",
+                identityFile: usesPassword ? "" : identity.stringValue,
                 timeout: UserDefaults.standard.object(forKey: "remoteTimeout") as? Int ?? 20)
             let directory = try RemoteFileSystem.normalizedPath(path.stringValue)
             var bookmark: ConnectionBookmark?
