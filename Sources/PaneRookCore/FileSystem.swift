@@ -145,17 +145,19 @@ public struct TransferPlan: Sendable {
         self.kind = kind
     }
 
-    /// FileManager refuses existing destinations. A failed batch can have completed earlier items.
-    public func execute() throws {
-        if items.contains(where: { ArchiveFileSystem.memberLocation($0.source) != nil || ArchiveFileSystem.memberLocation($0.destination) != nil }) {
-            try ArchiveFileSystem.transfer(items, kind: kind)
-            return
-        }
-        for item in items {
-            switch kind {
-            case .copy: try FileManager.default.copyItem(at: item.source, to: item.destination)
-            case .move: try FileManager.default.moveItem(at: item.source, to: item.destination)
-            }
+    /// Completed items remain after a later failure. Copies and archive changes
+    /// are staged and committed only after their cancellation checks succeed.
+    public func execute(cancellation: TransferCancellation = .init(),
+                        progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
+        try cancellation.check()
+        // Queueing separates validation from execution; source and destination
+        // paths (including symlink ancestors) may have changed in the meantime.
+        let current = try TransferPlan(sources: items.map(\.source), outputs: items.map(\.destination), kind: kind)
+        try cancellation.check()
+        if current.items.contains(where: { ArchiveFileSystem.memberLocation($0.source) != nil || ArchiveFileSystem.memberLocation($0.destination) != nil }) {
+            try ArchiveFileSystem.transfer(current.items, kind: kind, cancellation: cancellation, progress: progress)
+        } else {
+            try TransferWorker(plan: current, cancellation: cancellation, progress: progress).run()
         }
     }
 }
@@ -168,10 +170,12 @@ public enum FileActions {
         }
     }
 
-    @discardableResult public static func createDirectory(named name: String, in directory: URL) throws -> URL {
+    @discardableResult public static func createDirectory(named name: String, in directory: URL,
+        cancellation: TransferCancellation = .init(), progress: @escaping (OperationProgress) -> Void = { _ in }) throws -> URL {
+        try cancellation.check()
         try validateName(name)
         if ArchiveFileSystem.location(for: directory) != nil {
-            return try ArchiveFileSystem.createDirectory(named: name, in: directory)
+            return try ArchiveFileSystem.createDirectory(named: name, in: directory, cancellation: cancellation, progress: progress)
         }
         let url = directory.appendingPathComponent(name, isDirectory: true)
         if (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil { throw FileActionError.collision(name) }

@@ -10,8 +10,6 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     private let statusBar = NSStackView()
     private let progress = NSProgressIndicator()
     private let hiddenButton = NSButton()
-    private let operationQueue = DispatchQueue(label: "app.panerook.file-operations", qos: .userInitiated)
-    private var busy = false
     private var transferDialog: TransferDialog?
     private var sparseFileDialog: SparseFileDialog?
     private var previewURLs: [URL] = []
@@ -22,6 +20,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     private let commandInput = NSTextField()
     private var panelsHidden = false
     var arePanelsHidden: Bool { panelsHidden }
+    lazy var tasks = TaskCenter(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
     lazy var preferences = PreferencesTools(owner: self)
     lazy var localTools = LocalTools(owner: self)
@@ -32,7 +31,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
     var onShowMenu: (() -> Void)?
     var menuIsTracking: (() -> Bool)?
     var onKeyBindingsChanged: (() -> Void)?
-    var canUseMenus: Bool { !busy && view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
+    var canUseMenus: Bool { view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
     var canUseSelection: Bool { canUseMenus && !panelsHidden && !active.selectedFiles.isEmpty }
     var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.mode != .network }
     var canUseNativeDirectory: Bool { canUseLocalDirectory && !active.isArchiveDirectory }
@@ -41,7 +40,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
             ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false
         }
     }
-    var isPerformingOperation: Bool { busy }
+    var isPerformingOperation: Bool { view.window?.attachedSheet != nil }
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -177,9 +176,14 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         statusBar.addArrangedSubview(progress)
         statusBar.addArrangedSubview(status)
         statusBar.addArrangedSubview(NSView())
+        let queueButton = NSButton(title: "Aufgaben …", target: self, action: #selector(showTaskQueue))
+        AppStyle.configureButton(queueButton); queueButton.controlSize = .small
+        statusBar.addArrangedSubview(queueButton)
+        tasks.onChange = { [weak self] in self?.updateTaskStatus() }
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-        statusBar.isHidden = true
+        statusBar.isHidden = false
+        updateTaskStatus()
         left.isActive = true
         preferences.restorePanels()
         preferences.apply()
@@ -269,15 +273,15 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         updateDirectoryActionAvailability()
     }
     private func updateDirectoryActionAvailability() {
-        if actions.indices.contains(4) { actions[4].isEnabled = !busy && active.mode != .network }
-        if actions.indices.contains(1) { actions[1].isEnabled = !busy && !active.isArchiveDirectory }
+        if actions.indices.contains(4) { actions[4].isEnabled = active.mode != .network }
+        if actions.indices.contains(1) { actions[1].isEnabled = !active.isArchiveDirectory }
         if actions.indices.contains(5) {
             let title = active.isArchiveDirectory ? "Löschen" : "Papierkorb"
             actions[5].title = "\(AppKeyBinding.saved["trash"]?.label ?? "F8")  \(title)"
         }
     }
     @objc func openSelection() {
-        guard !busy, let entry = active.selectedEntries.first else { return }
+        guard let entry = active.selectedEntries.first else { return }
         // Archives enter the panel before extension-to-app associations are considered.
         if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {
             active.openSelection()
@@ -302,6 +306,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         active.pathField.selectText(nil)
     }
     @objc func refresh() { left.refresh(); right.refresh(); workflow.applyHighlights() }
+    func refreshAfterTask() { left.refreshAfterTask(); right.refreshAfterTask(); workflow.applyHighlights() }
     @objc func swapPanels() {
         let url = left.directory
         left.navigate(to: right.directory)
@@ -370,9 +375,9 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         onShowMenu?()
     }
     func exitOrCancelDialog() {
-        guard !busy else { return }
         if let window = view.window, let sheet = window.attachedSheet {
             if let panel = sheet as? TransferPanel { panel.cancelOperation(nil) }
+            else if let panel = sheet as? ToolPanel { panel.cancelOperation(nil) }
             else { window.endSheet(sheet, returnCode: .cancel) }
         } else {
             NSApp.terminate(nil)
@@ -428,31 +433,29 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         }
     }
     private func withReadableFiles(_ urls: [URL], completion: @escaping ([URL]) -> Void) {
-        guard !busy, !urls.isEmpty else { NSSound.beep(); return }
+        guard !urls.isEmpty else { NSSound.beep(); return }
         guard urls.contains(where: { ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false }) else {
             completion(urls)
             return
         }
-        busy = true
-        actions.forEach { $0.isEnabled = false }
-        status.stringValue = "Archivvorschau vorbereiten …"
-        statusBar.isHidden = false
-        progress.startAnimation(nil)
-        operationQueue.async { [weak self] in
-            let result = Result { try urls.map { try ArchivePreviewStore.shared.readableURL(for: $0) } }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.busy = false
-                self.actions.forEach { $0.isEnabled = true }
-                self.updateDirectoryActionAvailability()
-                self.progress.stopAnimation(nil)
-                self.statusBar.isHidden = true
-                switch result {
-                case .success(let files): completion(files)
-                case .failure(let error): self.showError(error)
+        let token = TransferCancellation()
+        var readable: [URL]?
+        tasks.submit(title: "Archivvorschau vorbereiten", detail: urls.map(\.path).joined(separator: "\n"),
+            cancellation: { token.cancel() }, work: { report in
+                var files: [URL] = []
+                for (index, url) in urls.enumerated() {
+                    try token.check()
+                    report(OperationProgress(completedItems: index, totalItems: urls.count, currentPath: url.path))
+                    files.append(try ArchivePreviewStore.shared.readableURL(for: url, cancellation: token, progress: report))
                 }
-            }
-        }
+                try token.check()
+                report(OperationProgress(completedItems: urls.count, totalItems: urls.count))
+                return files
+            }, onReveal: {
+                if let readable { completion(readable) }
+            }, completion: { result in
+                if case .success(let files) = result { readable = files }
+            })
     }
     private func showPreviewFiles(_ urls: [URL]) {
         previewURLs = urls
@@ -498,9 +501,11 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
             self.transferDialog = nil
             self.activate(sourcePane)
             guard let plan else { return }
-            self.runOperation("\(verb) …") {
-                try plan.execute()
-            }
+            let token = TransferCancellation()
+            self.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
+                cancellation: { token.cancel() }, work: { report in
+                    try plan.execute(cancellation: token, progress: report)
+                }, completion: { [weak self] _ in self?.refreshAfterTask() })
         }
         transferDialog = dialog
         dialog.begin(on: window)
@@ -522,9 +527,12 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         alert.beginSheetModal(for: view.window!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             let name = input.stringValue
-            self?.runOperation("Ordner anlegen …", completion: {
+            self?.runArchiveOperation("Ordner anlegen …", detail: directory.path, completion: {
+                guard pane.canApplyTaskResult(in: directory) else { return }
                 pane.refresh(select: directory.appendingPathComponent(name))
-            }) { try FileActions.createDirectory(named: name, in: directory) }
+            }) { token, report in
+                try FileActions.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+            }
         }
     }
     func createSparseFile() {
@@ -537,6 +545,7 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
             self.activate(pane)
             guard let request else { return }
             self.runOperation("Sparse-Datei erstellen …", completion: {
+                guard pane.canApplyTaskResult(in: directory) else { return }
                 pane.setMode(.listing)
                 if !pane.filterPattern.isEmpty && !LocalInspection.matches(request.name, pattern: pane.filterPattern) {
                     pane.setFilter("")
@@ -564,15 +573,15 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
             alert.configureKeyboardShortcuts()
             alert.beginSheetModal(for: view.window!) { [weak self] response in
                 guard response == .alertFirstButtonReturn else { return }
-                self?.runOperation("Aus Archiv löschen …", errorDetail: "Das Archiv wird erst nach erfolgreichem Schreiben ersetzt.") {
-                    try ArchiveFileSystem.remove(sources)
+                self?.runArchiveOperation("Aus Archiv löschen …", detail: "Das Archiv wird erst nach erfolgreichem Schreiben ersetzt.") { token, report in
+                    try ArchiveFileSystem.remove(sources, cancellation: token, progress: report)
                 }
             }
             return
         }
         if UserDefaults.standard.object(forKey: "confirmTrash") as? Bool == false {
-            runOperation("In den Papierkorb legen …") {
-                for source in sources { try FileManager.default.trashItem(at: source, resultingItemURL: nil) }
+            runItemOperation("In den Papierkorb legen", sources: sources) {
+                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
             }
             return
         }
@@ -585,40 +594,47 @@ final class CommanderController: NSViewController, QLPreviewPanelDataSource, NST
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: view.window!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.runOperation("In den Papierkorb legen …") {
-                for source in sources { try FileManager.default.trashItem(at: source, resultingItemURL: nil) }
+            self?.runItemOperation("In den Papierkorb legen", sources: sources) {
+                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
             }
         }
+    }
+    @objc private func showTaskQueue() { tasks.showQueue() }
+    private func updateTaskStatus() {
+        status.stringValue = tasks.summary
+        statusBar.isHidden = false
+        if tasks.hasActiveTasks { progress.startAnimation(nil) }
+        else { progress.stopAnimation(nil) }
     }
     func runOperation(_ title: String, completion: (() -> Void)? = nil,
                       errorDetail: String = "Bei mehreren Einträgen können vorherige Schritte bereits abgeschlossen sein. Bitte beide Panels prüfen.",
                       work: @escaping () throws -> Void) {
-        guard !busy else { return }
-        busy = true
-        actions.forEach { $0.isEnabled = false }
-        status.stringValue = title
-        statusBar.isHidden = false
-        progress.startAnimation(nil)
-        operationQueue.async { [weak self] in
-            let result = Result { try work() }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.busy = false
-                self.actions.forEach { $0.isEnabled = true }
-                self.updateDirectoryActionAvailability()
-                self.progress.stopAnimation(nil)
-                self.refresh()
-                switch result {
-                case .success:
-                    self.status.stringValue = ""
-                    self.statusBar.isHidden = true
-                    completion?()
-                case .failure(let error):
-                    self.status.stringValue = error.localizedDescription
-                    self.showError(error, detail: errorDetail)
+        tasks.submit(title: title, detail: errorDetail, work: { _ in try work() }, completion: { [weak self] result in
+            if case .success = result { completion?() }
+            self?.refreshAfterTask()
+        })
+    }
+    private func runArchiveOperation(_ title: String, detail: String, completion: (() -> Void)? = nil,
+                                     work: @escaping (TransferCancellation, @escaping (OperationProgress) -> Void) throws -> Void) {
+        let token = TransferCancellation()
+        tasks.submit(title: title, detail: detail, cancellation: { token.cancel() },
+            work: { report in try work(token, report) }, completion: { [weak self] result in
+                if case .success = result { completion?() }
+                self?.refreshAfterTask()
+            })
+    }
+    /// Checkpoints between native filesystem calls keep batch actions cancellable.
+    func runItemOperation(_ title: String, sources: [URL], work: @escaping (URL) throws -> Void) {
+        let token = InspectionCancellation()
+        tasks.submit(title: title, detail: "Bereits abgeschlossene Einträge bleiben bei Abbruch erhalten.",
+            cancellation: { token.cancel() }, work: { report in
+                for (index, source) in sources.enumerated() {
+                    try token.check()
+                    report(OperationProgress(completedItems: index, totalItems: sources.count, currentPath: source.path))
+                    try work(source)
+                    report(OperationProgress(completedItems: index + 1, totalItems: sources.count, currentPath: source.path))
                 }
-            }
-        }
+            }, completion: { [weak self] _ in self?.refreshAfterTask() })
     }
     func showError(_ error: Error, detail: String = "") {
         let alert = NSAlert()

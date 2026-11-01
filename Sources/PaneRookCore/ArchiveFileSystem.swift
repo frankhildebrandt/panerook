@@ -65,20 +65,27 @@ public enum ArchiveFileSystem {
         }
     }
 
-    public static func extract(_ sources: [URL], to directory: URL) throws -> [URL] {
-        try synchronized {
+    public static func extract(_ sources: [URL], to directory: URL,
+        cancellation: TransferCancellation = .init(), progress: @escaping (OperationProgress) -> Void = { _ in }) throws -> [URL] {
+        let operation = Operation(cancellation: cancellation, progress: progress)
+        return try synchronized {
+            try cancellation.check()
             let base = try FileSystem.directory(from: directory.path, relativeTo: directory)
             guard location(for: base) == nil else { throw FileActionError.invalidDirectory(base.path) }
             let outputs = sources.map { base.appendingPathComponent($0.lastPathComponent) }
             guard Set(outputs.map(\.path)).count == outputs.count else { throw FileActionError.duplicateName }
             for output in outputs { try requireAbsent(output) }
-            for (source, output) in zip(sources, outputs) { try extractMember(source, to: output) }
+            for (source, output) in zip(sources, outputs) { try extractMember(source, to: output, operation: operation) }
+            operation.finish(items: sources.count)
             return outputs
         }
     }
 
-    public static func remove(_ urls: [URL]) throws {
+    public static func remove(_ urls: [URL], cancellation: TransferCancellation = .init(),
+                              progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
+        let operation = Operation(cancellation: cancellation, progress: progress)
         try synchronized {
+            try cancellation.check()
             guard let first = urls.first, let location = memberLocation(first) else { throw FileActionError.invalidName }
             let paths = try urls.map { url -> String in
                 guard let item = memberLocation(url), sameArchive(item.archiveURL, location.archiveURL) else {
@@ -87,22 +94,27 @@ public enum ArchiveFileSystem {
                 return item.memberPath
             }
             let expected = try Stamp(location.archiveURL)
-            let members = try catalog(location.archiveURL)
+            let members = try catalog(location.archiveURL, operation: operation)
             for path in paths { guard members[path] != nil else { throw CocoaError(.fileNoSuchFile) } }
-            try rewrite(location.archiveURL, additions: [], removing: paths, expected: expected)
+            try rewrite(location.archiveURL, additions: [], removing: paths, expected: expected, operation: operation)
+            operation.finish(items: urls.count)
         }
     }
 
-    @discardableResult static func createDirectory(named name: String, in directory: URL) throws -> URL {
-        try synchronized {
+    @discardableResult static func createDirectory(named name: String, in directory: URL,
+        cancellation: TransferCancellation = .init(), progress: @escaping (OperationProgress) -> Void = { _ in }) throws -> URL {
+        let operation = Operation(cancellation: cancellation, progress: progress)
+        return try synchronized {
+            try cancellation.check()
             guard let location = location(for: directory) else { throw FileActionError.invalidDirectory(directory.path) }
-            let members = try catalog(location.archiveURL)
+            let members = try catalog(location.archiveURL, operation: operation)
             guard location.memberPath.isEmpty || members[location.memberPath]?.kind == .directory else {
                 throw FileActionError.invalidDirectory(directory.path)
             }
             let path = location.memberPath.isEmpty ? name : location.memberPath + "/" + name
             guard members[path] == nil else { throw FileActionError.collision(name) }
-            try rewrite(location.archiveURL, additions: [Addition(source: nil, path: path)], removing: [])
+            try rewrite(location.archiveURL, additions: [Addition(source: nil, path: path)], removing: [], operation: operation)
+            operation.finish(items: 1)
             return directory.appendingPathComponent(name, isDirectory: true)
         }
     }
@@ -125,9 +137,13 @@ public enum ArchiveFileSystem {
 
     /// Revalidates a plan immediately before execution, stages only its selected
     /// sources, commits the destination, and then removes move sources.
-    static func transfer(_ items: [TransferPlan.Item], kind: TransferKind) throws {
+    static func transfer(_ items: [TransferPlan.Item], kind: TransferKind, cancellation: TransferCancellation,
+                         progress: @escaping (OperationProgress) -> Void) throws {
+        let operation = Operation(cancellation: cancellation, progress: progress)
         try synchronized {
+            try cancellation.check()
             for item in items {
+                try cancellation.check()
                 try validateBackingSource(item.source, destination: item.destination)
                 try requireAbsent(item.destination)
             }
@@ -135,6 +151,7 @@ public enum ArchiveFileSystem {
             var archiveStamps: [URL: Stamp] = [:]
             var localStamps: [URL: [String: Stamp]] = [:]
             for item in items {
+                try cancellation.check()
                 if let source = memberLocation(item.source) {
                     archiveStamps[source.archiveURL] = try Stamp(source.archiveURL)
                 } else {
@@ -148,16 +165,16 @@ public enum ArchiveFileSystem {
                             throw FileActionError.recursiveDestination
                         }
                     }
-                    localStamps[item.source] = try localTreeStamp(item.source)
+                    localStamps[item.source] = try localTreeStamp(item.source, operation: operation)
                 }
             }
-            func verifySources(ignoring archive: URL? = nil) throws {
+            func verifySources(ignoring archive: URL? = nil, cancellable: Bool = true) throws {
                 for (url, stamp) in archiveStamps {
                     if let archive, sameArchive(url, archive) { continue }
                     guard try Stamp(url) == stamp else { throw ArchiveError.changed }
                 }
                 for (url, stamp) in localStamps {
-                    guard try localTreeStamp(url) == stamp else { throw ArchiveError.changed }
+                    guard try localTreeStamp(url, operation: cancellable ? operation : nil) == stamp else { throw ArchiveError.changed }
                 }
             }
             let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("PaneRook-archive-" + UUID().uuidString)
@@ -168,11 +185,16 @@ public enum ArchiveFileSystem {
             }
             var staged: [URL] = []
             for (index, item) in items.enumerated() {
+                try operation.report(path: item.source.path)
                 let output = temporary.appendingPathComponent(String(index))
-                if memberLocation(item.source) != nil { try extractMember(item.source, to: output) }
+                if memberLocation(item.source) != nil { try extractMember(item.source, to: output, operation: operation) }
                 else {
-                    try validateLocalTree(item.source)
-                    try FileManager.default.copyItem(at: item.source, to: output)
+                    try validateLocalTree(item.source, operation: operation)
+                    try TransferPlan(sources: [item.source], sourcePattern: "*", destinationPath: output.path,
+                                     relativeTo: temporary, kind: .copy).execute(cancellation: cancellation) { value in
+                        progress(OperationProgress(currentPath: value.currentPath, currentFileBytes: value.currentFileBytes,
+                                                   currentFileTotalBytes: value.currentFileTotalBytes))
+                    }
                 }
                 staged.append(output)
             }
@@ -188,15 +210,27 @@ public enum ArchiveFileSystem {
                     guard let source = memberLocation(item.source), sameArchive(source.archiveURL, targetArchive) else { return nil }
                     return source.memberPath
                 } : []
-                try rewrite(targetArchive, additions: additions, removing: removing, validateBeforeCommit: { try verifySources() })
+                try rewrite(targetArchive, additions: additions, removing: removing, validateBeforeCommit: { try verifySources() }, operation: operation)
             } else {
                 for (item, source) in zip(items, staged) {
+                    try cancellation.check()
                     try requireAbsent(item.destination)
-                    try FileManager.default.moveItem(at: source, to: item.destination)
+                    // The staging directory may live on a different volume.
+                    // Reuse the native worker's cancellable, exclusive commit.
+                    try TransferPlan(sources: [source], sourcePattern: "*", destinationPath: item.destination.path,
+                                     relativeTo: temporary, kind: .move).execute(cancellation: cancellation) { value in
+                        let path = value.currentPath.map { path in
+                            path.hasPrefix(source.path) ? item.source.path + String(path.dropFirst(source.path.count)) : path
+                        }
+                        progress(OperationProgress(currentPath: path, currentFileBytes: value.currentFileBytes,
+                                                   currentFileTotalBytes: value.currentFileTotalBytes))
+                    }
                 }
             }
             if kind == .move {
-                try verifySources(ignoring: targetArchive)
+                // Destination commit + source cleanup is one move step. Do not
+                // turn cancellation into a duplicate move after commit.
+                try verifySources(ignoring: targetArchive, cancellable: false)
                 var archiveSources: [String: [URL]] = [:]
                 for item in items {
                     if let source = memberLocation(item.source) {
@@ -216,6 +250,7 @@ public enum ArchiveFileSystem {
                     try rewrite(source.archiveURL, additions: [], removing: paths, expected: expected)
                 }
             }
+            operation.finish(items: items.count)
         }
     }
 
@@ -252,9 +287,32 @@ public enum ArchiveFileSystem {
         }
     }
 
+    /// Archive work has several streaming passes, so its overall size is not
+    /// known in advance. Report measured per-file bytes without a fake percent.
+    private final class Operation {
+        let cancellation: TransferCancellation
+        let progress: (OperationProgress) -> Void
+        init(cancellation: TransferCancellation, progress: @escaping (OperationProgress) -> Void) {
+            self.cancellation = cancellation; self.progress = progress
+        }
+        func report(path: String, bytes: Int64 = 0, total: Int64? = nil) throws {
+            try cancellation.check()
+            progress(OperationProgress(currentPath: path, currentFileBytes: bytes, currentFileTotalBytes: total))
+            try cancellation.check()
+        }
+        func finish(items: Int) {
+            progress(OperationProgress(completedItems: items, totalItems: items))
+        }
+    }
+
     private final class Reader {
         let handle: OpaquePointer
-        init(_ url: URL) throws {
+        let operation: Operation?
+        private let url: URL
+        private(set) var currentPath: String
+        init(_ url: URL, operation: Operation? = nil) throws {
+            self.url = url; self.currentPath = url.path; self.operation = operation
+            try operation?.cancellation.check()
             guard let handle = archive_read_new() else { throw ArchiveError.invalid("Nicht genug Speicher.") }
             self.handle = handle
             archive_read_support_filter_none(handle); archive_read_support_filter_gzip(handle)
@@ -265,13 +323,30 @@ public enum ArchiveFileSystem {
         }
         deinit { archive_read_free(handle) }
         func next() throws -> OpaquePointer? {
+            try operation?.cancellation.check()
             var entry: OpaquePointer?
             let status = archive_read_next_header(handle, &entry)
             if status == 1 { return nil }
             guard status == 0, let entry else { throw failure(handle) }
+            if let path = archive_entry_pathname(entry) { currentPath = url.path + "/" + String(cString: path) }
             return entry
         }
-        func skip() throws { guard archive_read_data_skip(handle) == 0 else { throw failure(handle) } }
+        func skip() throws {
+            guard let operation, archive_filter_code(handle, 0) == 1 else {
+                try operation?.cancellation.check()
+                guard archive_read_data_skip(handle) == 0 else { throw failure(handle) }
+                return
+            }
+            // libarchive's single skip call may decompress a very large TAR
+            // member. Read in bounded chunks to keep cancellation responsive.
+            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+            while true {
+                try operation.cancellation.check()
+                let count = archive_read_data(handle, &buffer, buffer.count)
+                guard count >= 0 else { throw failure(handle) }
+                if count == 0 { return }
+            }
+        }
     }
     private final class Writer {
         let handle: OpaquePointer
@@ -335,8 +410,8 @@ public enum ArchiveFileSystem {
         return Member(path: path, kind: kind, size: max(0, archive_entry_size(entry)),
                       modified: Date(timeIntervalSince1970: Double(archive_entry_mtime(entry)) + Double(archive_entry_mtime_nsec(entry)) / 1_000_000_000), explicit: true, permissions: archive_entry_perm(entry))
     }
-    private static func catalog(_ url: URL) throws -> [String: Member] {
-        let reader = try Reader(url)
+    private static func catalog(_ url: URL, operation: Operation? = nil) throws -> [String: Member] {
+        let reader = try Reader(url, operation: operation)
         var result: [String: Member] = [:]
         var count = 0
         while let entry = try reader.next() {
@@ -397,9 +472,10 @@ public enum ArchiveFileSystem {
             makeTemporaryTreeRemovable(child)
         }
     }
-    private static func localTreeStamp(_ url: URL) throws -> [String: Stamp] {
+    private static func localTreeStamp(_ url: URL, operation: Operation? = nil) throws -> [String: Stamp] {
         var result: [String: Stamp] = [:]
         func visit(_ item: URL) throws {
+            try operation?.cancellation.check()
             let stamp = try Stamp(item, regularOnly: false)
             guard stamp.mode & S_IFMT == S_IFREG || stamp.mode & S_IFMT == S_IFDIR else {
                 throw ArchiveError.unsupportedEntry(item.lastPathComponent)
@@ -413,18 +489,20 @@ public enum ArchiveFileSystem {
         try visit(url)
         return result
     }
-    private static func validateLocalTree(_ url: URL) throws {
+    private static func validateLocalTree(_ url: URL, operation: Operation? = nil) throws {
+        try operation?.cancellation.check()
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         let type = attrs[.type] as? FileAttributeType
         guard type == .typeRegular || type == .typeDirectory else { throw ArchiveError.unsupportedEntry(url.lastPathComponent) }
         if type == .typeDirectory {
-            for child in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) { try validateLocalTree(child) }
+            for child in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) { try validateLocalTree(child, operation: operation) }
         }
     }
-    private static func extractMember(_ source: URL, to output: URL) throws {
+    private static func extractMember(_ source: URL, to output: URL, operation: Operation? = nil) throws {
+        try operation?.report(path: source.path)
         guard let location = memberLocation(source) else { throw FileActionError.invalidName }
         let stamp = try Stamp(location.archiveURL)
-        let members = try catalog(location.archiveURL)
+        let members = try catalog(location.archiveURL, operation: operation)
         guard let root = members[location.memberPath] else { throw CocoaError(.fileNoSuchFile) }
         let selected = members.values.filter { contains($0.path, roots: [root.path]) }
         var bytes: Int64 = 0
@@ -442,7 +520,7 @@ public enum ArchiveFileSystem {
             let destination = target(item.path)
             try fm.createDirectory(at: destination, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         }
-        let reader = try Reader(location.archiveURL)
+        let reader = try Reader(location.archiveURL, operation: operation)
         var actualBytes: Int64 = 0
         while let entry = try reader.next() {
             guard let item = try member(entry), item.kind == .regular, contains(item.path, roots: [root.path]) else { try reader.skip(); continue }
@@ -470,35 +548,38 @@ public enum ArchiveFileSystem {
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         var bytes: Int64 = 0
         while true {
+            try reader.operation?.cancellation.check()
             let count = archive_read_data(reader.handle, &buffer, buffer.count)
             guard count >= 0 else { throw failure(reader.handle) }
             if count == 0 { break }
             bytes += Int64(count); total += Int64(count)
             guard bytes <= maxFileSize, total <= maxBytes else { throw ArchiveError.limit }
+            try reader.operation?.report(path: reader.currentPath, bytes: bytes, total: expectedSize)
             try consume(Data(buffer.prefix(count)))
         }
         guard bytes == expectedSize else { throw ArchiveError.invalid("Unvollständiger Dateieintrag.") }
     }
 
     private static func rewrite(_ url: URL, additions: [Addition], removing: [String], expected: Stamp? = nil,
-                                validateBeforeCommit: (() throws -> Void)? = nil) throws {
+                                validateBeforeCommit: (() throws -> Void)? = nil, operation: Operation? = nil) throws {
+        try operation?.report(path: url.path)
         let original = try Stamp(url)
         if let expected, original != expected { throw ArchiveError.changed }
-        let existing = try catalog(url)
+        let existing = try catalog(url, operation: operation)
         // Re-encoding link/special semantics and encrypted archives would require
         // separate format-specific guarantees. Refuse rather than lose data.
         for item in existing.values where item.kind == .link || item.kind == .special { throw ArchiveError.unsupportedEntry(item.path) }
         for addition in additions {
             _ = try normalized(addition.path)
             guard existing[addition.path] == nil else { throw FileActionError.collision((addition.path as NSString).lastPathComponent) }
-            if let source = addition.source { try validateLocalTree(source) }
+            if let source = addition.source { try validateLocalTree(source, operation: operation) }
         }
         let temporary = url.deletingLastPathComponent().appendingPathComponent(".PaneRook-archive-" + UUID().uuidString + "-" + url.lastPathComponent)
         let fd = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw posixError() }
         defer { close(fd); try? FileManager.default.removeItem(at: temporary) }
         let writer = try Writer(fd: fd, format: format(url)!)
-        let reader = try Reader(url)
+        let reader = try Reader(url, operation: operation)
         var bytes: Int64 = 0
         while let entry = try reader.next() {
             guard let item = try member(entry), !contains(item.path, roots: removing) else { try reader.skip(); continue }
@@ -513,15 +594,17 @@ public enum ArchiveFileSystem {
             } else { try reader.skip() }
             guard archive_write_finish_entry(writer.handle) == 0 else { throw failure(writer.handle) }
         }
-        for addition in additions { try append(addition.source, path: addition.path, writer: writer, total: &bytes) }
+        for addition in additions { try append(addition.source, path: addition.path, writer: writer, total: &bytes, operation: operation) }
         try writer.finish()
-        _ = try catalog(temporary)
+        _ = try catalog(temporary, operation: operation)
         guard fsync(fd) == 0, fchmod(fd, original.mode & 0o7777) == 0 else { throw posixError() }
+        try operation?.cancellation.check()
         try validateBeforeCommit?()
         guard try Stamp(url) == original else { throw ArchiveError.changed }
         guard rename(temporary.path, url.path) == 0 else { throw posixError() }
     }
-    private static func append(_ source: URL?, path: String, writer: Writer, total: inout Int64) throws {
+    private static func append(_ source: URL?, path: String, writer: Writer, total: inout Int64, operation: Operation? = nil) throws {
+        try operation?.report(path: path)
         let attrs = try source.map { try FileManager.default.attributesOfItem(atPath: $0.path) }
         let directory = source == nil || attrs?[.type] as? FileAttributeType == .typeDirectory
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
@@ -539,7 +622,7 @@ public enum ArchiveFileSystem {
             guard archive_write_finish_entry(writer.handle) == 0 else { throw failure(writer.handle) }
             for child in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
                 _ = try normalized(child.lastPathComponent)
-                try append(child, path: path + "/" + child.lastPathComponent, writer: writer, total: &total)
+                try append(child, path: path + "/" + child.lastPathComponent, writer: writer, total: &total, operation: operation)
             }
         } else if let source {
             let handle = try FileHandle(forReadingFrom: source)
@@ -548,6 +631,7 @@ public enum ArchiveFileSystem {
             while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
                 actual += Int64(data.count); total += Int64(data.count)
                 guard actual <= maxFileSize, total <= maxBytes else { throw ArchiveError.limit }
+                try operation?.report(path: path, bytes: actual, total: size)
                 let wrote = data.withUnsafeBytes { archive_write_data(writer.handle, $0.baseAddress, data.count) }
                 guard wrote == data.count else { throw failure(writer.handle) }
             }

@@ -51,8 +51,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         commander.activate(commander.left)
         NSApp.activate(ignoringOtherApps: true)
     }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard commander.tasks.hasActiveTasks else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Es laufen noch Aufgaben."
+        alert.informativeText = "Beim Beenden werden laufende und wartende Aufgaben abgebrochen. Bereits abgeschlossene Einträge bleiben erhalten."
+        alert.addButton(withTitle: "Weiterarbeiten")
+        alert.addButton(withTitle: "Aufgaben abbrechen und beenden")
+        guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        commander.tasks.cancelAll {
+            // Let the worker finish cleanup before ending the process.
+            DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) }
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         commander.saveSetup()
+        commander.tasks.cancelAll()
         commander.workflow.cancelAll()
         commander.localTools.closeAll()
         commander.remote.closeAll()

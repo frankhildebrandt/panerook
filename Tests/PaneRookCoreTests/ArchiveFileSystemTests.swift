@@ -321,6 +321,79 @@ final class ArchiveFileSystemTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: archive), before)
     }
 
+    func testQueuedArchiveTransferReportsProgressAndPreservesMoveBehavior() throws {
+        let archive = try archive(.zip, files: ["keep.txt": "keep"])
+        let source = try file("queued.txt", contents: String(repeating: "queue bytes", count: 100_000))
+        let plan = try TransferPlan(sources: [source], destination: archive, kind: .move)
+        let queue = BackgroundTaskQueue()
+        let token = TransferCancellation()
+        let done = expectation(description: "archive move completes")
+        var reportedBytes = false
+        queue.submit(title: "archive move", cancellation: token.cancel, work: { report in
+            try plan.execute(cancellation: token) { value in
+                if value.currentFileBytes > 0 { reportedBytes = true }
+                report(value)
+            }
+        }, completion: { result in
+            if case .failure(let error) = result { XCTFail(error.localizedDescription) }
+            done.fulfill()
+        })
+        wait(for: [done], timeout: 5)
+        XCTAssertTrue(reportedBytes)
+        XCTAssertEqual(queue.snapshots.first?.state, .completed)
+        XCTAssertEqual(queue.snapshots.first?.progress.fraction, 1)
+        XCTAssertFalse(fm.fileExists(atPath: source.path))
+        XCTAssertEqual(try exportedContents(archive.appendingPathComponent("queued.txt")), String(repeating: "queue bytes", count: 100_000))
+        XCTAssertEqual(try exportedContents(archive.appendingPathComponent("keep.txt")), "keep")
+    }
+
+    func testCancellationWhileRepackingKeepsOriginalArchiveAndMoveSource() throws {
+        let archive = try archive(.zip, files: ["keep.txt": "keep"])
+        let source = try file("incoming.txt", contents: String(repeating: "incoming", count: 200_000))
+        let original = try Data(contentsOf: archive)
+        let plan = try TransferPlan(sources: [source], destination: archive, kind: .move)
+        let token = TransferCancellation()
+        var cancelledDuringArchiveWrite = false
+        XCTAssertThrowsError(try plan.execute(cancellation: token) { value in
+            // Native staging reports an absolute path; archive appending reports
+            // the member path. Cancel the rewrite itself, after staging succeeds.
+            if value.currentPath == "incoming.txt", value.currentFileBytes > 0 {
+                cancelledDuringArchiveWrite = true
+                token.cancel()
+            }
+        }) { XCTAssertTrue($0 is TransferError) }
+        XCTAssertTrue(cancelledDuringArchiveWrite)
+        XCTAssertEqual(try Data(contentsOf: archive), original)
+        XCTAssertTrue(fm.fileExists(atPath: source.path))
+        XCTAssertFalse(try fm.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix(".PaneRook-archive-") })
+    }
+
+    func testCancellationWhileExportingDoesNotPublishPartialDestination() throws {
+        let archive = try archive(.gzip, files: ["large.txt": String(repeating: "archive bytes", count: 200_000)])
+        let original = try Data(contentsOf: archive)
+        let target = try directory("cancelled-export")
+        let plan = try TransferPlan(sources: [archive.appendingPathComponent("large.txt")], destination: target, kind: .move)
+        let token = TransferCancellation()
+        XCTAssertThrowsError(try plan.execute(cancellation: token) { value in
+            if value.currentFileBytes > 0 { token.cancel() }
+        }) { XCTAssertTrue($0 is TransferError) }
+        XCTAssertTrue(token.isCancelled)
+        XCTAssertTrue(try fm.contentsOfDirectory(atPath: target.path).isEmpty)
+        XCTAssertEqual(try Data(contentsOf: archive), original)
+    }
+
+    func testPreCancelledArchiveActionsNeverMutateOriginal() throws {
+        let archive = try archive(.zip, files: ["keep.txt": "keep"])
+        let original = try Data(contentsOf: archive)
+        let target = try directory("cancelled-actions")
+        let token = TransferCancellation(); token.cancel()
+        XCTAssertThrowsError(try ArchiveFileSystem.remove([archive.appendingPathComponent("keep.txt")], cancellation: token))
+        XCTAssertThrowsError(try FileActions.createDirectory(named: "new", in: archive, cancellation: token))
+        XCTAssertThrowsError(try ArchiveFileSystem.extract([archive.appendingPathComponent("keep.txt")], to: target, cancellation: token))
+        XCTAssertEqual(try Data(contentsOf: archive), original)
+        XCTAssertTrue(try fm.contentsOfDirectory(atPath: target.path).isEmpty)
+    }
+
     /// Minimal ustar fixtures allow intentionally invalid member paths and links
     /// without invoking a shell or depending on a third-party ZIP/TAR writer.
     private func rawTar(_ entries: [(path: String, contents: String, type: String, link: String)], mode: Int = 0o644) throws -> URL {

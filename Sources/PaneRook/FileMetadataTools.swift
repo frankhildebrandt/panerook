@@ -13,8 +13,8 @@ final class FileMetadataTools {
             alert.accessoryView = permissions
             self.present(alert) {
                 let (values, mask) = permissions.change
-                self.owner.runOperation("Rechte ändern …") {
-                    try FileMetadata.changePermissions(of: urls, values: values, mask: mask)
+                self.owner.runItemOperation("Rechte ändern", sources: urls) { url in
+                    try FileMetadata.changePermissions(of: [url], values: values, mask: mask)
                 }
             }
         }
@@ -37,8 +37,8 @@ final class FileMetadataTools {
                 let userName = user.stringValue
                 let groupName = group.stringValue
                 let change = permissions?.change
-                self.owner.runOperation("Eigentümer ändern …") {
-                    try FileMetadata.changeOwnership(of: urls, owner: userName, group: groupName,
+                self.owner.runItemOperation("Eigentümer ändern", sources: urls) { url in
+                    try FileMetadata.changeOwnership(of: [url], owner: userName, group: groupName,
                         permissionValues: change?.values, permissionMask: change?.mask ?? 0)
                 }
             }

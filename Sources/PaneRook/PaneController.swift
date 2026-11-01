@@ -56,6 +56,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var history: [URL] = []
     private let label: String
     private var loading = false
+    private var pendingTaskRefresh = false
     private(set) var sortKey = "name"
     private(set) var sortAscending = true
 
@@ -313,7 +314,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.selectRowIndexes(inverted, byExtendingSelection: false)
     }
 
-    func navigate(to url: URL, recordHistory: Bool = true, select: URL? = nil) {
+    func navigate(to url: URL, recordHistory: Bool = true, select: URL? = nil, preserveDirectorySizes: Bool = false) {
         if mode == .network { setMode(.listing) }
         generation += 1
         let request = generation
@@ -333,7 +334,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.directory = url
                     if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
                     self.panelized = false
-                    self.directorySizes = [:]
+                    if !preserveDirectorySizes { self.directorySizes = [:] }
                     self.allEntries = files
                     if url.path != "/" { self.allEntries.insert(.parent(of: url), at: 0) }
                     self.entries = LocalInspection.filter(self.allEntries, pattern: self.filterPattern)
@@ -356,8 +357,23 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.updateSummary()
                     self.onError?(error)
                 }
+                if self.pendingTaskRefresh {
+                    self.pendingTaskRefresh = false
+                    self.refreshAfterTask()
+                }
             }
         }
+    }
+
+    func canApplyTaskResult(in url: URL) -> Bool {
+        directory == url && !loading && !panelized && mode == .listing
+    }
+
+    /// A background completion must not replace search results or an in-flight navigation.
+    func refreshAfterTask() {
+        guard isViewLoaded, !panelized, mode == .listing || mode == .tree else { return }
+        guard !loading else { pendingTaskRefresh = true; return }
+        navigate(to: directory, recordHistory: false, preserveDirectorySizes: true)
     }
 
     func refresh(select: URL? = nil) {

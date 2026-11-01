@@ -9,9 +9,12 @@ final class ArchivePreviewStore: @unchecked Sendable {
     private var root: URL?
     private var cached: [String: URL] = [:]
 
-    func readableURL(for url: URL) throws -> URL {
+    func readableURL(for url: URL, cancellation: TransferCancellation = .init(),
+                     progress: @escaping (OperationProgress) -> Void = { _ in }) throws -> URL {
+        try cancellation.check()
         guard let location = ArchiveFileSystem.location(for: url), !location.memberPath.isEmpty else { return url }
         lock.lock(); defer { lock.unlock() }
+        try cancellation.check()
         let fm = FileManager.default
         let attributes = try fm.attributesOfItem(atPath: location.archiveURL.path)
         let key = [url.path, String((attributes[.modificationDate] as? Date)?.timeIntervalSinceReferenceDate ?? 0),
@@ -25,7 +28,7 @@ final class ArchivePreviewStore: @unchecked Sendable {
         let target = root!.appendingPathComponent(UUID().uuidString)
         try fm.createDirectory(at: target, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         do {
-            guard let copy = try ArchiveFileSystem.extract([url], to: target).first else {
+            guard let copy = try ArchiveFileSystem.extract([url], to: target, cancellation: cancellation, progress: progress).first else {
                 throw CocoaError(.fileReadUnknown)
             }
             // A viewer may still offer Save As; the archive itself is never an edit target.
