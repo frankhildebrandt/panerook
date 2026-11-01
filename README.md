@@ -143,12 +143,16 @@ Remote-Transfers unterstützen reguläre Dateien und Verzeichnisse, keine symbol
 
 ## Architektur
 
-- `Sources/PaneRook/`: App-Lifecycle, Menüs, Zweipanel-Controller, native Dateilisten, Inspektoren, Werkzeugfenster, Einstellungen und Remote-Browser.
-- `Sources/PaneRook/AppStyle.swift`: native Materialien, Rundungen und an die Systemdarstellung angepasste Leseflächen; ohne eigene Eventbehandlung.
-- `Sources/PaneRookCore/`: lokale Dateioperationen/Metadaten, Archiv-VFS über die macOS-Systembibliothek libarchive, Suche und Vergleich, Prozessausführung sowie FTP/SSH/SFTP-/Nextcloud-Transport, unabhängig von der Oberfläche.
-- `Tests/PaneRookCoreTests/`: isolierte Dateisystem-, Such-, Vergleichs-, Prozess- und Transporttests; ein SFTP-Test spricht den lokalen System-`sftp-server` direkt an. Netzwerkzugänge zu realen SSH-/FTP-/Nextcloud-Servern werden dadurch nicht geprüft.
+- `Sources/PaneRook/`: ausführbarer Einstieg.
+- `Sources/PaneRookApp/`: AppKit-Oberfläche, nach Features gegliedert; `Shell/` enthält Fensterkoordination und die Zusammenstellung der Features.
+- `Sources/PaneRookCore/`: lokale Dateioperationen, Archive, Metadaten, Suche, Vergleich und Shell-Ausführung.
+- `Sources/PaneRookTasks/`: UI-unabhängige Aufgaben-Queue und Fortschrittsmodelle.
+- `Sources/PaneRookRemote/`: Verbindungsarchiv, Transferregeln und separate FTP-, SSH-, SFTP- und Nextcloud-Anbieter.
+- `Sources/PaneRookPanels/`: testbarer Panelzustand mit Navigation, Verlauf, Filterung und Sortierung.
+- `Tests/`: eigene Tests für Core, Tasks, Remote, Panels und App-Integration, einschließlich automatischer Architekturgrenzen. Ein SFTP-Test verwendet den lokalen System-`sftp-server`; echte Remote-Zugänge werden dadurch nicht geprüft.
 - `Resources/Info.plist` und `scripts/build-app.sh`: lokales macOS-App-Bundle.
-- `scripts/generate-icon.swift`: reproduzierbares App-Icon (SVG, PNG und alle macOS-Icongrößen in `Resources/PaneRook.icns`); erneut erzeugen mit `swift scripts/generate-icon.swift`.
+- `scripts/generate-icon.swift`: reproduzierbares App-Icon in `Resources/` und `assets/`.
+- [Architektur, Schnittstellen und parallele Entwicklung](docs/architecture.md).
 - [MC-Untersuchung und Ausgangspunkt](docs/midnight-commander-reference.md).
 
 ## Grenzen und nächste Schritte

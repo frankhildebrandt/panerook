@@ -1,3 +1,4 @@
+import PaneRookTasks
 import Foundation
 import XCTest
 @testable import PaneRookCore

@@ -1,3 +1,4 @@
+import PaneRookApp
 import AppKit
 
 let application = NSApplication.shared
