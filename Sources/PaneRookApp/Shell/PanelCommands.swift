@@ -12,7 +12,7 @@ extension CommanderController {
                 enabled: { [weak self] in
                     guard let self else { return false }
                     return self.canUseMenus && (mode != .tree || !pane.isArchiveDirectory)
-                }, checked: { pane.mode == mode }
+                }, checked: { pane.remoteContent == nil && pane.mode == mode }
             ) { [weak self] in
                 guard let self else { return }
                 pane.setMode(mode)
@@ -26,7 +26,7 @@ extension CommanderController {
                 submenu: "Listenformat",
                 enabled: { [weak self] in
                     guard let self else { return false }
-                    return self.canUseMenus
+                    return self.canUseMenus && pane.remoteContent == nil
                 }, checked: { pane.isBriefListing == (index == 1) }
             ) { pane.setBriefListing(index == 1) }
         }
@@ -37,7 +37,7 @@ extension CommanderController {
                 submenu: "Sortierreihenfolge",
                 enabled: { [weak self] in
                     guard let self else { return false }
-                    return self.canUseMenus
+                    return self.canUseMenus && pane.remoteContent == nil
                 }, checked: { pane.sortKey == key }
             ) { pane.setSort(key: key, ascending: pane.sortAscending) }
         }
@@ -45,7 +45,7 @@ extension CommanderController {
             menu, "Umgekehrt", id: "\(menu.rawValue).sort.reverse", order: 24, group: 1, submenu: "Sortierreihenfolge",
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && pane.remoteContent == nil
             }, checked: { !pane.sortAscending }
         ) { pane.setSort(key: pane.sortKey, ascending: !pane.sortAscending) }
         registry.add(
