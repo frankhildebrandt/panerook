@@ -81,6 +81,19 @@ jobs:
           echo 'PANEROOK_NOTARY_PROFILE=panerook-notary' >> "$GITHUB_ENV"
           echo "PANEROOK_NOTARY_KEYCHAIN=$PANEROOK_SIGNING_KEYCHAIN" >> "$GITHUB_ENV"
           echo 'PANEROOK_SIGNING_TIMESTAMP=secure' >> "$GITHUB_ENV"
+      - name: Use TCP for Apple notarization ticket delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${PANEROOK_NOTARY_PROFILE:-}" ]]; then
+            # GitHub-hosted macOS runners can drop stapler's HTTP/3 connections.
+            # https://github.com/actions/runner-images/issues/14924
+            # Preserve the default rules and restrict UDP/443 on this disposable runner.
+            cp /etc/pf.conf "$RUNNER_TEMP/panerook-pf.conf"
+            printf '\nblock return out quick proto udp from any to any port 443\n' >> "$RUNNER_TEMP/panerook-pf.conf"
+            sudo pfctl -f "$RUNNER_TEMP/panerook-pf.conf"
+            sudo pfctl -E
+          fi
       - name: Package signed universal ZIP and DMG
         env:
           PANEROOK_SIGNING_TIMESTAMP: ${{ vars.PANEROOK_SIGNING_TIMESTAMP || 'none' }}
