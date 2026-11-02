@@ -6,9 +6,9 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhän
 
 ## Download
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.1.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.1.0)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.1.1](https://github.com/frankhildebrandt/panerook/releases/tag/v0.1.1)
 
-Das Release enthält einen Universal-Build für **Apple Silicon und Intel**, ab **macOS 14**. ZIP entpacken und `PaneRook.app` in den Programme-Ordner ziehen. Die App ist ad hoc signiert und nicht von Apple notarisiert; Hinweise zum ersten Start stehen im Release. Eine SHA-256-Prüfsumme liegt dem Download bei.
+Release **0.1.1** ist die erste mit **Apple Developer ID signierte und von Apple notarisierte Ausgabe**. Der Universal-Build unterstützt **Apple Silicon und Intel**, ab **macOS 14**. DMG öffnen und `PaneRook.app` auf die Verknüpfung zum Programme-Ordner ziehen. Alternativ das ZIP entpacken und die App in den Programme-Ordner verschieben. App und DMG sind signiert und notarisiert; beide Downloads haben eine SHA-256-Prüfsumme.
 
 ## Starten
 
@@ -28,7 +28,7 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 ./scripts/package-release.sh
 ```
 
-Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.0`) muss mit `Resources/Info.plist` übereinstimmen.
+Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.1`) muss mit `Resources/Info.plist` übereinstimmen.
 
 Für Release-Builds ist ein **Developer ID Application**-Zertifikat für **Frank Hildebrandt (4R24354Z88)** eingerichtet. Der zugehörige private Schlüssel und der eigene Schlüsselbund liegen verschlüsselt außerhalb des Repositorys unter `~/Library/Application Support/PaneRook/Signing/DeveloperID/`. Für einen lokalen Build mit dieser Identität:
 
@@ -69,7 +69,7 @@ npm run build
 
 `astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
 
-Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Das bereits veröffentlichte Release 0.1.0 bleibt beim oben beschriebenen ad-hoc-signierten ZIP.
+Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Release 0.1.1 ist die erste signierte und notarisierte Ausgabe mit DMG und ZIP.
 
 ## Funktionsstand
 

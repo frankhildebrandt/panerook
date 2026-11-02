@@ -50,17 +50,17 @@ Dieselben Variablen gelten für `./scripts/build-app.sh release`. Ohne `PANEROOK
 - `PaneRook-<Version>-macOS-universal.zip` mit dem App-Bundle;
 - jeweils eine passende Datei mit Endung `.sha256`.
 
-Die Versionsnummer stammt aus `Resources/Info.plist`. Ein optionales Argument wie `./scripts/package-release.sh v0.1.0` muss dazu passen. Die ZIP-Datei enthält die signierte App; das DMG trägt zusätzlich eine eigene Signatur.
+Die Versionsnummer stammt aus `Resources/Info.plist`. Ein optionales Argument wie `./scripts/package-release.sh v0.1.1` muss dazu passen. Die ZIP-Datei enthält die signierte App; das DMG trägt zusätzlich eine eigene Signatur.
 
 Signatur und Inhalt lassen sich mit den macOS-Werkzeugen prüfen:
 
 ```sh
 codesign --verify --strict --all-architectures build/PaneRook.app
 codesign --display --verbose=4 build/PaneRook.app
-hdiutil verify build/release/PaneRook-0.1.0-macOS-universal.dmg
+hdiutil verify build/release/PaneRook-0.1.1-macOS-universal.dmg
 cd build/release
-shasum -a 256 -c PaneRook-0.1.0-macOS-universal.zip.sha256
-shasum -a 256 -c PaneRook-0.1.0-macOS-universal.dmg.sha256
+shasum -a 256 -c PaneRook-0.1.1-macOS-universal.zip.sha256
+shasum -a 256 -c PaneRook-0.1.1-macOS-universal.dmg.sha256
 ```
 
 ## Apple-Notarisierung
@@ -80,7 +80,7 @@ Nach einem erfolgreich notarisierten Build lassen sich die angehefteten Tickets 
 
 ```sh
 xcrun stapler validate build/PaneRook.app
-xcrun stapler validate build/release/PaneRook-0.1.0-macOS-universal.dmg
+xcrun stapler validate build/release/PaneRook-0.1.1-macOS-universal.dmg
 spctl --assess --type execute --verbose=4 build/PaneRook.app
 ```
 
@@ -112,7 +112,7 @@ Der Workflow `.github/workflows/release.yml` testet zunächst die App und import
 
 **Actions → App release → Run workflow** erstellt ZIP, DMG und Prüfsummen als Artefakt `PaneRook-macOS-universal`. Ein Tag `v<Version>` veröffentlicht diese Dateien als GitHub-Release. Vor dem Tag müssen die Versionsangaben im App-Bundle und gegebenenfalls `docs/releases/<Version>.md` aktualisiert sein.
 
-Das bestehende öffentliche Release `v0.1.0` enthält weiterhin das ursprünglich veröffentlichte ad-hoc-signierte ZIP. Die neue Konfiguration verändert bereits veröffentlichte Dateien nicht rückwirkend.
+Release `v0.1.1` ist das erste mit Apple Developer ID signierte und von Apple notarisierte Release mit Universal-DMG und Universal-ZIP. Das frühere Release `v0.1.0` enthält das ursprünglich veröffentlichte ad-hoc-signierte ZIP.
 
 ## Optional: persönliche Signatur ohne Apple
 
