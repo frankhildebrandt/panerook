@@ -105,6 +105,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
             pane.onError = { [weak self] in self?.showError($0) }
             pane.onOpenSelection = { [weak self] in self?.openSelection() }
             pane.onDirectoryChanged = { [weak self] in self?.saveDirectories() }
+            pane.onRepositoryVisited = { GitRepositoryCatalog.shared.record($0) }
             pane.onSelectionChanged = { [weak self, weak pane] url in
                 guard let self, let pane else { return }
                 (pane === self.left ? self.right : self.left).showInspection(of: url)

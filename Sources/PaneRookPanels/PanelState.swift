@@ -18,6 +18,7 @@ public struct PanelState {
     public var allEntries: [FileEntry] = []
     public var entries: [FileEntry] = []
     public var directorySizes: [URL: Int64] = [:]
+    public private(set) var gitStatuses: [URL: GitRepositoryStatus] = [:]
     public var showHidden = false
     public var sortKey = "name"
     public var sortAscending = true
@@ -51,6 +52,7 @@ public struct PanelState {
         if recordHistory && directory != url { history.append(directory) }
         directory = url
         panelized = false
+        gitStatuses = [:]
         if !preserveDirectorySizes { directorySizes = [:] }
         allEntries = files
         if url.path != "/" { allEntries.insert(.parent(of: url), at: 0) }
@@ -66,8 +68,17 @@ public struct PanelState {
         generation += 1
         loading = false
         panelized = true
+        gitStatuses = [:]
         allEntries = [.parent(of: directory)] + files
         filterAndSort()
+    }
+    /// Git inspection follows a listing generation, independently of filtering or sorting.
+    @discardableResult
+    public mutating func applyGitStatus(_ status: GitRepositoryStatus, for url: URL, request: Int) -> Bool {
+        guard request == generation, !loading, !panelized, !isArchiveDirectory,
+              allEntries.contains(where: { $0.url == url && $0.isDirectory && !$0.isParent }) else { return false }
+        gitStatuses[url] = status
+        return true
     }
     public func canApplyTaskResult(in url: URL) -> Bool {
         directory == url && !loading && !panelized && mode == .listing

@@ -49,7 +49,9 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
     private unowned let pane: any PanelAccess
     private let cache: FavoriteDestinationCache
     private let store = PanelFavoriteStore()
+    private let repositories: GitRepositoryCatalog
     private let menu = NSMenu(title: "Favoriten")
+    private weak var gitMenu: NSMenu?
     private var menus: [NSMenu] = []
     private var tracking = Set<ObjectIdentifier>()
     private var keyMonitor: Any?
@@ -58,8 +60,10 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         !owner.isPerformingOperation && owner.presentationWindow?.attachedSheet == nil
     }
 
-    init(owner: any FavoritesHost, pane: any PanelAccess, cache: FavoriteDestinationCache) {
+    init(owner: any FavoritesHost, pane: any PanelAccess, cache: FavoriteDestinationCache,
+         repositories: GitRepositoryCatalog = .shared) {
         self.owner = owner; self.pane = pane; self.cache = cache
+        self.repositories = repositories
         super.init()
         menu.delegate = self
         pane.installFavoritesMenu(menu)
@@ -76,7 +80,8 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
     }
     deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu === self.menu { rebuild(); cache.refresh() }
+        if menu === self.menu { rebuild(); cache.refresh(); repositories.refresh() }
+        else if menu === gitMenu { rebuildGitRepositories(in: menu) }
     }
     func menuWillOpen(_ menu: NSMenu) { tracking.insert(ObjectIdentifier(menu)); owner.activate(pane) }
     func menuDidClose(_ menu: NSMenu) { tracking.remove(ObjectIdentifier(menu)) }
@@ -144,6 +149,9 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
             guard let self else { return }; self.pane.setMode(.network); self.owner.activate(self.pane)
         }
         menu.addItem(.separator())
+        let git = submenu("Git-Repositories", in: menu, symbol: "arrow.triangle.branch")
+        gitMenu = git
+        rebuildGitRepositories(in: git)
         let favorites = submenu("Eigene Favoriten", in: menu, symbol: "star")
         do {
             let folders = try store.folders()
@@ -183,6 +191,56 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
             if store.overriddenLocation(kind) != nil {
                 add("Automatisch erkennen", to: options) { [weak self] in self?.store.clearOverrideLocation(kind) }
             }
+        }
+    }
+
+    private func rebuildGitRepositories(in menu: NSMenu) {
+        let previousGroups = menu.items.compactMap(\.submenu)
+        menus.removeAll { candidate in previousGroups.contains { $0 === candidate } }
+        menu.removeAllItems()
+        let saved = repositories.repositories()
+        let current = pane.mode == .network || pane.isArchiveDirectory ? nil : pane.gitRepository
+        if let current {
+            label("Worktrees des aktuellen Repositories", in: menu)
+            let worktrees = saved.first { $0.commonDirectory == current.commonDirectory }?.worktrees ?? current.worktrees
+            addWorktrees(worktrees, current: current, to: menu)
+            menu.addItem(.separator())
+        }
+        if saved.isEmpty {
+            label(repositories.errorMessage ?? "Noch keine Git-Repositories besucht", in: menu)
+        } else {
+            label("Besuchte Repositories", in: menu)
+            for repository in saved {
+                let name = repository.worktrees.first?.url.lastPathComponent ?? repository.commonDirectory.lastPathComponent
+                let group = submenu(name, in: menu, symbol: "folder")
+                menu.items.last?.toolTip = repository.commonDirectory.path
+                addWorktrees(repository.worktrees, current: current, to: group)
+                group.addItem(.separator())
+                add("Aus Liste entfernen", to: group) { [weak self] in
+                    guard let self else { return }
+                    do { try self.repositories.remove(repository) }
+                    catch { self.owner.showError(error) }
+                }
+            }
+        }
+        menu.addItem(.separator())
+        add(repositories.refreshing ? "Worktrees werden aktualisiert …" : "Worktrees aktualisieren", to: menu,
+            symbol: "arrow.clockwise", enabled: { [weak self] in self?.repositories.refreshing == false }) { [weak self] in
+            guard let self else { return }
+            self.repositories.refresh()
+            self.pane.refresh()
+        }
+    }
+
+    private func addWorktrees(_ worktrees: [GitWorktree], current: GitRepositoryInfo?, to menu: NSMenu) {
+        let workingTrees = worktrees.filter { !$0.isBare }
+        if workingTrees.isEmpty { label("Keine Worktrees verfügbar", in: menu) }
+        for worktree in workingTrees {
+            let suffix = worktree.isPrunable ? " · nicht erreichbar" : (worktree.isLocked ? " · gesperrt" : "")
+            let title = "\(worktree.branch ?? "Detached HEAD") · \(worktree.url.lastPathComponent)\(suffix)"
+            let item = add(title, to: menu, symbol: "arrow.triangle.branch", tooltip: worktree.url.path,
+                enabled: { !worktree.isPrunable }) { [weak self] in self?.open(worktree.url) }
+            item.state = current?.worktreeRoot == worktree.url ? .on : .off
         }
     }
     private func folderChooser(title: String, start: URL?, completion: @escaping (URL) -> Void) {
