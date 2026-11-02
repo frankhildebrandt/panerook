@@ -6,9 +6,9 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhän
 
 ## Download
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.1.1](https://github.com/frankhildebrandt/panerook/releases/tag/v0.1.1)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.2.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.2.0)
 
-Release **0.1.1** ist die erste mit **Apple Developer ID signierte und von Apple notarisierte Ausgabe**. Der Universal-Build unterstützt **Apple Silicon und Intel**, ab **macOS 14**. DMG öffnen und `PaneRook.app` auf die Verknüpfung zum Programme-Ordner ziehen. Alternativ das ZIP entpacken und die App in den Programme-Ordner verschieben. App und DMG sind signiert und notarisiert; beide Downloads haben eine SHA-256-Prüfsumme.
+Release **0.2.0** bringt Git-Werkzeuge mit Side-by-Side-Diffs, Repository- und Worktree-Favoriten sowie automatische Update-Prüfungen über Sparkle. Der mit **Apple Developer ID signierte und von Apple notarisierte Universal-Build** unterstützt **Apple Silicon und Intel**, ab **macOS 14**. DMG öffnen und `PaneRook.app` auf die Verknüpfung zum Programme-Ordner ziehen. Alternativ das ZIP entpacken und die App in den Programme-Ordner verschieben. App und DMG sind signiert und notarisiert; beide Downloads haben eine SHA-256-Prüfsumme.
 
 ## Starten
 
@@ -41,7 +41,7 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 ./scripts/package-release.sh
 ```
 
-Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.1`) muss mit `Resources/Info.plist` übereinstimmen.
+Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.2.0`) muss mit `Resources/Info.plist` übereinstimmen.
 
 Für das Paketieren müssen zusätzlich `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` gesetzt sein. Die einmalige Einrichtung steht unter [Update-Signierung](docs/signing.md#sparkle-update-signierung). Das Skript erstellt außerdem `appcast.xml` für GitHub Releases und prüft, dass Update-Signatur und eingebetteter öffentlicher Schlüssel zusammenpassen.
 
@@ -94,7 +94,7 @@ Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runn
 
 Der Feed liegt als `appcast.xml` beim [neuesten stabilen GitHub Release](https://github.com/frankhildebrandt/panerook/releases/latest). Downloads laufen über HTTPS; Sparkle prüft die Ed25519-Signatur des Update-ZIPs vor dem Entpacken. Vorabversionen werden über diesen Feed nicht angeboten. Die App sollte im Programme-Ordner liegen, nicht im geöffneten DMG.
 
-Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` einzurichten. Jede neue Ausgabe braucht eine höhere `CFBundleVersion` sowie eine passende `CFBundleShortVersionString` in `Resources/Info.plist`. Bestehende Installationen von **0.1.1** müssen die erste Ausgabe mit Updater einmal manuell installieren; anschließend sind Updates in der App möglich.
+Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` einzurichten. Jede neue Ausgabe braucht eine höhere `CFBundleVersion` sowie eine passende `CFBundleShortVersionString` in `Resources/Info.plist`. Bestehende Installationen von **0.1.1** müssen **0.2.0** als erste Ausgabe mit Updater einmal manuell installieren; anschließend sind Updates in der App möglich.
 
 ## Funktionsstand
 
