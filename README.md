@@ -100,6 +100,8 @@ Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY
 
 PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Verbindungen und Hintergrundaufgaben. Die [Nutzerdokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/) erklärt Einstieg und Bedienung; ausführliche zusätzliche Hinweise stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
 
+Über **Links/Rechts → Git-Diff und Verlauf** oder **⌘⌥G** wird ein Panel zum Git-Viewer. Commit-Auswahl und Älter/Neuer navigieren durch Datei- oder Repository-Versionen, mit Diff, damaligem Dateiinhalt und aktuellen Arbeitskopie-/Staged-Änderungen. **Dateiliste** kehrt zur bisherigen Auswahl zurück.
+
 ## Architektur
 
 - `Sources/PaneRook/`: ausführbarer Einstieg.

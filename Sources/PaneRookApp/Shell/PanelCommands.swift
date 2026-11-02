@@ -5,6 +5,7 @@ extension CommanderController {
     func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: PaneController) {
         for (index, pair) in [
             ("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree), ("Netzwerk", .network),
+            ("Git-Diff und Verlauf", .gitHistory),
         ].enumerated() {
             let (title, mode) = pair
             registry.add(
@@ -13,6 +14,7 @@ extension CommanderController {
                     guard let self else { return false }
                     return self.canUseMenus && (pane.remoteContent == nil || mode == .listing)
                         && (mode != .tree || pane.remoteContent != nil || !pane.isArchiveDirectory)
+                        && (mode != .gitHistory || !pane.isArchiveDirectory)
                 }, checked: { pane.remoteContent != nil ? mode == .listing : pane.mode == mode }
             ) { [weak self] in
                 guard let self else { return }

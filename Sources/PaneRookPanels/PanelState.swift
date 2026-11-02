@@ -1,7 +1,7 @@
 import Foundation
 import PaneRookCore
 
-public enum PanelMode { case listing, quickView, info, tree, network }
+public enum PanelMode { case listing, quickView, info, tree, network, gitHistory }
 
 /// Value state for one panel. AppKit owns focus and rendering; this type owns listings
 /// and navigation generations so a late worker cannot replace newer navigation/results.
