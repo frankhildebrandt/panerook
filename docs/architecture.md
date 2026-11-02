@@ -17,7 +17,9 @@ Sparkle ist als feste SwiftPM-Paketversion eingebunden und bleibt auf die App-Sc
 
 ## Zuständigkeiten in der App
 
-`Shell/FeatureComposition.swift` stellt die Features zusammen und erfüllt ihre Host-Schnittstellen. Der Commander verwaltet Fensterlayout, Panelkoordination und native Responder-Integration. `FileOperations` besitzt Dateiaktionen und deren Dialoge; `Preview` besitzt Quick Look und die Vorbereitung von Archivkopien. `Inspection`, `Remote`, `Workflow`, `Preferences` und `Favorites` besitzen jeweils ihre Abläufe und UI.
+`Shell/FeatureComposition.swift` stellt die Features zusammen und erfüllt ihre Host-Schnittstellen. Der Commander verwaltet Fensterlayout, Panelkoordination und native Responder-Integration. `FileOperations` besitzt Dateiaktionen und deren Dialoge; `Preview` besitzt Quick Look und die Vorbereitung von Archivkopien. `Inspection`, `Remote`, `Workflow`, `Preferences`, `Favorites` und `Git` besitzen jeweils ihre Abläufe und UI.
+
+`PaneRookCore/GitRepository` kapselt Repository-Erkennung, Status, Branches, Historie, Stashes und typisierte Git-Aktionen. Es startet `/usr/bin/git` mit getrennten Argumenten, literalen Pfadspezifikationen, begrenzter Ausgabe und Zeitlimits. Die NUL-getrennte Statusausgabe erhält Sonderzeichen in Dateinamen. `PaneRookPanels/GitFiltering` kombiniert Git-Filter mit Panelzustand und lokalen Watched-Markierungen. Die Panels laden Git-Zustand asynchron und verwerfen überholte Ergebnisse; `Git/GitWorkspace` bindet sein eigenes Fenster an ein erfasstes Repository, unabhängig von späteren Panelwechseln.
 
 Die Host-Protokolle stehen beim jeweiligen Verbraucher. Gemeinsame Verträge für Präsentation, Fehler, Panelpaare und Aufgaben stehen in `SharedUI/FeatureHosting.swift`. Ein Feature bekommt nur seinen Host-Vertrag, keinen konkreten Commander. `PanelAccess` bietet fachliche Paneloperationen und lesbaren Zustand, ohne Tabelle oder Pfadfeld freizugeben. Nur `Panels` und `Shell` dürfen den konkreten Panelcontroller kennen.
 

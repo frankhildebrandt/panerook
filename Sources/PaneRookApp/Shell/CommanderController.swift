@@ -30,6 +30,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var localTools = LocalTools(owner: self)
     lazy var metadata = FileMetadataTools(owner: self)
     lazy var remote = RemoteTools(owner: self)
+    lazy var git = GitTools(owner: self)
     private let favoriteDestinations = FavoriteDestinationCache()
     private var favoritesMenus: [PanelFavoritesController] = []
     var onShowMenu: (() -> Void)?
@@ -105,6 +106,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
             pane.onError = { [weak self] in self?.showError($0) }
             pane.onOpenSelection = { [weak self] in self?.openSelection() }
             pane.onDirectoryChanged = { [weak self] in self?.saveDirectories() }
+            pane.onOpenGit = { [weak self, weak pane] in
+                guard let self, let pane else { return }
+                self.git.open(pane: pane)
+            }
             pane.onSelectionChanged = { [weak self, weak pane] url in
                 guard let self, let pane else { return }
                 (pane === self.left ? self.right : self.left).showInspection(of: url)
