@@ -4,9 +4,15 @@
 
 Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, ohne zusätzliche Paketabhängigkeiten oder eingebettetes Terminal.
 
+## Download
+
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.1.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.1.0)
+
+Das Release enthält einen Universal-Build für **Apple Silicon und Intel**, ab **macOS 14**. ZIP entpacken und `PaneRook.app` in den Programme-Ordner ziehen. Die App ist ad hoc signiert und nicht von Apple notarisiert; Hinweise zum ersten Start stehen im Release. Eine SHA-256-Prüfsumme liegt dem Download bei.
+
 ## Starten
 
-Voraussetzungen: macOS 14 oder neuer und Xcode mit ausgewählter Command Line Toolchain.
+Voraussetzungen: macOS 14 oder neuer und Xcode 26 oder neuer mit ausgewählter Command Line Toolchain.
 
 ```sh
 ./scripts/build-app.sh
@@ -14,7 +20,15 @@ open build/PaneRook.app
 ```
 
 Für einen optimierten Build: `./scripts/build-app.sh release`.
-Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es lokal ad hoc. Distribution und Notarisierung sind noch nicht eingerichtet.
+Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es lokal ad hoc.
+
+Für ein verteilbares Universal-ZIP inklusive Prüfsumme:
+
+```sh
+./scripts/package-release.sh
+```
+
+Das Paket liegt unter `build/release/`. Das Skript baut beide Architekturen und prüft die Signatur. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.0`) muss mit `Resources/Info.plist` übereinstimmen. Developer-ID-Signierung und Notarisierung sind noch nicht eingerichtet.
 
 ```sh
 swift test
@@ -26,6 +40,20 @@ In einer Umgebung, die verschachtelte Build-Sandboxen verhindert:
 PANEROOK_DISABLE_BUILD_SANDBOX=1 ./scripts/build-app.sh
 CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache" swift test --disable-sandbox --cache-path "$PWD/.build/cache"
 ```
+
+## Projektseite und Releases
+
+Die statische Website liegt unter `website/` und wird mit Astro gebaut:
+
+```sh
+cd website
+npm ci
+npm run build
+```
+
+`astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
+
+Der Workflow `.github/workflows/release.yml` testet und paketiert die App auf einem macOS-Runner. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-ZIP und SHA-256-Prüfsumme; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung ausführen.
 
 ## Funktionsstand
 

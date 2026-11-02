@@ -2,14 +2,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 configuration="${1:-debug}"
-if [[ "$configuration" != debug && "$configuration" != release ]]; then
-  echo "Usage: $0 [debug|release]" >&2
+architecture="${2:-native}"
+if [[ "$configuration" != debug && "$configuration" != release ]] ||
+   [[ "$architecture" != native && "$architecture" != universal ]] || [[ $# -gt 2 ]]; then
+  echo "Usage: $0 [debug|release] [native|universal]" >&2
   exit 1
 fi
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}"
 swift_options=(--cache-path "$PWD/.build/cache")
 if [[ "${PANEROOK_DISABLE_BUILD_SANDBOX:-0}" == 1 ]]; then
   swift_options+=(--disable-sandbox)
+fi
+if [[ "$architecture" == universal ]]; then
+  swift_options+=(--arch arm64 --arch x86_64)
 fi
 swift build "${swift_options[@]}" -c "$configuration"
 binary_path="$(swift build "${swift_options[@]}" -c "$configuration" --show-bin-path)"
@@ -21,7 +26,12 @@ cp Resources/Info.plist "$bundle/Contents/.Info.plist.new"
 mv -f "$bundle/Contents/.Info.plist.new" "$bundle/Contents/Info.plist"
 cp Resources/PaneRook.icns "$bundle/Contents/Resources/.PaneRook.icns.new"
 mv -f "$bundle/Contents/Resources/.PaneRook.icns.new" "$bundle/Contents/Resources/PaneRook.icns"
+if [[ "$architecture" == universal ]]; then
+  /usr/bin/lipo "$bundle/Contents/MacOS/PaneRook" -verify_arch arm64
+  /usr/bin/lipo "$bundle/Contents/MacOS/PaneRook" -verify_arch x86_64
+fi
 # Mark the rebuilt application as changed so its bundle icon can be refreshed.
 touch "$bundle"
 /usr/bin/codesign --force --sign - "$bundle"
+/usr/bin/codesign --verify --strict "$bundle"
 echo "$bundle"

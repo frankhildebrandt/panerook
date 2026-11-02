@@ -16,7 +16,10 @@ enum AppStyle {
             glass.style = .regular
             glass.cornerRadius = cornerRadius
             glass.contentView = content
+            // Xcode 27 adds this SDK property; keep builds with Xcode 26 working.
+            #if compiler(>=6.4)
             if #available(macOS 27.0, *) { glass.effectIsInteractive = true }
+            #endif
             return glass
         }
         let effect = background(material: .headerView)
