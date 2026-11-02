@@ -11,10 +11,6 @@ extension RemoteTools {
             .command, "Verbindungsarchiv …", id: "remote.bookmarks", order: 140, group: 1, key: "k",
             enabled: { self.owner.canUseMenus }
         ) { self.showArchive(pane: self.owner.activePane) }
-        registry.add(
-            .options, "Virtuelles Dateisystem …", id: "remote.preferences", order: 80, group: 0,
-            enabled: { self.owner.canUseMenus }
-        ) { self.configure() }
     }
 }
 

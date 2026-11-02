@@ -3,7 +3,7 @@ import AppKit
 /// Presentation only. Controls retain their targets, key equivalents and responder behavior.
 enum AppStyle {
     static func background(material: NSVisualEffectView.Material = .underWindowBackground) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+        let view = ThemedVisualEffectView()
         view.material = material
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
@@ -53,9 +53,51 @@ enum AppStyle {
     }
 }
 
+/// Tints native materials without interfering with their content or hit testing.
+private final class ThemeTintView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private final class ThemedVisualEffectView: NSVisualEffectView {
+    private let tint = ThemeTintView()
+    private var themeObserver: NSObjectProtocol?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        tint.wantsLayer = true
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(tint)
+        NSLayoutConstraint.activate([
+            tint.leadingAnchor.constraint(equalTo: leadingAnchor),
+            tint.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tint.topAnchor.constraint(equalTo: topAnchor),
+            tint.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        themeObserver = NotificationCenter.default.addObserver(forName: ThemeManager.didChange, object: nil, queue: .main) { [weak self] _ in
+            self?.updateTint()
+        }
+        updateTint()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
+    deinit { if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) } }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateTint()
+    }
+
+    private func updateTint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            tint.layer?.backgroundColor = (ThemeManager.theme == .paneRook ? NSColor.clear : ThemeManager.accentColor.withAlphaComponent(0.055)).cgColor
+        }
+    }
+}
+
 /// An opaque reading surface; system colors follow appearance and increased contrast.
 final class PaneSurface: NSView {
     var isActive = false { didSet { updateColors() } }
+    private var themeObserver: NSObjectProtocol?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -63,18 +105,22 @@ final class PaneSurface: NSView {
         layer?.cornerRadius = 6
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
+        themeObserver = NotificationCenter.default.addObserver(forName: ThemeManager.didChange, object: nil, queue: .main) { [weak self] _ in
+            self?.updateColors()
+        }
         updateColors()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
+    deinit { if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) } }
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateColors()
     }
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+            layer?.backgroundColor = ThemeManager.surfaceColor.cgColor
             layer?.borderWidth = isActive ? 1 : 0.5
-            layer?.borderColor = (isActive ? NSColor.controlAccentColor.withAlphaComponent(0.4) : .separatorColor).cgColor
+            layer?.borderColor = (isActive ? ThemeManager.accentColor.withAlphaComponent(0.65) : .separatorColor).cgColor
         }
     }
 }

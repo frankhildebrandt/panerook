@@ -62,7 +62,7 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(registry.commands(in: .command).count, 31)
         XCTAssertNotNil(registry["git.workspace"])
         XCTAssertNotNil(registry["git.initialize"])
-        XCTAssertEqual(registry.commands(in: .options).count, 10)
+        XCTAssertEqual(registry.commands(in: .options).count, 3)
         XCTAssertEqual(registry.commands(in: .left).count, registry.commands(in: .right).count)
         XCTAssertEqual(Set(registry.commands.map(\.id)).count, registry.commands.count)
     }

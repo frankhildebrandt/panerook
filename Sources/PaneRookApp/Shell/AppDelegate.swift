@@ -38,6 +38,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if !window.setFrameUsingName("PaneRook.MainWindow") { window.center() }
         window.setFrameAutosaveName("PaneRook.MainWindow")
         updater = AppUpdater(presentationWindow: { [weak self] in self?.window })
+        commander.preferences.makeUpdateSettingsView = { [weak self] in
+            self?.updater.makeSettingsView() ?? NSView()
+        }
         menus = CommanderMenus(commander: commander, updater: updater)
         menus.install()
         dialogKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
