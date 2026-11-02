@@ -41,6 +41,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let tree = PanelDirectoryTree()
     private let network = NetworkBrowserView()
     private var state: PanelState
+    private let gitStatusQueue = DispatchQueue(label: "app.panerook.panel.git-status", qos: .utility)
+    private var gitStatusReader: GitStatusReader?
+    private let repositoryQueue = DispatchQueue(label: "app.panerook.panel.git-repository", qos: .utility)
+    private var repositoryReader: GitRepositoryReader?
+    private(set) var gitRepository: GitRepositoryInfo?
     private var generation: Int { state.generation }
     var allEntries: [FileEntry] { get { state.allEntries } set { state.allEntries = newValue } }
     private var panelized: Bool { state.panelized }
@@ -65,6 +70,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var onError: ((Error) -> Void)?
     var onOpenSelection: (() -> Void)?
     var onDirectoryChanged: (() -> Void)?
+    var onRepositoryVisited: ((GitRepositoryInfo) -> Void)?
     var onOpenGit: (() -> Void)?
     var onSelectionChanged: ((URL?) -> Void)?
     var showHidden: Bool { get { state.showHidden } set { state.showHidden = newValue } }
@@ -82,7 +88,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
-    deinit { if let watchObserver { NotificationCenter.default.removeObserver(watchObserver) } }
+    deinit {
+        gitStatusReader?.cancel()
+        repositoryReader?.cancel()
+        if let watchObserver { NotificationCenter.default.removeObserver(watchObserver) }
+    }
 
     override func loadView() {
         view = NSView()
@@ -272,6 +282,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func panelize(_ urls: [URL]) {
         _ = view
+        gitStatusReader?.cancel()
+        repositoryReader?.cancel()
+        gitRepository = nil
         var seen = Set<URL>()
         let files = urls.filter { $0.isFileURL && seen.insert($0.standardizedFileURL).inserted }.compactMap { try? LocalInspection.entry(at: $0) }
         state.showResults(files)
@@ -349,6 +362,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let oldDirectory = directory
         let preserved = Set(selectedFiles)
         let hidden = showHidden
+        gitStatusReader?.cancel()
+        repositoryReader?.cancel()
         let request = state.beginNavigation()
         gitRequest += 1
         summary.stringValue = "Ordner wird gelesen …"
@@ -360,6 +375,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 case .success(let files):
                     guard self.state.completeNavigation(request, to: url, files: files,
                         recordHistory: recordHistory, preserveDirectorySizes: preserveDirectorySizes) else { return }
+                    self.gitRepository = nil
                     if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
                     self.pathField.stringValue = url.path
                     self.table.reloadData()
@@ -376,15 +392,53 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     if self.mode == .tree { self.tree.setRoot(url, showHidden: self.showHidden) }
                     self.onDirectoryChanged?()
                     self.onSelectionChanged?(self.selectedFiles.first)
+                    self.loadGitStatuses(request: request)
+                    self.loadGitRepository(request: request)
                 case .failure(let error):
                     guard self.state.failNavigation(request) else { return }
                     self.pathField.stringValue = self.directory.path
                     self.updateSummary()
                     self.onError?(error)
+                    self.loadGitStatuses(request: request)
+                    self.loadGitRepository(request: request)
                 }
                 if self.pendingTaskRefresh {
                     self.pendingTaskRefresh = false
                     self.refreshAfterTask()
+                }
+            }
+        }
+    }
+
+    private func loadGitRepository(request: Int) {
+        guard generation == request, !panelized, !isArchiveDirectory else { return }
+        let reader = GitRepositoryReader()
+        repositoryReader = reader
+        let directory = self.directory
+        repositoryQueue.async { [weak self] in
+            let repository = reader.repository(containing: directory)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == request, !self.panelized, !reader.isCancelled else { return }
+                self.gitRepository = repository
+                if let repository { self.onRepositoryVisited?(repository) }
+            }
+        }
+    }
+
+    private func loadGitStatuses(request: Int) {
+        guard generation == request, !panelized, !isArchiveDirectory else { return }
+        gitStatusReader?.cancel()
+        let reader = GitStatusReader()
+        gitStatusReader = reader
+        let folders = allEntries.filter { $0.isDirectory && !$0.isParent }
+        gitStatusQueue.async { [weak self] in
+            for folder in folders {
+                guard !reader.isCancelled else { return }
+                guard let status = reader.status(for: folder.url) else { continue }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.state.applyGitStatus(status, for: folder.url, request: request),
+                          let row = self.entries.firstIndex(where: { $0.url == folder.url }) else { return }
+                    self.table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
                 }
             }
         }
@@ -462,6 +516,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         cell.addSubview(text)
         cell.textField = text
         var leading: CGFloat = 2
+        var trailing = cell.trailingAnchor
+        var trailingInset: CGFloat = -4
         if id.rawValue == "name" {
             if iconsVisible {
             let image = NSImageView()
@@ -486,6 +542,22 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             text.font = .systemFont(ofSize: 12, weight: entry.isDirectory ? .medium : .regular)
             if let rule = highlights.first(where: { LocalInspection.matches(entry.name, pattern: $0.pattern) }) { text.textColor = rule.color }
             if panelized && !entry.isParent { cell.toolTip = entry.url.path }
+            if let status = state.gitStatuses[entry.url] {
+                let badge = GitStatusBadge(status: status)
+                text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                badge.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(badge)
+                NSLayoutConstraint.activate([
+                    badge.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                    badge.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    badge.widthAnchor.constraint(lessThanOrEqualTo: cell.widthAnchor, multiplier: 0.5),
+                    badge.widthAnchor.constraint(lessThanOrEqualToConstant: 170)
+                ])
+                trailing = badge.leadingAnchor
+                trailingInset = -8
+                cell.toolTip = GitStatusPresentation(status: status).detail
+                text.setAccessibilityLabel(text.stringValue + ", " + GitStatusPresentation(status: status).detail)
+            }
         } else if id.rawValue == "git" {
             text.stringValue = state.gitSnapshot.flatMap {
                 GitPanelPaths.statusLabel(for: entry, snapshot: $0, watchedPaths: state.watchedPaths)
@@ -505,7 +577,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             text.textColor = .secondaryLabelColor
             text.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         }
-        NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: leading), text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4), text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+        NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: leading), text.trailingAnchor.constraint(equalTo: trailing, constant: trailingInset), text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
         return cell
     }
     private static let dateFormatter: DateFormatter = {

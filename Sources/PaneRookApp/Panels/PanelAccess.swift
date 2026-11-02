@@ -7,6 +7,7 @@ protocol PanelAccess: AnyObject {
     var directory: URL { get }
     var mode: PanelMode { get }
     var isArchiveDirectory: Bool { get }
+    var gitRepository: GitRepositoryInfo? { get }
     var entries: [FileEntry] { get }
     var selectedEntries: [FileEntry] { get }
     var selectedFiles: [URL] { get }

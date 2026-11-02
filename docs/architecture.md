@@ -47,6 +47,8 @@ Rekursion, Kollisionsprüfung und temporäre Downloads mit anschließender Verö
 
 `PanelState` ist ein Werttyp ohne AppKit. Jede Navigation bekommt eine Generation. Ergebnisse älterer Generationen werden verworfen; die Übernahme von Suchergebnissen macht offene Navigation ungültig. Fehlgeschlagene Navigation ersetzt weder Verzeichnis noch Verlauf.
 
+Die Git-Erkennung läuft unabhängig von der Dateiliste auf Hintergrundworkern. `GitRepositoryReader` ermittelt das umgebende Repository und dessen registrierte Worktrees; das kanonische gemeinsame Git-Verzeichnis ist die Repository-Identität. `GitReadOnlyProcess` kapselt begrenzte, abbrechbare Git-Leseaufrufe für diese Erkennung und die Ordnerstatus-Anzeige. Der Panelcontroller übernimmt Ergebnisse nur für die aktuelle Navigationsgeneration. Besuchte Repositories werden über `GitRepositoryCatalog` an den versionierten `GitRepositoryStore` in den Benutzereinstellungen übergeben und von allen Fenstern geteilt. Menüabfragen lesen gespeicherte Snapshots ohne Dateisystemprüfung; Hintergrundaktualisierungen ändern die Besuchsreihenfolge nicht. Die Navigation zu einem Worktree bleibt eine gewöhnliche Panelnavigation und führt keine Git-Schreibbefehle aus.
+
 Dateioperationen erfassen Quellen, Zielverzeichnis und auslösendes Panel vor dem Einreihen. Ein Abschluss darf niemals stattdessen das inzwischen aktive Panel verwenden. `canApplyTaskResult` schützt die Übernahme vor Verzeichniswechseln, offenen Navigationen, fremden Ansichtsmodi und Suchergebnissen. AppKit-Auswahl und Fokus bleiben in der Oberfläche.
 
 ## Arbeiten auf getrennten Branches
