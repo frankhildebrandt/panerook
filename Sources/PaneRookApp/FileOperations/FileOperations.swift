@@ -22,6 +22,12 @@ final class FileOperations {
         if let remote = owner.otherPane.remoteContent { return owner.canUseSelection && remote.canUpload }
         return owner.canUseSelection
     }
+    var canMoveSelection: Bool {
+        guard owner.canUseMenus else { return false }
+        if let remote = owner.activePane.remoteContent { return remote.canMove }
+        if let remote = owner.otherPane.remoteContent { return owner.canUseSelection && remote.canUpload }
+        return owner.canUseSelection
+    }
     var canMakeDirectory: Bool {
         if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy }
         return owner.canUseLocalDirectory
@@ -36,13 +42,28 @@ final class FileOperations {
         if let remote = owner.otherPane.remoteContent { remote.upload(); return }
         transfer(.copy)
     }
-    func moveSelection() { transfer(.move) }
-    private func transfer(_ kind: TransferKind) {
-        guard owner.canUseSelection, owner.activePane.remoteContent == nil, owner.otherPane.remoteContent == nil,
+    var canRenameSelection: Bool {
+        guard owner.canUseMenus else { return false }
+        if let remote = owner.activePane.remoteContent { return remote.canRename }
+        return owner.canUseSelection && owner.activePane.selectedFiles.count == 1
+    }
+    func renameSelection() {
+        guard canRenameSelection else { return }
+        if let remote = owner.activePane.remoteContent { remote.renameSelection(); return }
+        transfer(.move, rename: true)
+    }
+    func moveSelection() {
+        guard canMoveSelection else { return }
+        if let remote = owner.activePane.remoteContent { remote.moveSelection(); return }
+        if let remote = owner.otherPane.remoteContent { remote.moveLocalSelection(); return }
+        transfer(.move)
+    }
+    private func transfer(_ kind: TransferKind, rename: Bool = false) {
+        guard owner.canUseSelection, owner.activePane.remoteContent == nil, (rename || owner.otherPane.remoteContent == nil),
               let window = owner.presentationWindow else { return }
         let sources = owner.activePane.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
-        let destination = owner.otherPane.directory
+        let destination = rename ? owner.activePane.directory : owner.otherPane.directory
         let verb = kind == .copy ? "Kopieren" : "Verschieben"
         let sourcePane = owner.activePane
         let dialog = TransferDialog(sources: sources, sourceDirectory: sourcePane.directory,

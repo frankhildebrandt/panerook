@@ -21,6 +21,7 @@ final class RemotePanelTests: XCTestCase {
         var opened = 0
         var downloaded = 0
         var uploaded = 0
+        var movedLocal = 0
         var createdDirectories = 0
         var deleted = 0
         var disconnected = 0
@@ -35,6 +36,7 @@ final class RemotePanelTests: XCTestCase {
         func openSelection() { opened += 1 }
         func download() { downloaded += 1 }
         func upload() { uploaded += 1 }
+        func moveLocalSelection() { movedLocal += 1 }
         func makeDirectory() { createdDirectories += 1 }
         func deleteSelected() { deleted += 1 }
         func disconnect() { disconnected += 1 }
@@ -198,7 +200,7 @@ final class RemotePanelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: leftDirectory.appendingPathComponent("local.txt").path))
     }
 
-    func testCopyFromLocalPaneUploadsToOppositeConnectionAndMoveIsUnavailable() throws {
+    func testCopyAndMoveFromLocalPaneRouteToOppositeConnection() throws {
         let (root, leftDirectory, rightDirectory) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
         let local = PaneController(label: "Left", directory: leftDirectory)
@@ -214,7 +216,8 @@ final class RemotePanelTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(registry["copy"]).perform())
         XCTAssertEqual(remote.uploaded, 1)
         XCTAssertEqual(remote.downloaded, 0)
-        XCTAssertFalse(try XCTUnwrap(registry["move"]).perform())
+        XCTAssertTrue(try XCTUnwrap(registry["move"]).perform())
+        XCTAssertEqual(remote.movedLocal, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: rightDirectory.appendingPathComponent("local.txt").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: leftDirectory.appendingPathComponent("local.txt").path))
         XCTAssertEqual(local.selectedEntries.map(\.name), ["local.txt"])
@@ -223,6 +226,8 @@ final class RemotePanelTests: XCTestCase {
         remote.isBusy = true
         XCTAssertFalse(try XCTUnwrap(registry["copy"]).perform())
         XCTAssertEqual(remote.uploaded, 1)
+        XCTAssertFalse(try XCTUnwrap(registry["move"]).perform())
+        XCTAssertEqual(remote.movedLocal, 1)
     }
 
     func testSSHAndSFTPConnectionsUseChosenPaneWithoutOpeningWindows() throws {
@@ -327,7 +332,7 @@ final class RemotePanelTests: XCTestCase {
         let table = NSTableView()
         let loaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             !leftBrowser.isBusy && !rightBrowser.isBusy
-                && leftBrowser.numberOfRows(in: table) == 1 && rightBrowser.numberOfRows(in: table) == 1
+                && leftBrowser.numberOfRows(in: table) == 2 && rightBrowser.numberOfRows(in: table) == 2
         }, object: nil)
         wait(for: [loaded], timeout: 10)
         XCTAssertTrue(host.activePane === right)
@@ -336,7 +341,7 @@ final class RemotePanelTests: XCTestCase {
 
         let refreshed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             !leftBrowser.isBusy && !rightBrowser.isBusy
-                && leftBrowser.numberOfRows(in: table) == 2 && rightBrowser.numberOfRows(in: table) == 2
+                && leftBrowser.numberOfRows(in: table) == 3 && rightBrowser.numberOfRows(in: table) == 3
         }, object: nil)
         wait(for: [refreshed], timeout: 10)
         XCTAssertEqual(lock.withLock { requests[.shell] }, 2)

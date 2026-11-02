@@ -110,6 +110,12 @@ struct NextcloudWebDAV {
     func remove(_ path: String, token: RemoteCancellation) throws {
         _ = try request("DELETE", url: url(path), expected: [204], token: token)
     }
+    func move(_ path: String, to destination: String, token: RemoteCancellation) throws {
+        _ = try request("MOVE", url: url(path), options: [
+            "header = \(Self.quote("Destination: " + (try url(destination)).absoluteString))",
+            "header = \"Overwrite: F\""
+        ], expected: [201], token: token)
+    }
 }
 
 /// Parse DAV namespaces and successful propstats explicitly. Hrefs, rather than

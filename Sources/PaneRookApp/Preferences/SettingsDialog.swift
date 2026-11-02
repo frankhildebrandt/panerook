@@ -39,7 +39,7 @@ enum SettingsSection: String, CaseIterable {
         case .confirmations: return "Sicherheit Löschen Papierkorb bestätigen Rückfragen"
         case .encoding: return "Darstellungsbits Textvorschau Inhaltsansicht Unicode UTF-8 UTF-16 Westeuropäisch Mac OS Roman Links Rechts"
         case .keyboard: return "Tasten lernen Tastaturbelegung Tastenkombinationen Funktionstasten F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 Aktionen suchen belegen entfernen Konflikte Standard zurücksetzen"
-        case .connections: return "Virtuelles Dateisystem VFS Remote Timeout Zeitlimit versteckte Dateien FTP SFTP SSH Nextcloud"
+        case .connections: return "Virtuelles Dateisystem VFS Remote Timeout Zeitlimit FTP SFTP SSH Nextcloud"
         case .updates: return "Automatisch Aktualisierung Version Sparkle herunterladen installieren prüfen"
         }
     }
@@ -333,8 +333,7 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
             let input = NSStackView(views: [timeout, label("s", size: 12), stepper])
             input.spacing = 8
             append(SettingsStyle.section("Remote-Verbindungen", rows: [
-                row("Verbindungs-Timeout", detail: "3–300 Sekunden für neue FTP-, SFTP-, SSH- und Nextcloud-Verbindungen.", control: input),
-                toggle("Versteckte Remote-Dateien anzeigen", detail: "Aktualisiert auch bereits verbundene Remote-Panels.", key: "remoteShowHidden", fallback: false)
+                row("Verbindungs-Timeout", detail: "3–300 Sekunden für neue FTP-, SFTP-, SSH- und Nextcloud-Verbindungen. Die Dateiansicht verwendet die gemeinsamen Einstellungen unter Panels.", control: input)
             ]))
         case .updates:
             append(updaterView())
@@ -351,7 +350,6 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
             self.defaults.set(button.state == .on, forKey: key)
             if key == "rememberCommands", button.state == .off { self.defaults.removeObject(forKey: "commandHistory") }
             if key == "showHidden" { self.preferences.owner.setHiddenFilesVisible(button.state == .on) }
-            if key == "remoteShowHidden" { self.preferences.owner.remoteSettingsChanged() }
             self.preferences.apply()
         }
         return row(title, detail: detail, control: button)

@@ -2,7 +2,9 @@ import AppKit
 
 extension PreviewTools {
     func registerCommands(in registry: CommandRegistry) {
-        let selected = { self.owner.canUseSelection }
+        let selected = {
+            self.owner.canUseMenus && (self.owner.activePane.remoteContent?.canPreview ?? self.owner.canUseSelection)
+        }
         registry.add(
             .file, "Ansicht", id: "preview", order: 10, group: 0, function: 3, dockTitle: { "Vorschau" },
             enabled: selected

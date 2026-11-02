@@ -183,6 +183,25 @@ final class NextcloudTests: XCTestCase {
         XCTAssertEqual(methods, ["PROPFIND", "PUT"])
     }
 
+    func testMoveEncodesDestinationAndRejectsNewCollisionWithoutOverwrite() throws {
+        var methods: [String] = []
+        let fs = RemoteFileSystem(connection: try connection()) { command, _ in
+            let configuration = self.config(command)
+            let method = try self.configValue("request", in: configuration)
+            methods.append(method)
+            if method == "PROPFIND" { return self.listing([self.response(self.davRoot, directory: true)]) }
+            XCTAssertEqual(method, "MOVE")
+            XCTAssertEqual(try self.configValue("url", in: configuration), "https://cloud.example:443" + self.davRoot + "old.txt")
+            XCTAssertTrue(configuration.contains("Destination: https://cloud.example:443" + self.davRoot + "Gr%C3%BC%C3%9Fe%20%25%23%3F.txt"))
+            XCTAssertTrue(configuration.contains("Overwrite: F"))
+            return Data("\n412".utf8)
+        }
+        XCTAssertThrowsError(try fs.move(RemoteEntry(name: "old.txt", isDirectory: false), from: "/", to: "Grüße %#?.txt")) { error in
+            guard case RemoteError.collision = error else { return XCTFail("Expected collision, got \(error)") }
+        }
+        XCTAssertEqual(methods, ["PROPFIND", "MOVE"])
+    }
+
     func testUploadRefusesExistingNamesBeforeSendingContent() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

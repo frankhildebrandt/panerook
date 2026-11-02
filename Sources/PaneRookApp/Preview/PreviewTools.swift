@@ -48,6 +48,10 @@ final class PreviewTools: NSObject, QLPreviewPanelDataSource {
         }
     }
     func previewSelection() {
+        if let remote = owner.activePane.remoteContent {
+            remote.preparePreview { [weak self] files in self?.showPreviewFiles(files) }
+            return
+        }
         previewFiles(owner.activePane.selectedFiles)
     }
     func previewFiles(_ urls: [URL]) {

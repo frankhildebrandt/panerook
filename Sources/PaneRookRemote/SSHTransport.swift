@@ -28,6 +28,12 @@ struct SSHTransport: RemoteProvider {
     func remove(_ path: String, directory: Bool, token: RemoteCancellation) throws {
         _ = try ssh("\(directory ? "rmdir" : "rm") \(RemoteFileSystem.shellQuote(path))", token: token)
     }
+    func move(_ path: String, to destination: String, token: RemoteCancellation) throws {
+        let source = RemoteFileSystem.shellQuote(path), target = RemoteFileSystem.shellQuote(destination)
+        // -n also prevents a file created after the bridge's collision check from
+        // being overwritten. A skipped move must be reported as a failure.
+        _ = try ssh("test ! -e \(target) && test ! -L \(target) && mv -n \(source) \(target) && ! { test -e \(source) || test -L \(source); }", token: token)
+    }
 }
 
 extension SSHTransport {

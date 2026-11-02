@@ -318,7 +318,9 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         right.showHidden = show
         hiddenButton.state = show ? .on : .off
         UserDefaults.standard.set(show, forKey: "showHidden")
-        refresh()
+        if left.remoteContent == nil { left.refresh() }
+        if right.remoteContent == nil { right.refresh() }
+        workflow.applyHighlights()
     }
     @objc func revealInFinder() {
         guard active.remoteContent == nil else { return }
@@ -379,7 +381,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         }
     }
     func selectGroup(select: Bool) {
-        guard active.remoteContent == nil, canUseMenus, let window = view.window else { return }
+        guard canUseMenus, let window = view.window else { return }
         let pane = active!
         let alert = NSAlert()
         alert.messageText = select ? "Gruppe auswählen" : "Gruppe abwählen"

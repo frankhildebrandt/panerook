@@ -19,7 +19,7 @@ final class FileTable: NSTableView {
     }
 }
 
-private final class ThemedFileRow: NSTableRowView {
+final class ThemedFileRow: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle {
         ThemeManager.theme == .paneRook ? super.interiorBackgroundStyle : .normal
     }
@@ -82,10 +82,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var directorySizes: [URL: Int64] { get { state.directorySizes } set { state.directorySizes = newValue } }
     private var inspectionURL: URL?
     private var iconsVisible = true
+    private var summaryVisible = true
     private var highlights: [(pattern: String, color: NSColor)] = []
     private var summaryHeight: NSLayoutConstraint?
     var mode: PanelMode { get { state.mode } set { state.mode = newValue } }
-    var filterPattern: String { get { state.filterPattern } set { state.filterPattern = newValue } }
+    var filterPattern: String { get { remoteContent?.filterPattern ?? state.filterPattern } set { state.filterPattern = newValue } }
     var gitFilter: GitFileFilter { state.gitFilter }
     var textEncoding: String.Encoding {
         get { state.textEncoding }
@@ -103,14 +104,17 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var onRepositoryVisited: ((GitRepositoryInfo) -> Void)?
     var onOpenGit: (() -> Void)?
     var onSelectionChanged: ((URL?) -> Void)?
-    var showHidden: Bool { get { state.showHidden } set { state.showHidden = newValue } }
+    var showHidden: Bool {
+        get { state.showHidden }
+        set { state.showHidden = newValue; remoteContent?.showHidden = newValue }
+    }
     var isActive = false { didSet { remoteContent?.isActive = isActive; updateNavigation() } }
     private var history: [URL] { state.history }
     private let label: String
     private var loading: Bool { state.loading }
     var pendingTaskRefresh: Bool { get { state.pendingTaskRefresh } set { state.pendingTaskRefresh = newValue } }
-    var sortKey: String { get { state.sortKey } set { state.sortKey = newValue } }
-    var sortAscending: Bool { get { state.sortAscending } set { state.sortAscending = newValue } }
+    var sortKey: String { get { remoteContent?.sortKey ?? state.sortKey } set { state.sortKey = newValue } }
+    var sortAscending: Bool { get { remoteContent?.sortAscending ?? state.sortAscending } set { state.sortAscending = newValue } }
 
     init(label: String, directory: URL, gitStatusCache: GitStatusCache = .shared) {
         self.label = label
@@ -316,6 +320,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     func showRemoteContent(_ content: (any RemotePanelContent)?) {
         _ = view
         if remoteContent === content { return }
+        let brief = isBriefListing
+        let key = sortKey, ascending = sortAscending, pattern = filterPattern
         let previous = remoteContent
         remoteContent = nil
         previous?.disconnect()
@@ -337,6 +343,12 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
             ])
+            content.showHidden = showHidden
+            content.setSort(key: key, ascending: ascending)
+            content.setFilter(pattern)
+            content.setBriefListing(brief)
+            content.applyDisplayOptions(rowHeight: table.rowHeight, showIcons: iconsVisible, showSummary: summaryVisible)
+            if let menu = favoritesButton.menu { content.installFavoritesMenu(menu) }
         } else if mode == .network { network.start() }
         onSelectionChanged?(selectedFiles.first)
         if isActive { focus() }
@@ -347,7 +359,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func setMode(_ mode: PanelMode) {
         _ = view
-        showRemoteContent(nil)
+        if remoteContent != nil {
+            guard mode == .listing else { return }
+        } else { showRemoteContent(nil) }
         if mode == .tree && isArchiveDirectory {
             onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Im Archiv bitte die Dateiliste zur Ordnernavigation verwenden."]))
             return
@@ -377,6 +391,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func setFilter(_ pattern: String) {
         filterPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let remoteContent { remoteContent.setFilter(state.filterPattern); return }
         guard isViewLoaded else { return }
         let selected = Set(selectedFiles)
         state.filterAndSort(); table.reloadData()
@@ -419,27 +434,36 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         _ = view
         table.rowHeight = min(44, max(18, rowHeight)); tree.outline.rowHeight = table.rowHeight
         iconsVisible = showIcons
+        summaryVisible = showSummary
         summary.isHidden = !showSummary
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
         table.reloadData()
+        remoteContent?.applyDisplayOptions(rowHeight: table.rowHeight, showIcons: showIcons, showSummary: showSummary)
     }
 
     func applyHighlights(_ rules: [(pattern: String, color: NSColor)]) { highlights = rules; table.reloadData() }
 
     var isBriefListing: Bool {
-        isViewLoaded && !table.tableColumns.isEmpty
+        if let remoteContent { return remoteContent.isBriefListing }
+        return isViewLoaded && !table.tableColumns.isEmpty
             && table.tableColumns.dropFirst().allSatisfy(\.isHidden)
     }
 
     func setSort(key: String, ascending: Bool) {
         guard ["name", "size", "modified"].contains(key) else { return }
+        if let remoteContent {
+            state.sortKey = key; state.sortAscending = ascending
+            remoteContent.setSort(key: key, ascending: ascending)
+            return
+        }
         _ = view
         table.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
     }
 
     func setBriefListing(_ brief: Bool) {
         _ = view
+        if let remoteContent { remoteContent.setBriefListing(brief); return }
         guard isBriefListing != brief else { return }
         for column in table.tableColumns.dropFirst() {
             column.isHidden = brief || (column.identifier.rawValue == "git" && state.gitSnapshot == nil)
@@ -449,6 +473,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     func selectMatching(_ pattern: String, select: Bool) {
+        if let remoteContent { remoteContent.selectMatching(pattern, select: select); return }
         guard isViewLoaded, !loading, !pattern.isEmpty else { return }
         let matches = IndexSet(entries.indices.filter {
             !entries[$0].isParent && fnmatch(pattern, entries[$0].name, 0) == 0
@@ -461,6 +486,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     func invertSelection() {
+        if let remoteContent { remoteContent.invertSelection(); return }
         guard isViewLoaded, !loading else { return }
         let selected = table.selectedRowIndexes
         let inverted = IndexSet(entries.indices.filter {
@@ -608,8 +634,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if mode == .network { network.stop(); network.start(); return }
         navigate(to: directory, recordHistory: false, select: select)
     }
-    func installFavoritesMenu(_ menu: NSMenu) { favoritesButton.menu = menu }
-    func showFavorites() { favoritesButton.performClick(nil) }
+    func installFavoritesMenu(_ menu: NSMenu) {
+        favoritesButton.menu = menu
+        remoteContent?.installFavoritesMenu(menu)
+    }
+    func showFavorites() {
+        if let remoteContent { remoteContent.showFavorites(); return }
+        favoritesButton.performClick(nil)
+    }
     @objc func goUp() {
         if let remoteContent { remoteContent.goUp(); return }
         if mode == .network { setMode(.listing); return }
@@ -617,6 +649,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         navigate(to: parent, select: directory)
     }
     @objc func goBack() {
+        if let remoteContent { remoteContent.goBack(); return }
         if mode == .network { setMode(.listing); return }
         guard let previous = state.popHistory() else { return }
         navigate(to: previous, recordHistory: false)

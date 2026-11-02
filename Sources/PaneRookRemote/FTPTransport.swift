@@ -49,6 +49,10 @@ struct FTPTransport: RemoteProvider {
             path: "/", options: ["quote = \(Self.curlQuote((directory ? "RMD " : "DELE ") + path))", "list-only"],
             token: token)
     }
+    func move(_ path: String, to destination: String, token: RemoteCancellation) throws {
+        _ = try ftp(path: "/", options: ["quote = \(Self.curlQuote("RNFR " + path))",
+            "quote = \(Self.curlQuote("RNTO " + destination))", "list-only"], token: token)
+    }
 }
 
 extension FTPTransport {

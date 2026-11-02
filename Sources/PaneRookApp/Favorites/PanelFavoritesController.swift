@@ -87,7 +87,7 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
     private func performCommand(_ id: String) -> Bool {
         switch id {
         case "favorites.addCurrent":
-            guard pane.mode != .network, !pane.isArchiveDirectory else { return false }
+            guard pane.remoteContent == nil, pane.mode != .network, !pane.isArchiveDirectory else { return false }
             do { try store.addFolder(pane.directory) } catch { owner.showError(error) }
         case "favorites.addFolder": chooseFavoriteFolder()
         case "favorites.remove": removeFavorite()
@@ -173,7 +173,8 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
             }
         }
         add("Netzwerk", to: menu, symbol: "network") { [weak self] in
-            guard let self else { return }; self.pane.setMode(.network); self.owner.activate(self.pane)
+            guard let self else { return }
+            self.pane.showRemoteContent(nil); self.pane.setMode(.network); self.owner.activate(self.pane)
         }
         menu.addItem(.separator())
         let git = submenu("Git-Repositories", in: menu, symbol: "arrow.triangle.branch")
