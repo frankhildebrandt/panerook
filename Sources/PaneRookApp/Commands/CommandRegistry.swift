@@ -26,7 +26,7 @@ enum CommandScope: String, CaseIterable {
         case .panel: return "Dateipanels"
         case .textEditing: return "Textbearbeitung"
         case .dialog: return "Dialoge"
-        case .remote: return "Remote-Browser"
+        case .remote: return "Remote-Panels"
         case .connections: return "Verbindungsarchiv"
         case .git: return "Git-Workspace"
         case .tasks: return "Aufgaben"
@@ -44,6 +44,10 @@ enum CommandScope: String, CaseIterable {
         if self == other { return true }
         if self == .textEditing || other == .textEditing { return true }
         if self == .table || other == .table { return self != .dialog && other != .dialog && self != .console && other != .console }
+        if self == .remote || other == .remote {
+            let primary: Set<CommandScope> = [.application, .panel, .favorites]
+            return primary.contains(self) || primary.contains(other)
+        }
         let primary: Set<CommandScope> = [.application, .panel, .network, .console, .favorites]
         return primary.contains(self) && primary.contains(other)
             && (self == .application || other == .application || self == .favorites || other == .favorites)
@@ -179,6 +183,10 @@ final class CommandRegistry {
             let context = command.scope == .dialog ? other.scope : command.scope
             if let dialog, dialog.id.hasPrefix("dialog.cancel"),
                ![CommandScope.application, .panel, .console].contains(context) { overlap = true }
+            // F10 disconnects an active remote pane; outside it, F10 retains the main Exit action.
+            if Set([command.id, other.id]) == Set(["remote.close", "exit"]),
+               command.defaultBinding?.conflicts(with: binding) == true,
+               other.defaultBinding?.conflicts(with: assigned) == true { return false }
             // F10 closes an idle remote browser and cancels its current task, sharing dialog cancellation.
             let remoteCancelPair: Set<String> = ["remote.close", "dialog.cancel.function"]
             if Set([command.id, other.id]) == remoteCancelPair,

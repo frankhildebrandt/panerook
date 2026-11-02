@@ -332,7 +332,7 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
             input.spacing = 8
             append(SettingsStyle.section("Remote-Verbindungen", rows: [
                 row("Verbindungs-Timeout", detail: "3–300 Sekunden für neue FTP-, SFTP-, SSH- und Nextcloud-Verbindungen.", control: input),
-                toggle("Versteckte Remote-Dateien anzeigen", detail: "Aktualisiert auch bereits geöffnete Remote-Fenster.", key: "remoteShowHidden", fallback: false)
+                toggle("Versteckte Remote-Dateien anzeigen", detail: "Aktualisiert auch bereits verbundene Remote-Panels.", key: "remoteShowHidden", fallback: false)
             ]))
         case .updates:
             append(updaterView())

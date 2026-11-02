@@ -38,8 +38,8 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     var menuIsTracking: (() -> Bool)?
     var onKeyBindingsChanged: (() -> Void)?
     var canUseMenus: Bool { view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
-    var canUseSelection: Bool { canUseMenus && !panelsHidden && !active.selectedFiles.isEmpty }
-    var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.mode != .network }
+    var canUseSelection: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && !active.selectedFiles.isEmpty }
+    var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && active.mode != .network }
     var canUseNativeDirectory: Bool { canUseLocalDirectory && !active.isArchiveDirectory }
     var canUseNativeSelection: Bool {
         canUseSelection && !active.selectedFiles.contains {
@@ -215,6 +215,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         else { activate(active) }
     }
     @objc func runConsoleCommand() {
+        guard active.remoteContent == nil, !active.isArchiveDirectory, active.mode != .network else { return }
         let command = commandInput.stringValue
         commandInput.stringValue = ""
         workflow.runCommand(command)
@@ -299,12 +300,14 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     @objc func goUp() { active.goUp() }
     @objc func goHome() { active.navigate(to: FileManager.default.homeDirectoryForCurrentUser) }
     @objc func focusPath() {
+        if let remote = active.remoteContent { remote.focusPath(); return }
         view.window?.makeFirstResponder(active.pathField)
         active.pathField.selectText(nil)
     }
     @objc func refresh() { left.refresh(); right.refresh(); workflow.applyHighlights() }
     func refreshAfterTask() { left.refreshAfterTask(); right.refreshAfterTask(); workflow.applyHighlights() }
     @objc func swapPanels() {
+        guard left.remoteContent == nil, right.remoteContent == nil else { return }
         let url = left.directory
         left.navigate(to: right.directory)
         right.navigate(to: url)
@@ -318,6 +321,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         refresh()
     }
     @objc func revealInFinder() {
+        guard active.remoteContent == nil else { return }
         let urls = active.selectedFiles.isEmpty ? [active.directory] : active.selectedFiles
         let local = urls.map { ArchiveFileSystem.location(for: $0)?.archiveURL ?? $0 }
         NSWorkspace.shared.activateFileViewerSelecting(Array(Set(local)))
@@ -325,6 +329,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
 
     private func handleKey(_ event: NSEvent) -> Bool {
         guard canHandleMainKeys else { return false }
+        if let remote = active.remoteContent as? RemoteBrowser, remote.handleContextKey(event) { return true }
         if let action = commandRegistry.matching(event, scope: .panel)
             ?? commandRegistry.matching(event, scope: .application) {
             action.perform()
@@ -339,6 +344,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     /// Called before AppKit's key-equivalent pass, so physical custom keys work on any layout.
     func handleGlobalKey(_ event: NSEvent) -> Bool {
         guard canHandleMainKeys, event.window === view.window else { return false }
+        if !panelsHidden, let remote = active.remoteContent as? RemoteBrowser, remote.handleContextKey(event) { return true }
         if panelsHidden, let action = commandRegistry.matching(event, scope: .console) {
             action.perform(); return true
         }
@@ -373,7 +379,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         }
     }
     func selectGroup(select: Bool) {
-        guard canUseMenus, let window = view.window else { return }
+        guard active.remoteContent == nil, canUseMenus, let window = view.window else { return }
         let pane = active!
         let alert = NSAlert()
         alert.messageText = select ? "Gruppe auswählen" : "Gruppe abwählen"
@@ -399,7 +405,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         preferences.savePanels()
     }
 
-    @objc func openSelection() { preview.openSelection() }
+    @objc func openSelection() {
+        if let remote = active.remoteContent { remote.openSelection(); return }
+        preview.openSelection()
+    }
     @objc func previewSelection() { preview.previewSelection() }
     func previewFiles(_ urls: [URL]) { preview.previewFiles(urls) }
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }

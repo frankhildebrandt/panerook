@@ -22,14 +22,16 @@ extension LocalTools {
             .command, "Verzeichnisse vergleichen", id: "inspection.compareDirectories", order: 60, group: 0,
             enabled: { [weak owner] in
                 guard let owner else { return false }
-                return owner.canUseMenus && !owner.leftPane.isArchiveDirectory && !owner.rightPane.isArchiveDirectory
+                return owner.canUseMenus && owner.leftPane.remoteContent == nil && owner.rightPane.remoteContent == nil
+                    && !owner.leftPane.isArchiveDirectory && !owner.rightPane.isArchiveDirectory
             }
         ) { self.compareDirectories() }
         registry.add(
             .command, "Dateien vergleichen", id: "inspection.compareFiles", order: 70, group: 0,
             enabled: { [weak owner] in
                 guard let owner else { return false }
-                return owner.canUseMenus && !owner.leftPane.isArchiveDirectory && !owner.rightPane.isArchiveDirectory
+                return owner.canUseMenus && owner.leftPane.remoteContent == nil && owner.rightPane.remoteContent == nil
+                    && !owner.leftPane.isArchiveDirectory && !owner.rightPane.isArchiveDirectory
             }
         ) { self.compareFiles() }
         registry.add(

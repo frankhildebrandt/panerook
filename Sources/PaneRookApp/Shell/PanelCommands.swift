@@ -12,7 +12,7 @@ extension CommanderController {
                 enabled: { [weak self] in
                     guard let self else { return false }
                     return self.canUseMenus && (mode != .tree || !pane.isArchiveDirectory)
-                }, checked: { pane.mode == mode }
+                }, checked: { pane.remoteContent == nil && pane.mode == mode }
             ) { [weak self] in
                 guard let self else { return }
                 pane.setMode(mode)
@@ -26,7 +26,7 @@ extension CommanderController {
                 submenu: "Listenformat",
                 enabled: { [weak self] in
                     guard let self else { return false }
-                    return self.canUseMenus
+                    return self.canUseMenus && pane.remoteContent == nil
                 }, checked: { pane.isBriefListing == (index == 1) }
             ) { pane.setBriefListing(index == 1) }
         }
@@ -37,7 +37,7 @@ extension CommanderController {
                 submenu: "Sortierreihenfolge",
                 enabled: { [weak self] in
                     guard let self else { return false }
-                    return self.canUseMenus
+                    return self.canUseMenus && pane.remoteContent == nil
                 }, checked: { pane.sortKey == key }
             ) { pane.setSort(key: key, ascending: pane.sortAscending) }
         }
@@ -45,7 +45,7 @@ extension CommanderController {
             menu, "Umgekehrt", id: "\(menu.rawValue).sort.reverse", order: 24, group: 1, submenu: "Sortierreihenfolge",
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && pane.remoteContent == nil
             }, checked: { !pane.sortAscending }
         ) { pane.setSort(key: pane.sortKey, ascending: !pane.sortAscending) }
         registry.add(menu, "Zurück", id: "\(menu.rawValue).back", order: 90, group: 3,
@@ -55,7 +55,7 @@ extension CommanderController {
             enabled: { [weak self] in self?.canUseMenus == true }
         ) { [weak self] in self?.activate(pane); pane.showFavorites() }
         registry.add(menu, "Repository, Status und Versionen …", id: "\(menu.rawValue).git.workspace", order: 91, group: 3,
-            submenu: "Git", enabled: { [weak self] in self?.canUseMenus == true && !pane.isArchiveDirectory && pane.mode != .network }
+            submenu: "Git", enabled: { [weak self] in self?.canUseMenus == true && pane.remoteContent == nil && !pane.isArchiveDirectory && pane.mode != .network }
         ) { [weak self] in self?.git.open(pane: pane) }
         registry.add(menu, "Git: Watched umschalten", id: "\(menu.rawValue).git.watch", order: 92, group: 3,
             submenu: "Git", enabled: { [weak self] in self?.canUseMenus == true && pane.canUseGitFilter && !pane.selectedFiles.isEmpty }

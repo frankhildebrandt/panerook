@@ -16,10 +16,30 @@ final class FileOperations {
     private var transferDialog: TransferDialog?
     private var sparseFileDialog: SparseFileDialog?
     init(owner: any FileOperationsHost) { self.owner = owner }
-    func copySelection() { transfer(.copy) }
+    var canCopySelection: Bool {
+        guard owner.canUseMenus else { return false }
+        if let remote = owner.activePane.remoteContent { return remote.canDownload }
+        if let remote = owner.otherPane.remoteContent { return owner.canUseSelection && remote.canUpload }
+        return owner.canUseSelection
+    }
+    var canMakeDirectory: Bool {
+        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy }
+        return owner.canUseLocalDirectory
+    }
+    var canTrashSelection: Bool {
+        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy && remote.hasSelection }
+        return owner.canUseSelection
+    }
+    func copySelection() {
+        guard canCopySelection else { return }
+        if let remote = owner.activePane.remoteContent { remote.download(); return }
+        if let remote = owner.otherPane.remoteContent { remote.upload(); return }
+        transfer(.copy)
+    }
     func moveSelection() { transfer(.move) }
     private func transfer(_ kind: TransferKind) {
-        guard owner.canUseSelection, let window = owner.presentationWindow else { return }
+        guard owner.canUseSelection, owner.activePane.remoteContent == nil, owner.otherPane.remoteContent == nil,
+              let window = owner.presentationWindow else { return }
         let sources = owner.activePane.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
         let destination = owner.otherPane.directory
@@ -41,7 +61,8 @@ final class FileOperations {
         dialog.begin(on: window)
     }
     func makeDirectory() {
-        guard owner.canUseLocalDirectory else { return }
+        guard canMakeDirectory else { return }
+        if let remote = owner.activePane.remoteContent { remote.makeDirectory(); return }
         let directory = owner.activePane.directory
         let pane = owner.activePane
         let alert = NSAlert()
@@ -89,7 +110,8 @@ final class FileOperations {
         dialog.begin(on: window)
     }
     func trashSelection() {
-        guard owner.canUseSelection else { return }
+        guard canTrashSelection else { return }
+        if let remote = owner.activePane.remoteContent { remote.deleteSelected(); return }
         let sources = owner.activePane.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
         if sources.contains(where: { ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false }) {

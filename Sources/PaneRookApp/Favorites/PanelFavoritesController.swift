@@ -200,7 +200,7 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         add("Aktuellen Ordner hinzufügen", to: favorites, symbol: "star.badge.plus", tooltip: pane.directory.path,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.pane.mode != .network && !self.pane.isArchiveDirectory
+                return self.pane.remoteContent == nil && self.pane.mode != .network && !self.pane.isArchiveDirectory
             }) { [weak self] in
             guard let self else { return }
             do { try self.store.addFolder(self.pane.directory) } catch { self.owner.showError(error) }
@@ -226,7 +226,7 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         menus.removeAll { candidate in previousGroups.contains { $0 === candidate } }
         menu.removeAllItems()
         let saved = repositories.repositories()
-        let current = pane.mode == .network || pane.isArchiveDirectory ? nil : pane.gitRepository
+        let current = pane.remoteContent != nil || pane.mode == .network || pane.isArchiveDirectory ? nil : pane.gitRepository
         if let current {
             label("Worktrees des aktuellen Repositories", in: menu)
             let worktrees = saved.first { $0.commonDirectory == current.commonDirectory }?.worktrees ?? current.worktrees

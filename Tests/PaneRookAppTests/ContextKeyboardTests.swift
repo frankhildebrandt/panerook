@@ -29,7 +29,8 @@ final class ContextKeyboardTests: XCTestCase {
         let registry = CommandRegistry(defaults: defaults)
         registry.addContextDefinitions()
         let f5 = try event(96, AppKeyBinding.function(5).characters)
-        XCTAssertEqual(ContextCommands.matching(f5, scope: .remote, defaults: defaults), "remote.download")
+        XCTAssertNil(ContextCommands.matching(f5, scope: .remote, defaults: defaults),
+                     "Embedded remote panes use the main Copy mapping for downloads by default")
         XCTAssertNil(ContextCommands.matching(f5, scope: .git, defaults: defaults))
         try registry.setBinding(.physical(15, characters: "r", modifiers: [.command, .option]), for: "remote.download")
         XCTAssertNil(ContextCommands.matching(f5, scope: .remote, defaults: defaults))

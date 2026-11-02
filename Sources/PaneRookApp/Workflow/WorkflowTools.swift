@@ -60,6 +60,7 @@ final class WorkflowTools {
         }
     }
     func commandPrompt(initial: String = "") {
+        guard owner.activePane.remoteContent == nil else { return }
         guard owner.canUseMenus else { return }
         guard !owner.activePane.isArchiveDirectory else { owner.showError(archiveCommandError); return }
         ToolUI.prompt(owner: owner, title: "Befehl ausführen", label: "Shell-Befehl · aktueller Panelordner", value: initial, accept: "Ausführen") { [weak self] command in
@@ -98,6 +99,7 @@ final class WorkflowTools {
     }
     private func execute(_ command: String, title: String, selection: [URL]? = nil,
                          directory: URL? = nil, success: ((String) -> Void)? = nil) {
+        guard directory != nil || owner.activePane.remoteContent == nil else { return }
         let cwd = directory ?? owner.activePane.directory
         let files = selection ?? owner.activePane.selectedFiles
         guard ArchiveFileSystem.location(for: cwd) == nil,

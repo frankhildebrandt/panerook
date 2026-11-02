@@ -86,10 +86,10 @@ final class KeyboardMappingTests: XCTestCase {
         registry.add(.command, "Remote", id: "remote", order: 2, scope: .remote, enabled: { true }) {}
         registry.add(.edit, "Copy text", id: "text", order: 3, key: "c", scope: .textEditing, enabled: { true }) {}
         XCTAssertEqual(registry.conflicts(for: .character("r"), assigningTo: "panel")?.id, "main")
-        XCTAssertNil(registry.conflicts(for: .character("r"), assigningTo: "remote"))
+        XCTAssertEqual(registry.conflicts(for: .character("r"), assigningTo: "remote")?.id, "main")
         XCTAssertEqual(registry.conflicts(for: .character("c"), assigningTo: "remote")?.id, "text")
-        try registry.setBinding(.character("r"), for: "remote")
-        XCTAssertEqual(try registry.matching(key(15, "r", flags: .command), scope: .remote)?.id, "remote")
+        try registry.setBinding(.character("r", modifiers: [.command, .option]), for: "remote")
+        XCTAssertEqual(try registry.matching(key(15, "r", flags: [.command, .option]), scope: .remote)?.id, "remote")
     }
 
     func testRecordedAKeyIsPhysicalAndShiftCapsLockAndFnAreHandled() throws {

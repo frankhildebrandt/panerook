@@ -14,7 +14,7 @@ final class GitTools {
     init(owner: any GitHost) { self.owner = owner }
 
     func open(pane: any PanelAccess) {
-        guard !opening, !pane.isArchiveDirectory else { return }
+        guard !opening, pane.remoteContent == nil, !pane.isArchiveDirectory else { return }
         let directory = pane.directory
         let selected = pane.selectedFiles.count == 1 ? pane.selectedFiles.first : nil
         opening = true
@@ -42,7 +42,7 @@ final class GitTools {
     func initialize() {
         guard owner.canUseMenus, let window = owner.presentationWindow else { return }
         let directory = owner.activePane.directory
-        guard !owner.activePane.isArchiveDirectory else { return }
+        guard owner.activePane.remoteContent == nil, !owner.activePane.isArchiveDirectory else { return }
         let alert = NSAlert()
         alert.messageText = "Git-Repository anlegen?"
         alert.informativeText = directory.path
@@ -74,10 +74,10 @@ final class GitTools {
     func registerCommands(in registry: CommandRegistry) {
         registry.add(.command, "Repository, Status und Versionen …", id: "git.workspace", order: 220, group: 3,
             submenu: "Git", key: "g", modifiers: [.command, .shift],
-            enabled: { self.owner.canUseMenus && !self.owner.activePane.isArchiveDirectory && self.owner.activePane.mode != .network }
+            enabled: { self.owner.canUseMenus && self.owner.activePane.remoteContent == nil && !self.owner.activePane.isArchiveDirectory && self.owner.activePane.mode != .network }
         ) { self.open(pane: self.owner.activePane) }
         registry.add(.command, "Repository im aktuellen Ordner anlegen …", id: "git.initialize", order: 221, group: 3,
-            submenu: "Git", enabled: { self.owner.canUseMenus && !self.owner.activePane.isArchiveDirectory && self.owner.activePane.mode != .network }
+            submenu: "Git", enabled: { self.owner.canUseMenus && self.owner.activePane.remoteContent == nil && !self.owner.activePane.isArchiveDirectory && self.owner.activePane.mode != .network }
         ) { self.initialize() }
     }
 }

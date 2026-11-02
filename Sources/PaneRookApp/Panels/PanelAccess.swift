@@ -2,8 +2,30 @@ import AppKit
 import PaneRookCore
 import PaneRookPanels
 
+/// A connection occupies one panel while its local directory is retained for disconnecting.
+protocol RemotePanelContent: AnyObject {
+    var onKey: ((NSEvent) -> Bool)? { get set }
+    var isActive: Bool { get set }
+    var viewController: NSViewController { get }
+    var isBusy: Bool { get }
+    var hasSelection: Bool { get }
+    var canDownload: Bool { get }
+    var canUpload: Bool { get }
+    func focus()
+    func focusPath()
+    func refresh()
+    func goUp()
+    func openSelection()
+    func download()
+    func upload()
+    func makeDirectory()
+    func deleteSelected()
+    func disconnect()
+}
+
 /// Feature-facing panel API. Table, path field and controller lifetime stay private to Panels/Shell.
 protocol PanelAccess: AnyObject {
+    var remoteContent: (any RemotePanelContent)? { get }
     var directory: URL { get }
     var mode: PanelMode { get }
     var isArchiveDirectory: Bool { get }
@@ -20,6 +42,9 @@ protocol PanelAccess: AnyObject {
     var sortAscending: Bool { get }
     var isBriefListing: Bool { get }
     func focus()
+    func showRemoteContent(_ content: (any RemotePanelContent)?)
+    func remoteStateDidChange()
+    func activate()
     func setMode(_ mode: PanelMode)
     func navigate(to url: URL, recordHistory: Bool, select: URL?, preserveDirectorySizes: Bool)
     func refresh(select: URL?)
