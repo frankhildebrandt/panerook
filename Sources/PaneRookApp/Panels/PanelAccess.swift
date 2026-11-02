@@ -12,6 +12,7 @@ protocol PanelAccess: AnyObject {
     var selectedFiles: [URL] { get }
     var visitedDirectories: [URL] { get }
     var filterPattern: String { get }
+    var gitFilter: GitFileFilter { get }
     var textEncoding: String.Encoding { get set }
     var showHidden: Bool { get set }
     var sortKey: String { get }
@@ -25,6 +26,7 @@ protocol PanelAccess: AnyObject {
     func canApplyTaskResult(in url: URL) -> Bool
     func panelize(_ urls: [URL])
     func setFilter(_ pattern: String)
+    func setGitFilter(_ filter: GitFileFilter)
     func setSort(key: String, ascending: Bool)
     func setBriefListing(_ brief: Bool)
     func showDirectorySizes(_ sizes: [URL: Int64])
