@@ -15,11 +15,22 @@ Release **0.1.1** ist die erste mit **Apple Developer ID signierte und von Apple
 Voraussetzungen: macOS 14 oder neuer und Xcode 26 oder neuer mit ausgewählter Command Line Toolchain.
 
 ```sh
-./scripts/build-app.sh
-open build/PaneRook.app
+make dev
 ```
 
-Für einen optimierten Build: `./scripts/build-app.sh release`.
+Das Makefile bietet folgende Targets:
+
+| Aufruf | Aktion |
+| --- | --- |
+| `make run` | Optimiertes App-Bundle bauen und starten |
+| `make dev` | Debug-App starten, Änderungen beobachten und nach erfolgreichem Build neu starten |
+| `make build` | Optimiertes App-Bundle unter `build/PaneRook.app` bauen (auch Standard für `make`) |
+| `make test` | Swift-Tests und Appcast-Prüfung ausführen |
+| `make clean` | SwiftPM-Buildprodukte und den Ordner `build/` entfernen |
+
+Die Build-Targets verwenden `scripts/build-app.sh`.
+`make dev` prüft im Sekundentakt `Sources/`, `Resources/`, `scripts/`, das Makefile sowie `Package.swift` und `Package.resolved`, ohne zusätzliche Watcher-Abhängigkeit. Bei Buildfehlern läuft die zuletzt gestartete App weiter; die nächste Änderung löst einen neuen Versuch aus. `Ctrl-C` beendet den Watcher und die von ihm gestartete App. Beim Neustart wird diese App beendet; laufende Dateioperationen vorher abschließen.
+
 Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es ohne weitere Konfiguration lokal ad hoc.
 
 SwiftPM lädt die festgelegte Sparkle-Version **2.10.0** beim ersten Build. Das Buildskript bettet das Framework und seine Helfer in das App-Bundle ein und signiert sie. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` bleiben Update-Funktionen im Entwicklungsbuild deaktiviert; das gilt auch beim Start des bloßen SwiftPM-Executables.
@@ -51,15 +62,14 @@ PANEROOK_NOTARY_KEYCHAIN="$signing_directory/signing.keychain-db" \
 Die Apple-Notarisierung ist über das lokale Profil `panerook-notary` und die GitHub-Secrets eingerichtet. Der Release-Workflow notarisiert App und DMG automatisch und heftet die Tickets an. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
 
 ```sh
-swift test
-swift scripts/test-appcast.swift
+make test
 ```
 
 In einer Umgebung, die verschachtelte Build-Sandboxen verhindert:
 
 ```sh
-PANEROOK_DISABLE_BUILD_SANDBOX=1 ./scripts/build-app.sh
-CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache" swift test --disable-sandbox --cache-path "$PWD/.build/cache"
+PANEROOK_DISABLE_BUILD_SANDBOX=1 make dev
+PANEROOK_DISABLE_BUILD_SANDBOX=1 make test
 ```
 
 Falls die Umgebung das Erzeugen von dSYM-Dateien verhindert, lässt sich zusätzlich `PANEROOK_DISABLE_DEBUG_SYMBOLS=1` setzen. Das App-Bundle wird dann ohne separate Debug-Symbole erstellt.
