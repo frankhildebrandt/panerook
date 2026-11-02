@@ -13,21 +13,21 @@ extension CommanderController {
             .file, "Gruppe auswählen …", id: "selection.selectGroup", order: 180, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.remoteContent == nil
             }
         ) { [weak self] in self?.selectGroup(select: true) }
         registry.add(
             .file, "Gruppe abwählen …", id: "selection.deselectGroup", order: 190, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.remoteContent == nil
             }
         ) { [weak self] in self?.selectGroup(select: false) }
         registry.add(
             .file, "Auswahl umkehren", id: "selection.invert", order: 200, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.remoteContent == nil
             }
         ) { [weak self] in self?.active.invertSelection() }
         let exit = registry.add(
@@ -42,7 +42,7 @@ extension CommanderController {
             .command, "Panels vertauschen", id: "panels.swap", order: 40, group: 0, key: "u",
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.left.remoteContent == nil && self.right.remoteContent == nil
             }
         ) { [weak self] in self?.swapPanels() }
         registry.add(
@@ -77,7 +77,7 @@ extension CommanderController {
             modifiers: [.command, .shift],
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.remoteContent == nil
             }
         ) { [weak self] in self?.revealInFinder() }
         registry.add(

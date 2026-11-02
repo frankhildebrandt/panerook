@@ -47,6 +47,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let inspection = PanelInspectionView()
     private let tree = PanelDirectoryTree()
     private let network = NetworkBrowserView()
+    private(set) var remoteContent: (any RemotePanelContent)?
     private var state: PanelState
     private let gitStatusQueue = DispatchQueue(label: "app.panerook.panel.git-status", qos: .utility)
     private var gitStatusReader: GitStatusReader?
@@ -81,7 +82,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var onOpenGit: (() -> Void)?
     var onSelectionChanged: ((URL?) -> Void)?
     var showHidden: Bool { get { state.showHidden } set { state.showHidden = newValue } }
-    var isActive = false { didSet { updateNavigation() } }
+    var isActive = false { didSet { remoteContent?.isActive = isActive; updateNavigation() } }
     private var history: [URL] { state.history }
     private let label: String
     private var loading: Bool { state.loading }
@@ -249,6 +250,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     var selectedEntries: [FileEntry] {
+        guard remoteContent == nil else { return [] }
         guard !loading else { return [] }
         guard mode != .quickView && mode != .info && mode != .network else { return [] }
         if mode == .tree { return tree.selectedURL.flatMap { try? LocalInspection.entry(at: $0) }.map { [$0] } ?? [] }
@@ -257,13 +259,47 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var selectedFiles: [URL] { selectedEntries.filter { !$0.isParent }.map(\.url) }
 
     func focus() {
+        if let remoteContent { remoteContent.focus(); return }
         if mode == .network { network.focus(); return }
         let responder: NSView = mode == .tree ? tree.outline : (mode == .listing ? table : inspection)
         view.window?.makeFirstResponder(responder)
     }
 
+    func showRemoteContent(_ content: (any RemotePanelContent)?) {
+        _ = view
+        if remoteContent === content { return }
+        let previous = remoteContent
+        remoteContent = nil
+        previous?.disconnect()
+        previous?.viewController.view.removeFromSuperview()
+        previous?.viewController.removeFromParent()
+        remoteContent = content
+        surface.isHidden = content != nil
+        if let content {
+            content.onKey = { [weak self] event in self?.onKey?(event) ?? false }
+            content.isActive = isActive
+            if mode == .network { network.stop() }
+            let controller = content.viewController
+            addChild(controller)
+            controller.view.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(controller.view)
+            NSLayoutConstraint.activate([
+                controller.view.topAnchor.constraint(equalTo: view.topAnchor),
+                controller.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            ])
+        } else if mode == .network { network.start() }
+        onSelectionChanged?(selectedFiles.first)
+        if isActive { focus() }
+    }
+
+    func remoteStateDidChange() { onSelectionChanged?(nil) }
+    func activate() { onActivate?() }
+
     func setMode(_ mode: PanelMode) {
         _ = view
+        showRemoteContent(nil)
         if mode == .tree && isArchiveDirectory {
             onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Im Archiv bitte die Dateiliste zur Ordnernavigation verwenden."]))
             return
@@ -309,6 +345,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func panelize(_ urls: [URL]) {
         _ = view
+        showRemoteContent(nil)
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         gitRepository = nil
@@ -385,6 +422,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     func navigate(to url: URL, recordHistory: Bool = true, select: URL? = nil, preserveDirectorySizes: Bool = false) {
+        showRemoteContent(nil)
         if mode == .network { setMode(.listing) }
         let oldDirectory = directory
         let preserved = Set(selectedFiles)
@@ -506,23 +544,26 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     func canApplyTaskResult(in url: URL) -> Bool {
-        state.canApplyTaskResult(in: url)
+        remoteContent == nil && state.canApplyTaskResult(in: url)
     }
 
     /// A background completion must not replace search results or an in-flight navigation.
     func refreshAfterTask() {
+        if let remoteContent { remoteContent.refresh(); return }
         guard isViewLoaded, !panelized, mode == .listing || mode == .tree else { return }
         guard !loading else { pendingTaskRefresh = true; return }
         navigate(to: directory, recordHistory: false, preserveDirectorySizes: true)
     }
 
     func refresh(select: URL? = nil) {
+        if let remoteContent { remoteContent.refresh(); return }
         if mode == .network { network.stop(); network.start(); return }
         navigate(to: directory, recordHistory: false, select: select)
     }
     func installFavoritesMenu(_ menu: NSMenu) { favoritesButton.menu = menu }
     func showFavorites() { favoritesButton.performClick(nil) }
     @objc func goUp() {
+        if let remoteContent { remoteContent.goUp(); return }
         if mode == .network { setMode(.listing); return }
         let parent = state.parentDirectory
         navigate(to: parent, select: directory)
@@ -542,6 +583,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     func controlTextDidChange(_ obj: Notification) { updateGitBarLayout() }
     @objc private func openFromTable() { onActivate?(); onOpenSelection?() }
     @objc func openSelection() {
+        if let remoteContent { remoteContent.openSelection(); return }
         guard !loading, let entry = selectedEntries.first else { return }
         if entry.isParent {
             goUp()

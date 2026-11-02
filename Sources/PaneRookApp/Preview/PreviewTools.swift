@@ -15,6 +15,7 @@ final class PreviewTools: NSObject, QLPreviewPanelDataSource {
     private var previewURLs: [URL] = []
     init(owner: any PreviewHost) { self.owner = owner }
     func openSelection() {
+        if let remote = owner.activePane.remoteContent { remote.openSelection(); return }
         guard let entry = owner.activePane.selectedEntries.first else { return }
         // Archives enter the panel before extension-to-app associations are considered.
         if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {

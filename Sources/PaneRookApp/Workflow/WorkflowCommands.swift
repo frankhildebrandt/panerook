@@ -61,7 +61,7 @@ extension WorkflowTools {
     func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: any PanelAccess) {
         registry.add(
             menu, "Anordnen", id: "\(menu.rawValue).panelize", order: 70, group: 2,
-            enabled: { self.owner.canUseMenus && !pane.isArchiveDirectory }
+            enabled: { self.owner.canUseMenus && pane.remoteContent == nil && !pane.isArchiveDirectory }
         ) { self.panelize(external: false, pane: pane) }
     }
 }
