@@ -8,13 +8,23 @@ final class ClosureAction: NSObject {
 
 final class ToolPanel: NSPanel {
     var onCancel: (() -> Void)?
-    override func cancelOperation(_ sender: Any?) { onCancel?() }
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if ((event.keyCode == 53 || event.keyCode == 109) && flags.isEmpty)
-            || (event.keyCode == 5 && flags == .control) {
-            onCancel?(); return true
+    private var commandMonitor: Any?
+    func configureCommands(scope: CommandScope, handler: @escaping (String) -> Bool) {
+        if let commandMonitor { NSEvent.removeMonitor(commandMonitor) }
+        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self, ContextCommands.canHandle(event, in: self) else { return event }
+            if let id = ContextCommands.matching(event, scope: scope), handler(id) { return nil }
+            if let table = self.firstResponder as? NSTableView, table.handleListNavigation(event) { return nil }
+            return event
         }
+    }
+    deinit { if let commandMonitor { NSEvent.removeMonitor(commandMonitor) } }
+    override func cancelOperation(_ sender: Any?) {
+        if let event = NSApp.currentEvent, event.type == .keyDown, !ContextCommands.isCancellation(event) { return }
+        onCancel?()
+    }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if !ContextCommands.preservesTextInput(event, in: self), ContextCommands.isCancellation(event) { onCancel?(); return true }
         return super.performKeyEquivalent(with: event)
     }
 }

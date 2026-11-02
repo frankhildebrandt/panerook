@@ -18,7 +18,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private var actionDock: NSView!
     private var console: NSStackView!
     private let commandInput = NSTextField()
-    private var panelsHidden = false
+    private(set) var panelsHidden = false
     var arePanelsHidden: Bool { panelsHidden }
     lazy var tasks = TaskCenter(parentWindow: { [weak self] in self?.view.window },
                                 restoreFocus: { [weak self] in guard let self else { return }; self.activate(self.active) })
@@ -33,6 +33,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var git = GitTools(owner: self)
     private let favoriteDestinations = FavoriteDestinationCache()
     private var favoritesMenus: [PanelFavoritesController] = []
+    weak var appUpdater: AppUpdater?
     var onShowMenu: (() -> Void)?
     var menuIsTracking: (() -> Bool)?
     var onKeyBindingsChanged: (() -> Void)?
@@ -83,7 +84,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)
         hiddenButton.imagePosition = .imageOnly
         hiddenButton.setAccessibilityLabel("Versteckte Dateien")
-        hiddenButton.toolTip = "Versteckte Dateien · ⌘⇧."
+        hiddenButton.toolTip = "Versteckte Dateien"
         AppStyle.configureButton(hiddenButton)
         hiddenButton.setButtonType(.pushOnPushOff)
         hiddenButton.target = self
@@ -135,8 +136,6 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         AppStyle.configureField(commandInput)
         commandInput.placeholderString = "Shell-Befehl"
         commandInput.setAccessibilityLabel("Befehl")
-        commandInput.target = self
-        commandInput.action = #selector(runConsoleCommand)
         let execute = NSButton(title: "Ausführen", target: self, action: #selector(runConsoleCommand))
         AppStyle.configureButton(execute)
         let commandRow = NSStackView(views: [commandInput, execute])
@@ -218,7 +217,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         if panelsHidden { view.window?.makeFirstResponder(commandInput) }
         else { activate(active) }
     }
-    @objc private func runConsoleCommand() {
+    @objc func runConsoleCommand() {
         let command = commandInput.stringValue
         commandInput.stringValue = ""
         workflow.runCommand(command)
@@ -262,7 +261,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         case ToolbarID.refresh: (title, symbol, action) = ("Aktualisieren", "arrow.clockwise", #selector(refresh))
         case ToolbarID.swap: (title, symbol, action) = ("Panels tauschen", "arrow.left.arrow.right", #selector(swapPanels))
         case ToolbarID.help: (title, symbol, action) = ("Hilfe", "questionmark.circle", #selector(showHelp))
-        case ToolbarID.menu: (title, symbol, action) = ("Menü · F9", "line.3.horizontal", #selector(showMenu))
+        case ToolbarID.menu: (title, symbol, action) = ("Menü", "line.3.horizontal", #selector(showMenu))
         default: return nil
         }
         item.label = title
@@ -284,6 +283,11 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     }
     private func updateDirectoryActionAvailability() {
         let bindings = commandRegistry.bindings
+        hiddenButton.toolTip = commandHint("panels.showHidden", title: "Versteckte Dateien", bindings: bindings)
+        let toolbarCommands = [ToolbarID.home: "navigation.home", ToolbarID.refresh: "panels.refresh", ToolbarID.swap: "panels.swap", ToolbarID.help: "help", ToolbarID.menu: "menu"]
+        for item in view.window?.toolbar?.items ?? [] {
+            if let id = toolbarCommands[item.itemIdentifier] { item.toolTip = commandHint(id, title: item.label, bindings: bindings) }
+        }
         for (button, command) in actions {
             button.isEnabled = command.enabled()
             button.title = "\(bindings[command.id]?.label ?? "")  \(command.dockTitle?() ?? command.title)"
@@ -321,24 +325,35 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
-        guard menuIsTracking?() != true, !favoritesMenus.contains(where: \.isTracking) else { return false }
-        if event.keyCode == 125 && event.modifierFlags.intersection([.command, .control, .option, .shift]) == .option {
-            active.showFavorites(); return true
-        }
-        if let action = commandRegistry.matching(event) {
+        guard canHandleMainKeys else { return false }
+        if let action = commandRegistry.matching(event, scope: .panel)
+            ?? commandRegistry.matching(event, scope: .application) {
             action.perform()
             return true
         }
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers.intersection([.command, .control, .option]).isEmpty else { return false }
-        switch event.keyCode {
-        case 48: activate(other)
-        case 36, 76: openSelection()
-        case 51, 117: goUp()
-        case 49: previewSelection()
-        default: return false
+        return false
+    }
+    var canHandleMainKeys: Bool {
+        canUseMenus && !KeyboardCaptureState.isRecording && menuIsTracking?() != true
+            && !favoritesMenus.contains(where: \.isTracking)
+    }
+    /// Called before AppKit's key-equivalent pass, so physical custom keys work on any layout.
+    func handleGlobalKey(_ event: NSEvent) -> Bool {
+        guard canHandleMainKeys, event.window === view.window else { return false }
+        if panelsHidden, let action = commandRegistry.matching(event, scope: .console) {
+            action.perform(); return true
         }
+        if active.hasPanelKeyboardFocus,
+           let action = commandRegistry.matching(event, scope: .panel) {
+            action.perform(); return true
+        }
+        guard let command = commandRegistry.matching(event, scope: .application),
+              let binding = commandRegistry.bindings[command.id], !binding.isTextInput else { return false }
+        command.perform()
         return true
+    }
+    private func commandHint(_ id: String, title: String, bindings: [String: AppKeyBinding]) -> String {
+        bindings[id].map { title + " · " + $0.label } ?? title
     }
     func hotkeysChanged() {
         updateDirectoryActionAvailability()
@@ -419,7 +434,12 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         guard view.window?.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = "Tastenkürzel"
-        alert.informativeText = "Tab: Panel wechseln\nEnter: öffnen · Rücktaste: übergeordneter Ordner\nLeertaste / F3: Quick Look\nF2: Benutzermenü · F4: TextEdit\nF5 / F6: Kopieren / Verschieben\nF7: Ordner anlegen · F8: Papierkorb\nF9: Menü · F10: Verlassen\nEsc / F10 / Ctrl-G: Dialog oder Menü abbrechen\n⌘L: Pfad · ⌘R: aktualisieren · ⌘U: Panels tauschen\nCtrl-O: Panels an/aus\n\nEigene Belegung: Optionen → Tasten lernen.\nAuf Apple-Tastaturen ggf. zusätzlich fn drücken."
+        let bindings = commandRegistry.bindings
+        let ids = ["panels.switch", "navigation.open", "navigation.parent.backspace", "preview.space", "preview", "userMenu", "edit", "copy", "move", "mkdir", "trash", "menu", "exit", "dialog.cancel", "dialog.cancel.function", "dialog.cancel.control", "navigation.focusPath", "panels.refresh", "panels.swap", "panels.toggle"]
+        alert.informativeText = ids.compactMap { id -> String? in
+            guard let command = commandRegistry[id], let binding = bindings[id] else { return nil }
+            return binding.label + ": " + command.title
+        }.joined(separator: "\n") + "\n\nAlle Aktionen und eigene Belegung: Optionen → Tastaturbelegung.\nAuf Apple-Tastaturen ggf. zusätzlich fn drücken."
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: view.window!)
     }

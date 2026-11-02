@@ -52,6 +52,7 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         panel.onCancel = { [weak self] in self?.window?.performClose(nil) }
         panel.center()
         buildView()
+        panel.configureCommands(scope: .git) { [weak self] in self?.performCommand($0) ?? false }
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -142,6 +143,50 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         controls += [branch, actions, mode, filter, search, historyPath, diffMode]
     }
 
+    private func performCommand(_ id: String) -> Bool {
+        guard !busy, window?.attachedSheet == nil else { return false }
+        switch id {
+        case "git.refresh": reload()
+        case "git.stage" where mode.selectedSegment == 0 && !selectedPaths.isEmpty: stage()
+        case "git.unstage" where mode.selectedSegment == 0 && !selectedPaths.isEmpty: unstage()
+        case "git.commit" where mode.selectedSegment == 0: commit()
+        case "git.watch" where mode.selectedSegment == 0 && !selectedPaths.isEmpty: toggleWatch()
+        case "git.branch.new": newBranch()
+        case "git.branch.switch": switchBranch()
+        case "git.checkout" where mode.selectedSegment == 1 && selectedCommit != nil: checkoutCommit()
+        case "git.historicFile" where mode.selectedSegment == 1 && selectedCommit != nil: showHistoricFile()
+        case "git.stash.save" where mode.selectedSegment != 1: saveStash()
+        case "git.stash.apply" where mode.selectedSegment == 2 && selectedStash != nil: applyStash()
+        case "git.stash.pop" where mode.selectedSegment == 2 && selectedStash != nil: popStash()
+        case "git.stash.drop" where mode.selectedSegment == 2 && selectedStash != nil: dropStash()
+        case "git.mode.files": mode.selectedSegment = 0; modeChanged()
+        case "git.mode.history": mode.selectedSegment = 1; modeChanged()
+        case "git.mode.stashes": mode.selectedSegment = 2; modeChanged()
+        case "git.diff.working" where mode.selectedSegment == 0: diffMode.selectedSegment = 0; showSelection()
+        case "git.diff.staged" where mode.selectedSegment == 0: diffMode.selectedSegment = 1; showSelection()
+        case "git.diff.unified": diff.setPresentation(0)
+        case "git.diff.sideBySide": diff.setPresentation(1)
+        case "git.search": window?.makeFirstResponder(search); search.selectText(nil)
+        case "git.historyPath" where mode.selectedSegment == 1: window?.makeFirstResponder(historyPath); historyPath.selectText(nil)
+        case "git.fetch": performMenuAction(1)
+        case "git.pull": performMenuAction(2)
+        case "git.push": performMenuAction(3)
+        case "git.branch.merge": performMenuAction(4)
+        case "git.branch.delete": performMenuAction(5)
+        case "git.tag": performMenuAction(6)
+        default:
+            guard id.hasPrefix("git.filter."), mode.selectedSegment == 0,
+                  let index = Int(id.dropFirst("git.filter.".count)), filterNames.indices.contains(index) else { return false }
+            filter.selectItem(at: index); refilter()
+        }
+        return true
+    }
+    private func performMenuAction(_ tag: Int) {
+        guard let item = actions.itemArray.first(where: { $0.tag == tag }) else { return }
+        actions.select(item)
+        menuAction()
+    }
+
     private func row(_ views: [NSView]) -> NSStackView {
         let stack = NSStackView(views: views); stack.spacing = 8; stack.alignment = .centerY
         stack.setHuggingPriority(.required, for: .vertical)
@@ -149,7 +194,14 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
     }
     private func button(_ title: String, _ action: Selector) -> NSButton {
         let control = NSButton(title: title, target: self, action: action)
-        AppStyle.configureButton(control); control.controlSize = .small; controls.append(control); return control
+        AppStyle.configureButton(control); control.controlSize = .small
+        let ids = ["stage": "git.stage", "unstage": "git.unstage", "commit": "git.commit", "toggleWatch": "git.watch",
+                   "newBranch": "git.branch.new", "switchBranch": "git.branch.switch", "reload": "git.refresh",
+                   "checkoutCommit": "git.checkout", "showHistoricFile": "git.historicFile", "saveStash": "git.stash.save",
+                   "applyStash": "git.stash.apply", "popStash": "git.stash.pop", "dropStash": "git.stash.drop"]
+        if let id = ids[NSStringFromSelector(action)] { ContextCommands.configure(control, id: id) }
+        controls.append(control)
+        return control
     }
     private func addMenuActions() {
         actions.addItem(withTitle: "Aktionen")

@@ -124,11 +124,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         AppStyle.configureButton(up)
         up.isBordered = false
         up.controlSize = .small
-        up.toolTip = "Übergeordneter Ordner · ⌘↑"
+        up.toolTip = "Übergeordneter Ordner"
 
         AppStyle.configureField(pathField)
         pathField.placeholderString = "Pfad"
-        pathField.toolTip = "Pfad eingeben · ⌘L"
+        pathField.toolTip = "Pfad eingeben"
         pathField.target = self
         pathField.action = #selector(pathEntered)
         pathField.delegate = self
@@ -255,6 +255,12 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         return table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil }
     }
     var selectedFiles: [URL] { selectedEntries.filter { !$0.isParent }.map(\.url) }
+    var canUseGitFilter: Bool { state.gitSnapshot != nil && !loading && mode == .listing }
+    var hasPanelKeyboardFocus: Bool {
+        guard let responder = view.window?.firstResponder as? NSView else { return false }
+        return responder === table || responder === tree.outline || responder === inspection || responder.isDescendant(of: inspection)
+    }
+
 
     func focus() {
         if mode == .network { network.focus(); return }
@@ -527,7 +533,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let parent = state.parentDirectory
         navigate(to: parent, select: directory)
     }
-    @objc private func goBack() {
+    @objc func goBack() {
         if mode == .network { setMode(.listing); return }
         guard let previous = state.popHistory() else { return }
         navigate(to: previous, recordHistory: false)
@@ -800,8 +806,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         setGitFilter(filter)
     }
     @objc private func openGit() { onActivate?(); onOpenGit?() }
-    @objc private func toggleWatched() {
-        guard let snapshot = state.gitSnapshot else { return }
+    @objc func toggleWatched() {
+        guard canUseGitFilter, let snapshot = state.gitSnapshot else { return }
         let paths = selectedFiles.compactMap { GitPanelPaths.relativePath(for: $0, in: snapshot.root) }
         guard !paths.isEmpty else { return }
         gitWatches.toggle(paths: paths, in: snapshot.root)

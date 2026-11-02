@@ -100,8 +100,8 @@ final class ConnectionEditorDialog: NSWindowController {
         let cancel = NSButton(title: "Abbrechen", target: self, action: #selector(cancel(_:)))
         let submit = NSButton(title: purpose == .connection ? "Verbinden" : "Speichern", target: self, action: #selector(confirm(_:)))
         for button in [cancel, submit] { AppStyle.configureButton(button) }
-        cancel.keyEquivalent = "\u{1b}"; cancel.keyEquivalentModifierMask = []
-        submit.keyEquivalent = "\r"; submit.keyEquivalentModifierMask = []
+        ContextCommands.configure(cancel, id: "dialog.cancel")
+        ContextCommands.configure(submit, id: "dialog.accept")
         let buttons = NSStackView(); buttons.spacing = 10
         var keyViews: [NSView] = purpose == .connection ? [preset] : [protocolPicker]
         keyViews += [name, host, port, user, password, identity, path]
@@ -199,8 +199,7 @@ final class ConnectionEditorDialog: NSWindowController {
     @objc private func confirm(_ sender: Any?) {
         if sender is NSTextField {
             guard let event = NSApp.currentEvent, event.type == .keyDown,
-                  event.keyCode == 36 || event.keyCode == 76,
-                  event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return }
+                  ContextCommands.matching(event, scope: .dialog)?.hasPrefix("dialog.accept") == true else { return }
         }
         guard outcome == nil else { return }
         do {

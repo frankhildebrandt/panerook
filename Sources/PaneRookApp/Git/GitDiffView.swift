@@ -170,6 +170,12 @@ final class GitDiffView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
+    func setPresentation(_ index: Int) {
+        guard (0...1).contains(index) else { return }
+        presentation.selectedSegment = index
+        presentationChanged()
+    }
+
     @objc private func presentationChanged() {
         let side = presentation.selectedSegment == 1
         unifiedScroll.isHidden = side

@@ -199,10 +199,10 @@ private final class TaskProgressWindow: NSWindowController, NSWindowDelegate {
             root.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -40).isActive = true
         }
-        cancel.target = self; cancel.action = #selector(cancelTask)
+        cancel.target = self; cancel.action = #selector(cancelTask); ContextCommands.configure(cancel, id: "tasks.cancel")
         background.target = self; background.action = #selector(backgroundTask)
-        background.keyEquivalent = "b"; background.keyEquivalentModifierMask = .option
-        reveal.target = self; reveal.action = #selector(revealResult)
+        ContextCommands.configure(background, id: "tasks.background")
+        reveal.target = self; reveal.action = #selector(revealResult); ContextCommands.configure(reveal, id: "tasks.reveal")
         for button in [cancel, background, reveal] { AppStyle.configureButton(button) }
         let footer = NSStackView(views: [NSView(), reveal, cancel, background]); footer.spacing = 8
         root.addArrangedSubview(NSView()); root.addArrangedSubview(footer)
@@ -210,6 +210,16 @@ private final class TaskProgressWindow: NSWindowController, NSWindowDelegate {
         panel.onCancel = { [weak self] in
             guard let self else { return }
             if self.active { self.onCancel?() } else { self.onBackground?() }
+        }
+        panel.configureCommands(scope: .tasks) { [weak self] id in
+            guard let self else { return false }
+            switch id {
+            case "tasks.background": self.backgroundTask()
+            case "tasks.cancel" where !self.cancel.isHidden && self.cancel.isEnabled: self.cancelTask()
+            case "tasks.reveal" where !self.reveal.isHidden && self.reveal.isEnabled: self.revealResult()
+            default: return false
+            }
+            return true
         }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
@@ -266,9 +276,9 @@ private final class TaskQueueWindow: NSWindowController, NSTableViewDataSource, 
             table.addTableColumn(column)
         }
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.documentView = table
-        open.target = self; open.action = #selector(openTask); open.keyEquivalent = "\r"
-        cancel.target = self; cancel.action = #selector(cancelTask)
-        clear.target = self; clear.action = #selector(clearTasks)
+        open.target = self; open.action = #selector(openTask); ContextCommands.configure(open, id: "tasks.details")
+        cancel.target = self; cancel.action = #selector(cancelTask); ContextCommands.configure(cancel, id: "tasks.cancel")
+        clear.target = self; clear.action = #selector(clearTasks); ContextCommands.configure(clear, id: "tasks.clear")
         for button in [open, cancel, clear] { AppStyle.configureButton(button) }
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(views: [status, NSView(), clear, cancel, open]); footer.spacing = 8
@@ -281,6 +291,16 @@ private final class TaskQueueWindow: NSWindowController, NSTableViewDataSource, 
             scroll.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -20), footer.widthAnchor.constraint(equalTo: scroll.widthAnchor)
         ])
         panel.onCancel = { [weak self] in self?.close() }; panel.initialFirstResponder = table
+        panel.configureCommands(scope: .tasks) { [weak self] id in
+            guard let self else { return false }
+            switch id {
+            case "tasks.details" where self.open.isEnabled: self.openTask()
+            case "tasks.cancel" where self.cancel.isEnabled: self.cancelTask()
+            case "tasks.clear" where self.clear.isEnabled: self.clearTasks()
+            default: return false
+            }
+            return true
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
     func update(_ snapshots: [BackgroundTaskSnapshot]) {

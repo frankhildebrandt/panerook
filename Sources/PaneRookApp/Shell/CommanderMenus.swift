@@ -13,33 +13,35 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     init(commander: CommanderController, updater: AppUpdater? = nil) {
         self.commander = commander
         self.updater = updater
+        commander.appUpdater = updater
         super.init()
     }
     deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
 
     func install() {
         let main = NSMenu()
-        let app = NSMenu(title: "PaneRook")
-        native(app, "Über PaneRook", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
+        let app = makeMenu("PaneRook")
+        native(app, "app.about", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
         if let updater {
-            native(app, "Nach Updates suchen …", #selector(AppUpdater.checkForUpdates(_:)), target: updater)
-            native(app, "Update-Einstellungen …", #selector(AppUpdater.showSettings(_:)), target: updater)
+            native(app, "app.updates", #selector(AppUpdater.checkForUpdates(_:)), target: updater)
+            native(app, "app.updateSettings", #selector(AppUpdater.showSettings(_:)), target: updater)
             for item in app.items.suffix(2) { item.toolTip = updater.unavailableReason }
         }
         app.addItem(.separator())
-        native(app, "PaneRook ausblenden", #selector(NSApplication.hide(_:)), key: "h", target: NSApp)
+        native(app, "app.hide", #selector(NSApplication.hide(_:)), target: NSApp)
         app.addItem(.separator())
-        native(app, "PaneRook beenden", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
+        native(app, "app.quit", #selector(NSApplication.terminate(_:)), target: NSApp)
         attach(app, to: main)
         for menu in makeCommanderMenus() { attach(menu, to: main) }
 
-        // Preserve macOS text editing and its responder-chain shortcuts.
-        let edit = NSMenu(title: "Bearbeiten")
-        native(edit, "Widerrufen", Selector(("undo:")), key: "z")
-        native(edit, "Ausschneiden", #selector(NSText.cut(_:)), key: "x")
-        native(edit, "Kopieren", #selector(NSText.copy(_:)), key: "c")
-        native(edit, "Einsetzen", #selector(NSText.paste(_:)), key: "v")
-        native(edit, "Alles auswählen", #selector(NSText.selectAll(_:)), key: "a")
+        // Target nil preserves native text editing and validation via the responder chain.
+        let edit = makeMenu("Bearbeiten")
+        native(edit, "editing.undo", Selector(("undo:")))
+        native(edit, "editing.redo", Selector(("redo:")))
+        native(edit, "editing.cut", #selector(NSText.cut(_:)))
+        native(edit, "editing.copy", #selector(NSText.copy(_:)))
+        native(edit, "editing.paste", #selector(NSText.paste(_:)))
+        native(edit, "editing.selectAll", #selector(NSText.selectAll(_:)))
         attach(edit, to: main)
         let help = commandMenu(.help, title: "Hilfe")
         attach(help, to: main)
@@ -59,15 +61,28 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
             for menu in self.allMenus { for item in menu.items { self.updateKey(item) } }
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.popupIsTracking || !self.trackingMenus.isEmpty else { return event }
-            let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            if ((event.keyCode == 109 || event.keyCode == 53) && modifiers.isEmpty)
-                || (event.keyCode == 5 && modifiers == .control) {
-                for menu in self.allMenus { menu.cancelTrackingWithoutAnimation() }
-                return nil
+            guard let self, !KeyboardCaptureState.isRecording else { return event }
+            if self.popupIsTracking || !self.trackingMenus.isEmpty {
+                if ContextCommands.isCancellation(event) {
+                    for menu in self.allMenus { menu.cancelTrackingWithoutAnimation() }
+                    return nil
+                }
+                return event
             }
-            return event
+            if self.handleTextEditingKey(event) { return nil }
+            return self.commander.handleGlobalKey(event) ? nil : event
         }
+    }
+
+    /// Physical remappings also work in field editors and auxiliary windows.
+    private func handleTextEditingKey(_ event: NSEvent) -> Bool {
+        guard let window = event.window, window.isKeyWindow,
+              let command = commander.commandRegistry.matching(event, scope: .textEditing),
+              let binding = commander.commandRegistry.bindings[command.id] else { return false }
+        if binding.isTextInput {
+            guard let text = window.firstResponder as? NSTextView, text.isEditable || text.isSelectable else { return false }
+        }
+        return command.perform()
     }
 
     private func makeCommanderMenus() -> [NSMenu] {
@@ -84,16 +99,20 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         item.submenu = child
         parent.addItem(item)
     }
-    private func native(_ menu: NSMenu, _ title: String, _ action: Selector, key: String = "", target: AnyObject? = nil) {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+    private func native(_ menu: NSMenu, _ id: String, _ action: Selector, target: AnyObject? = nil) {
+        guard let command = commander.commandRegistry[id] else { return }
+        let item = NSMenuItem(title: command.title, action: action, keyEquivalent: "")
+        item.identifier = .init(id)
+        item.representedObject = command
         item.target = target
+        updateKey(item)
         menu.addItem(item)
     }
     private func commandMenu(_ location: CommandMenu, title: String) -> NSMenu {
         let menu = makeMenu(title)
         var submenus: [String: NSMenu] = [:]
         var previousGroup: Int?
-        for command in commander.commandRegistry.commands(in: location) {
+        for command in commander.commandRegistry.commands(in: location) where command.visibleInMenu {
             if let previousGroup, previousGroup != command.group { menu.addItem(.separator()) }
             previousGroup = command.group
             let target: NSMenu
@@ -110,8 +129,13 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         return menu
     }
     private func updateKey(_ item: NSMenuItem) {
-        guard let id = item.identifier?.rawValue, id != "exit", let binding = commander.commandRegistry.bindings[id] else { return }
-        item.keyEquivalent = binding.characters
+        guard let id = item.identifier?.rawValue, let command = commander.commandRegistry[id] else { return }
+        // Always clear the old equivalent when a mapping is removed or becomes table-only.
+        item.keyEquivalent = ""
+        item.keyEquivalentModifierMask = []
+        guard command.scope != .panel, let binding = commander.commandRegistry.bindings[id],
+              !binding.isTextInput else { return }
+        item.keyEquivalent = binding.menuKeyEquivalent
         item.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: binding.modifiers)
     }
     @objc private func performCommand(_ sender: NSMenuItem) {
@@ -127,7 +151,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     func menuWillOpen(_ menu: NSMenu) { trackingMenus.insert(ObjectIdentifier(menu)) }
     func menuDidClose(_ menu: NSMenu) { trackingMenus.remove(ObjectIdentifier(menu)) }
     func menuNeedsUpdate(_ menu: NSMenu) {
-        for item in menu.items where item.representedObject is AppCommand { item.isEnabled = validateMenuItem(item) }
+        for item in menu.items where item.target === self && item.representedObject is AppCommand { item.isEnabled = validateMenuItem(item) }
     }
 
     private func showPopup() {

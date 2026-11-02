@@ -1,27 +1,10 @@
 import AppKit
 import PaneRookPanels
 
-private final class KeyCapture: NSTextField {
-    var binding: AppKeyBinding?
-    override var acceptsFirstResponder: Bool { true }
-    override func becomeFirstResponder() -> Bool { true }
-    override func keyDown(with event: NSEvent) { capture(event) }
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 53 { return false }
-        capture(event); return true
-    }
-    private func capture(_ event: NSEvent) {
-        guard event.keyCode != 53, event.keyCode != 36, event.keyCode != 76 else { return }
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard !(event.keyCode == 5 && flags == .control), !(event.charactersIgnoringModifiers ?? "").isEmpty else { return }
-        binding = AppKeyBinding(keyCode: event.keyCode, modifiers: flags.rawValue, characters: event.charactersIgnoringModifiers ?? "")
-        stringValue = binding!.label
-    }
-}
-
 final class PreferencesTools {
     unowned let owner: any PreferencesHost
     private let defaults = UserDefaults.standard
+    private var keyboardMapping: KeyboardMappingController?
     init(owner: any PreferencesHost) { self.owner = owner }
     private func bool(_ key: String, fallback: Bool = true) -> Bool { defaults.object(forKey: key) as? Bool ?? fallback }
     private func check(_ title: String, key: String, fallback: Bool = true) -> NSButton {
@@ -93,34 +76,17 @@ final class PreferencesTools {
         sheet("Codierung", rows: [("Textvorschau und Inhaltsansicht", popup)]) { pane.textEncoding = encodings[popup.indexOfSelectedItem].1 }
     }
     func learnKeys() {
-        let actions = owner.commandRegistry.customizableCommands.map { ($0.id, $0.title) }
-        ToolUI.choose(owner: owner, title: "Tasten lernen", labels: actions.map { $0.1 + " · " + (owner.commandRegistry.bindings[$0.0]?.label ?? "") }, accept: "Belegen …", extra: "Zurücksetzen") { [weak self] index, reset in
+        guard owner.canUseMenus, let window = owner.presentationWindow else { return }
+        let pane = owner.activePane
+        let controller = KeyboardMappingController(registry: owner.commandRegistry, didChange: { [weak self] in
+            self?.owner.hotkeysChanged()
+        }, didClose: { [weak self] in
             guard let self else { return }
-            if reset { self.defaults.removeObject(forKey: "keyBindings"); self.owner.hotkeysChanged(); return }
-            guard actions.indices.contains(index), let window = self.owner.presentationWindow else { return }
-            let action = actions[index]
-            let capture = KeyCapture(frame: NSRect(x: 0, y: 0, width: 440, height: 30))
-            capture.placeholderString = "Tastenkombination drücken"
-            capture.isEditable = false
-            AppStyle.configureField(capture)
-            let alert = NSAlert(); alert.messageText = action.1
-            alert.accessoryView = capture
-            alert.addButton(withTitle: "Speichern"); alert.addButton(withTitle: "Abbrechen")
-            alert.configureKeyboardShortcuts(); alert.window.initialFirstResponder = capture
-            alert.beginSheetModal(for: window) { [weak self] result in
-                guard let self else { return }
-                self.owner.activate(self.owner.activePane)
-                guard result == .alertFirstButtonReturn, let binding = capture.binding else { return }
-                var bindings = self.owner.commandRegistry.bindings
-                if let duplicate = bindings.first(where: { $0.key != action.0 && $0.value.keyCode == binding.keyCode && $0.value.modifiers == binding.modifiers }) {
-                    self.owner.showError(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Diese Taste ist bereits mit \(actions.first { $0.0 == duplicate.key }?.1 ?? duplicate.key) belegt."]))
-                    return
-                }
-                bindings[action.0] = binding
-                if let data = try? JSONEncoder().encode(bindings) { self.defaults.set(data, forKey: "keyBindings") }
-                self.owner.hotkeysChanged()
-            }
-        }
+            self.keyboardMapping = nil
+            self.owner.activate(pane)
+        })
+        keyboardMapping = controller
+        controller.present(asSheetOf: window)
     }
     func filter(pane: any PanelAccess) {
         ToolUI.prompt(owner: owner, title: "Filter", label: "Dateimaske · leer zeigt alle Dateien", value: pane.filterPattern, accept: "Anwenden") { value in pane.setFilter(value) }

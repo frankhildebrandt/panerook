@@ -163,6 +163,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
     private var entries: [RemoteEntry] = []
     private var buttons: [NSButton] = []
     private var busy: Bool { cancellation != nil }
+    private var keyMonitor: Any?
 
     init(connection: RemoteConnection, peer: any PanelAccess, tasks: TaskCenter) {
         self.tasks = tasks
@@ -173,7 +174,12 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         window.minSize = NSSize(width: 600, height: 380); window.delegate = self; window.center()
         window.onKey = { [weak self] in self?.key($0) ?? false }
         buildView()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window, self.key(event) else { return event }
+            return nil
+        }
     }
+    deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
 
     private func buildView() {
         let background = AppStyle.background(); window.contentView = background
@@ -197,7 +203,7 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         stack.addArrangedSubview(surface); surface.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         surface.setContentHuggingPriority(.defaultLow, for: .vertical)
         let actions = NSStackView(); actions.spacing = 8
-        for (title, action) in [("F5 Laden", #selector(download)), ("Hochladen …", #selector(upload)), ("F7 Ordner", #selector(makeDirectory)), ("F8 Löschen", #selector(deleteSelected)), ("Aktualisieren", #selector(reload))] {
+        for (title, action) in [("Laden", #selector(download)), ("Hochladen …", #selector(upload)), ("Ordner …", #selector(makeDirectory)), ("Löschen …", #selector(deleteSelected)), ("Aktualisieren", #selector(reload))] {
             actions.addArrangedSubview(button(title, action))
         }
         stack.addArrangedSubview(actions)
@@ -209,7 +215,13 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         stack.addArrangedSubview(statusRow); statusRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
     private func button(_ title: String, _ action: Selector) -> NSButton {
-        let result = NSButton(title: title, target: self, action: action); AppStyle.configureButton(result); result.controlSize = .small; buttons.append(result); return result
+        let result = NSButton(title: title, target: self, action: action)
+        AppStyle.configureButton(result); result.controlSize = .small
+        let ids = ["goUp": "remote.parent", "download": "remote.download", "upload": "remote.upload",
+                   "makeDirectory": "remote.mkdir", "deleteSelected": "remote.delete", "reload": "remote.refresh"]
+        if let id = ids[NSStringFromSelector(action)] { ContextCommands.configure(result, id: id) }
+        buttons.append(result)
+        return result
     }
     func show(directory: String) { window.makeKeyAndOrderFront(nil); navigate(directory); window.makeFirstResponder(table) }
     private func navigate(_ path: String) {
@@ -354,18 +366,21 @@ private final class RemoteBrowser: NSObject, NSWindowDelegate, NSTableViewDataSo
         alert.configureKeyboardShortcuts(); alert.beginSheetModal(for: window)
     }
     private func key(_ event: NSEvent) -> Bool {
-        guard window.attachedSheet == nil else { return false }
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if event.keyCode == 53 || (event.keyCode == 5 && flags == .control) { if busy { cancelOperation(); return true }; return false }
-        if flags == .command && event.keyCode == 37 { window.makeFirstResponder(pathField); pathField.selectText(nil); return true }
-        guard flags.isEmpty, window.firstResponder === table else { return false }
-        switch event.keyCode {
-        case 36, 76: openSelected()
-        case 51, 117: goUp()
-        case 96: download()
-        case 98: makeDirectory()
-        case 100: deleteSelected()
-        case 109: if busy { cancelOperation() } else { window.performClose(nil) }
+        guard !KeyboardCaptureState.isRecording, window.attachedSheet == nil else { return false }
+        if ContextCommands.isCancellation(event), busy { cancelOperation(); return true }
+        guard ContextCommands.canHandle(event, in: window),
+              let id = ContextCommands.matching(event, scope: .remote) else { return false }
+        if id == "remote.close" { if busy { cancelOperation() } else { window.performClose(nil) }; return true }
+        guard !busy else { return false }
+        switch id {
+        case "remote.focusPath": window.makeFirstResponder(pathField); pathField.selectText(nil)
+        case "remote.open", "remote.open.keypad": openSelected()
+        case "remote.parent", "remote.parent.delete": goUp()
+        case "remote.download": download()
+        case "remote.upload": upload()
+        case "remote.mkdir": makeDirectory()
+        case "remote.delete": deleteSelected()
+        case "remote.refresh": reload()
         default: return false
         }
         return true

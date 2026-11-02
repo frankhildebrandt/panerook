@@ -234,9 +234,9 @@ private final class InspectionResultsWindow: NSWindowController, NSWindowDelegat
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         self.status.stringValue = status; self.status.font = .systemFont(ofSize: 11); self.status.textColor = .secondaryLabelColor; self.status.lineBreakMode = .byTruncatingMiddle
         spinner.style = .spinning; spinner.controlSize = .small; spinner.startAnimation(nil)
-        reveal.target = self; reveal.action = #selector(revealSelection); reveal.isEnabled = false; reveal.keyEquivalent = "\r"
-        panelize.target = self; panelize.action = #selector(panelizeResults); panelize.isEnabled = false; panelize.isHidden = !enabled
-        closeButton.target = self; closeButton.action = #selector(closeResults); closeButton.keyEquivalent = "\u{1b}"
+        reveal.target = self; reveal.action = #selector(revealSelection); reveal.isEnabled = false; ContextCommands.configure(reveal, id: "results.reveal")
+        panelize.target = self; panelize.action = #selector(panelizeResults); panelize.isEnabled = false; panelize.isHidden = !enabled; ContextCommands.configure(panelize, id: "results.panelize")
+        closeButton.target = self; closeButton.action = #selector(closeResults); ContextCommands.configure(closeButton, id: "dialog.cancel")
         for button in [reveal, panelize, closeButton] { AppStyle.configureButton(button) }
         let footer = NSStackView(views: [spinner, self.status, NSView(), panelize, reveal, closeButton]); footer.spacing = 8
         let root = NSStackView(views: [scroll, footer]); root.orientation = .vertical; root.alignment = .leading; root.spacing = 10
@@ -249,6 +249,15 @@ private final class InspectionResultsWindow: NSWindowController, NSWindowDelegat
         ])
         panel.onCancel = { [weak self] in self?.closeResults() }
         panel.initialFirstResponder = table
+        panel.configureCommands(scope: .results) { [weak self] id in
+            guard let self else { return false }
+            switch id {
+            case "results.reveal" where self.reveal.isEnabled: self.revealSelection()
+            case "results.panelize" where !self.panelize.isHidden && self.panelize.isEnabled: self.panelizeResults()
+            default: return false
+            }
+            return true
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
     func setResults(_ rows: [InspectionRow], status: String) {

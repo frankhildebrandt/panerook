@@ -2,11 +2,14 @@ import AppKit
 
 extension NSTableView {
     /// MC-style list navigation moves selection and viewport together.
-    func handleListNavigation(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return false }
-        let character = event.charactersIgnoringModifiers?.unicodeScalars.first?.value
-        let home = event.keyCode == 115 || character == UInt32(NSHomeFunctionKey)
-        let end = event.keyCode == 119 || character == UInt32(NSEndFunctionKey)
+    func handleListNavigation(_ event: NSEvent, defaults: UserDefaults = .standard) -> Bool {
+        guard !KeyboardCaptureState.isRecording else { return false }
+        guard let action = ContextCommands.matching(event, scope: .table, defaults: defaults) else {
+            // Swallow replaced list keys before NSTableView can execute its native defaults.
+            return ContextCommands.definitions.contains { $0.scope == .table && $0.defaultBinding?.matches(event) == true }
+        }
+        let home = action == "table.home"
+        let end = action == "table.end"
         if home || end {
             guard isEnabled, numberOfRows > 0 else { return true }
             let destination = home ? 0 : numberOfRows - 1
@@ -15,8 +18,8 @@ extension NSTableView {
             return true
         }
         let direction: Int
-        if event.keyCode == 116 || character == UInt32(NSPageUpFunctionKey) { direction = -1 }
-        else if event.keyCode == 121 || character == UInt32(NSPageDownFunctionKey) { direction = 1 }
+        if action == "table.pageUp" { direction = -1 }
+        else if action == "table.pageDown" { direction = 1 }
         else { return false }
 
         guard isEnabled, numberOfRows > 0 else { return true }

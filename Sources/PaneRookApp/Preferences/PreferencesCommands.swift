@@ -26,7 +26,7 @@ extension PreferencesTools {
             enabled: { self.owner.canUseMenus }
         ) { self.encoding() }
         registry.add(
-            .options, "Tasten lernen …", id: "preferences.keyBindings", order: 70, group: 0,
+            .options, "Tastaturbelegung …", id: "preferences.keyBindings", order: 70, group: 0, key: ",",
             enabled: { self.owner.canUseMenus }
         ) { self.learnKeys() }
     }

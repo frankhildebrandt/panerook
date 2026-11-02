@@ -23,8 +23,8 @@ extension CommanderController: InspectionHost, RemoteHost, MetadataHost, Workflo
 }
 
 extension CommanderController {
-    func makeCommandRegistry() -> CommandRegistry {
-        let registry = CommandRegistry()
+    func makeCommandRegistry(defaults: UserDefaults = .standard) -> CommandRegistry {
+        let registry = CommandRegistry(defaults: defaults)
         registerCommands(in: registry)
         registerHelpCommands(in: registry)
         fileOperations.registerCommands(in: registry)
@@ -41,6 +41,7 @@ extension CommanderController {
             preferences.registerPanelCommands(in: registry, menu: menu, pane: pane)
             workflow.registerPanelCommands(in: registry, menu: menu, pane: pane)
         }
+        registry.addContextDefinitions()
         return registry
     }
 }

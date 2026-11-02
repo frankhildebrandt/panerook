@@ -54,9 +54,11 @@ final class CommandRegistryTests: XCTestCase {
         _ = NSApplication.shared
         let commander = CommanderController()
         let registry = commander.commandRegistry
-        XCTAssertEqual(
-            registry.customizableCommands.map(\.id),
-            ["help", "userMenu", "preview", "edit", "copy", "move", "mkdir", "trash", "menu", "exit"])
+        XCTAssertEqual(Set(registry.customizableCommands.map(\.id)), Set(registry.commands.map(\.id)))
+        for id in ["help", "userMenu", "preview", "edit", "copy", "move", "mkdir", "trash", "menu", "exit"] {
+            XCTAssertNotNil(registry[id], "Persisted command IDs must remain stable: \(id)")
+        }
+        XCTAssertNotNil(registry["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertEqual(registry.commands(in: .file).count, 21)
         XCTAssertEqual(registry.commands(in: .command).count, 31)
