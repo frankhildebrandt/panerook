@@ -30,24 +30,21 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 
 Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.0`) muss mit `Resources/Info.plist` übereinstimmen.
 
-Für eine persönliche Signatur statt ad hoc einmalig Schlüssel und Zertifikat erzeugen und als GitHub-Secrets hinterlegen:
+Für Release-Builds ist ein **Developer ID Application**-Zertifikat für **Frank Hildebrandt (4R24354Z88)** eingerichtet. Der zugehörige private Schlüssel und der eigene Schlüsselbund liegen verschlüsselt außerhalb des Repositorys unter `~/Library/Application Support/PaneRook/Signing/DeveloperID/`. Für einen lokalen Build mit dieser Identität:
 
 ```sh
-./scripts/setup-signing.sh --github
-```
-
-Das verschlüsselte Schlüsselmaterial bleibt außerhalb des Repositorys unter `~/Library/Application Support/PaneRook/Signing/`. Für einen lokalen Build mit dieser Identität:
-
-```sh
-signing_directory="$HOME/Library/Application Support/PaneRook/Signing"
+signing_directory="$HOME/Library/Application Support/PaneRook/Signing/DeveloperID"
 security unlock-keychain -p "$(cat "$signing_directory/keychain-password.txt")" \
   "$signing_directory/signing.keychain-db"
 PANEROOK_SIGNING_IDENTITY="$(cat "$signing_directory/identity.txt")" \
 PANEROOK_SIGNING_KEYCHAIN="$signing_directory/signing.keychain-db" \
+PANEROOK_SIGNING_TIMESTAMP=secure \
+PANEROOK_NOTARY_PROFILE=panerook-notary \
+PANEROOK_NOTARY_KEYCHAIN="$signing_directory/signing.keychain-db" \
 ./scripts/package-release.sh
 ```
 
-Die persönliche Signatur bestätigt die Integrität mit dem eigenen Schlüssel, ist aber kein Apple-Developer-ID-Zertifikat und keine Notarisierung. Einrichtung, Sicherung und optionale Developer-ID-Notarisierung stehen unter [Signierung und Releases](docs/signing.md).
+Die Apple-Notarisierung ist über das lokale Profil `panerook-notary` und die GitHub-Secrets eingerichtet. Der Release-Workflow notarisiert App und DMG automatisch und heftet die Tickets an. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
 
 ```sh
 swift test
@@ -72,7 +69,7 @@ npm run build
 
 `astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
 
-Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Identität. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Das bereits veröffentlichte Release 0.1.0 bleibt beim oben beschriebenen ad-hoc-signierten ZIP.
+Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Das bereits veröffentlichte Release 0.1.0 bleibt beim oben beschriebenen ad-hoc-signierten ZIP.
 
 ## Funktionsstand
 
