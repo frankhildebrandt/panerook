@@ -342,6 +342,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                         ?? (oldDirectory == url ? Set(preserved.map(\.standardizedFileURL)) : [])
                     let indexes = IndexSet(self.entries.indices.filter { desired.contains(self.entries[$0].url.standardizedFileURL) })
                     self.table.selectRowIndexes(indexes.isEmpty && !self.entries.isEmpty ? IndexSet(integer: 0) : indexes, byExtendingSelection: false)
+                    if select != nil, let row = indexes.first { self.table.scrollRowToVisible(row) }
                     self.updateSummary()
                     self.updateNavigation()
                     if self.mode == .tree { self.tree.setRoot(url, showHidden: self.showHidden) }
@@ -398,7 +399,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     @objc private func openFromTable() { onActivate?(); onOpenSelection?() }
     @objc func openSelection() {
         guard !loading, let entry = selectedEntries.first else { return }
-        if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {
+        if entry.isParent {
+            goUp()
+        }
+        else if entry.isDirectory || (!entry.isSymbolicLink && ArchiveFileSystem.location(for: entry.url)?.memberPath.isEmpty == true) {
             navigate(to: entry.url)
         }
         else if !NSWorkspace.shared.open(entry.url) {
