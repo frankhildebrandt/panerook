@@ -254,16 +254,16 @@ public struct GitRepository: Sendable {
         return [result.output, result.error].filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
-    private func command(_ arguments: [String]) throws -> String { try Self.execute(in: root, arguments: arguments).output }
-    private func hasHEAD() throws -> Bool {
+    func command(_ arguments: [String]) throws -> String { try Self.execute(in: root, arguments: arguments).output }
+    func hasHEAD() throws -> Bool {
         try Self.execute(in: root, arguments: ["rev-parse", "--verify", "HEAD"], acceptingFailure: true).status == 0
     }
-    private func resolvedCommit(_ revision: String) throws -> String {
+    func resolvedCommit(_ revision: String) throws -> String {
         guard !revision.isEmpty, !revision.contains("\0") else { throw GitError("Ungültige Git-Version.") }
         return try command(["rev-parse", "--verify", "--end-of-options", revision + "^{commit}"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    private func checkedPath(_ path: String) throws -> String {
+    func checkedPath(_ path: String) throws -> String {
         guard !path.isEmpty, !path.hasPrefix("/"), !path.contains("\0"),
               !path.split(separator: "/").contains("..") else { throw GitError("Ungültiger Repository-Pfad.") }
         return path

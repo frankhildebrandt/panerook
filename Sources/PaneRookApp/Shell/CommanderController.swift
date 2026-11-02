@@ -39,7 +39,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     var onKeyBindingsChanged: (() -> Void)?
     var canUseMenus: Bool { view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
     var canUseSelection: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && !active.selectedFiles.isEmpty }
-    var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && active.mode != .network }
+    var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && active.mode != .network && active.mode != .gitHistory }
     var canUseNativeDirectory: Bool { canUseLocalDirectory && !active.isArchiveDirectory }
     var canUseNativeSelection: Bool {
         canUseSelection && !active.selectedFiles.contains {
