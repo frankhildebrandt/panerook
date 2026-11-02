@@ -29,13 +29,13 @@ mkdir -p "$output"
 staging="$(mktemp -d "$PWD/build/package-release.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 
-staple() {
-  local target="$1"
+stapler_with_retry() {
+  local action="$1"
+  local target="$2"
   local attempt status
   for attempt in 1 2 3 4; do
-    if xcrun stapler staple "$target"; then
-      xcrun stapler validate "$target"
-      return
+    if xcrun stapler "$action" "$target"; then
+      return 0
     else
       status=$?
     fi
@@ -43,7 +43,7 @@ staple() {
     if [[ "$status" != 68 && "$status" != 69 ]] || [[ "$attempt" == 4 ]]; then
       return "$status"
     fi
-    echo "Apple ticket service unavailable (stapler $status); retrying ($attempt/3)." >&2
+    echo "Apple ticket service unavailable (stapler $action: $status); retrying ($attempt/3)." >&2
     sleep "$((5 * (2 ** (attempt - 1))))"
   done
 }
@@ -56,7 +56,8 @@ notarize() {
     options+=(--keychain "$PANEROOK_NOTARY_KEYCHAIN")
   fi
   xcrun notarytool submit "$submission" "${options[@]}"
-  staple "$target"
+  stapler_with_retry staple "$target"
+  stapler_with_retry validate "$target"
 }
 
 if [[ -n "${PANEROOK_NOTARY_PROFILE:-}" ]]; then
