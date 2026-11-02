@@ -62,6 +62,8 @@ PANEROOK_DISABLE_BUILD_SANDBOX=1 ./scripts/build-app.sh
 CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache" swift test --disable-sandbox --cache-path "$PWD/.build/cache"
 ```
 
+Falls die Umgebung das Erzeugen von dSYM-Dateien verhindert, lässt sich zusätzlich `PANEROOK_DISABLE_DEBUG_SYMBOLS=1` setzen. Das App-Bundle wird dann ohne separate Debug-Symbole erstellt.
+
 ## Projektseite und Releases
 
 Die statische Website liegt unter `website/` und wird mit Astro gebaut:

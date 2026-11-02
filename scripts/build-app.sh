@@ -22,6 +22,9 @@ fi
 if [[ "$architecture" == universal ]]; then
   swift_options+=(--arch arm64 --arch x86_64)
 fi
+if [[ "${PANEROOK_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
+  swift_options+=(-debug-info-format none)
+fi
 swift build "${swift_options[@]}" -c "$configuration"
 binary_path="$(swift build "${swift_options[@]}" -c "$configuration" --show-bin-path)"
 bundle="$PWD/build/PaneRook.app"
