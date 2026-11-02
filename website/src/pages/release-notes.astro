@@ -1,0 +1,106 @@
+---
+import type { MarkdownInstance } from 'astro';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { release, repository, version as currentVersion } from '../data/site';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const documents = import.meta.glob<MarkdownInstance<Record<string, never>>>('../../../docs/releases/*.md', { eager: true });
+const notes = (await Promise.all(Object.entries(documents).map(async ([path, document]) => {
+  const version = path.split('/').pop()!.replace(/\.md$/, '');
+  const prefix = `v${version.replaceAll('.', '-')}-`;
+  // Trusted repository Markdown: nest headings below the version and keep IDs
+  // and fragment links unique when several release documents share a page.
+  const html = (await document.compiledContent())
+    .replace(/(<\/?h)([1-5])(?=[\s>])/g, (_, tag, level) => `${tag}${Number(level) + 1}`)
+    .replace(/(\sid=")([^"]+)"/g, `$1${prefix}$2"`)
+    .replace(/(\shref="#)([^"]+)"/g, `$1${prefix}$2"`);
+  return { version, html };
+})))
+  .filter(note => /^\d+\.\d+\.\d+$/.test(note.version))
+  .sort((a, b) => b.version.localeCompare(a.version, 'en', { numeric: true }));
+---
+
+<SiteLayout title="Release Notes · PaneRook" description="Alle veröffentlichten PaneRook-Versionen: neue Funktionen, Downloads, Installationshinweise und bekannte Grenzen." page="releases">
+  <main id="inhalt" class="wrap">
+    <header class="page-intro">
+      <p class="eyebrow">PANEROOK IM WANDEL</p>
+      <h1>Release Notes</h1>
+      <p>Neue Werkzeuge, Verbesserungen und Hinweise zum Update. Hier findest du die Änderungen jeder veröffentlichten Version.</p>
+      <div class="intro-links">
+        <a class="download-link" href={release}>Version {currentVersion} herunterladen <span aria-hidden="true">↗</span></a>
+        <a href={`${base}/dokumentation/#updates`}>So funktionieren Updates <span aria-hidden="true">→</span></a>
+      </div>
+    </header>
+    <div class="release-layout">
+      <aside>
+        <nav aria-label="Versionen">
+          <p>ALLE VERSIONEN</p>
+          {notes.map(note => <a href={`#v${note.version.replaceAll('.', '-')}`}>{note.version}{note.version === currentVersion && <span>Aktuell</span>}</a>)}
+        </nav>
+        <a class="github-link" href={`${repository}/releases`}>Releases auf GitHub ↗</a>
+      </aside>
+      <div class="release-list">
+        {notes.map(({ version, html }) => (
+          <article id={`v${version.replaceAll('.', '-')}`} aria-labelledby={`title-${version}`}>
+            <header class="release-header">
+              <h2 id={`title-${version}`}>Version {version}</h2>
+              {version === currentVersion && <span class="badge">Aktuelle Version</span>}
+            </header>
+            <div class="release-body" set:html={html} />
+            <a class="release-link" href={`${repository}/releases/tag/v${version}`}>Release {version} auf GitHub <span aria-hidden="true">↗</span></a>
+          </article>
+        ))}
+      </div>
+    </div>
+  </main>
+</SiteLayout>
+
+<style>
+  main { padding-block: 64px 88px; }
+  .page-intro { max-width: 760px; margin-bottom: 64px; }
+  .eyebrow { color: #b9a0ed; font-size: 11px; font-weight: 650; letter-spacing: 1.9px; }
+  h1 { margin-block: 18px 24px; font-size: clamp(42px, 7vw, 68px); line-height: 1.08; letter-spacing: -2.6px; font-weight: 650; }
+  .page-intro > p:last-of-type { max-width: 640px; font-size: 17px; color: #bcb4c8; }
+  .intro-links { display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: center; margin-top: 28px; font-size: 13px; color: #c5a5f4; }
+  .download-link { padding: 13px 18px; border: 1px solid #a879f0; border-radius: 7px; color: #fff; background: #8853df; }
+  .download-link:hover { color: #fff; background: #9a68ec; }
+  .release-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 64px; align-items: start; }
+  aside { position: sticky; top: 32px; }
+  aside nav { display: grid; gap: 6px; }
+  aside nav p { color: #a79ab8; letter-spacing: 1.5px; font-size: 10px; }
+  aside nav a { padding: 11px 12px; border: 1px solid #3c3248; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; color: #ddd3e9; }
+  aside nav a:hover { background: #282031; border-color: #a47bcf; }
+  aside nav a span { color: #c1a1ee; font-size: 10px; }
+  .github-link { display: inline-block; margin: 22px 12px 0; color: #b1a2c0; font-size: 12px; }
+  .release-list { min-width: 0; }
+  article { padding-bottom: 48px; margin-bottom: 48px; border-bottom: 1px solid #40334c; scroll-margin-top: 32px; }
+  article:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .release-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-bottom: 24px; }
+  h2 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -1px; }
+  .badge { border: 1px solid #684e80; border-radius: 20px; padding: 5px 10px; font-size: 10px; color: #cdb2f5; background: #2e223d; }
+  .release-body { color: #bcb2c9; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+  .release-body :global(h3) { margin-block: 30px 12px; font-size: 19px; font-weight: 600; letter-spacing: -.3px; color: #eee6f7; }
+  .release-body :global(p) { margin-bottom: 16px; }
+  .release-body :global(ul) { padding-left: 22px; }
+  .release-body :global(li) { margin-bottom: 10px; }
+  .release-body :global(strong) { color: #e2d6ef; font-weight: 600; }
+  .release-body :global(a) { color: #c5a5f4; text-decoration: underline; text-underline-offset: 3px; }
+  .release-body :global(code) { padding: 2px 5px; background: #251d2e; border-radius: 4px; font-size: .9em; }
+  .release-body :global(pre) { padding: 16px; overflow-x: auto; background: #201b28; border: 1px solid #42374d; border-radius: 7px; }
+  .release-body :global(pre code) { padding: 0; background: transparent; }
+  .release-link { display: inline-block; margin-top: 12px; color: #c5a5f4; font-size: 13px; }
+  @media (max-width: 800px) { .release-layout { gap: 32px; grid-template-columns: 160px minmax(0, 1fr); } }
+  @media (max-width: 600px) {
+    main { padding-block: 36px 56px; }
+    .page-intro { margin-bottom: 40px; }
+    .page-intro > p:last-of-type { font-size: 15px; }
+    .release-layout { grid-template-columns: 1fr; gap: 36px; }
+    aside { position: static; }
+    aside nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    aside nav p { grid-column: 1 / -1; }
+    aside nav a { flex-direction: column; gap: 6px; padding: 10px; }
+    .github-link { margin-left: 0; }
+    .release-body { font-size: 13px; }
+    h2 { font-size: 26px; }
+  }
+</style>

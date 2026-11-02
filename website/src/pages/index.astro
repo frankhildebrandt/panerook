@@ -1,118 +1,120 @@
 ---
-const repository = 'https://github.com/frankhildebrandt/panerook';
-const release = `${repository}/releases/tag/v0.2.0`;
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { release, repository, version } from '../data/site';
+
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-const icon = `${base}/icon.svg`;
-const description = 'PaneRook ist ein nativer macOS-Dateimanager mit zwei Panels, direkter Tastaturbedienung, Archiven und Remote-Verbindungen.';
+const documentation = `${base}/dokumentation/`;
 const features = [
-  { number: '01', title: 'Zwei Panels. Ein Arbeitsfluss.', description: 'Ordner unabhängig öffnen, Dateien direkt ins andere Panel kopieren oder verschieben. Favoriten, Verlauf und Filter halten deine Wege kurz.' },
-  { number: '02', title: 'Die Tastatur gibt den Takt vor.', description: 'Tab wechselt das Panel, F5 kopiert, F6 verschiebt. Vertraute Commander-Bedienung trifft auf native macOS-Menüs und Quick Look.' },
-  { number: '03', title: 'Archive wie Ordner öffnen.', description: 'ZIP, TAR und TGZ direkt durchsuchen. Dateien hinein- und herauskopieren, umbenennen und organisieren, ohne vorher alles zu entpacken.' },
-  { number: '04', title: 'Lokal arbeiten. Weiter verbinden.', description: 'FTP, SSH, SFTP und Nextcloud über separate Remote-Browser erreichen. Wiederkehrende Ziele bleiben im Verbindungsarchiv griffbereit.' },
+  {
+    number: '01', tag: 'DATEIEN & NAVIGATION', title: 'Zwei Panels. Ein Arbeitsfluss.',
+    description: 'Quellordner links, Zielordner rechts. Kopiere und verschiebe deine Auswahl direkt zwischen den Panels und behalte beide Seiten im Blick.',
+    details: ['Mit Tab das Panel wechseln, mit F5 kopieren und mit F6 verschieben.', 'Favoriten, Verlauf und Dateimasken verkürzen wiederkehrende Wege.', 'Quick Look, Schnellansicht und Dateiinfos helfen bei der Auswahl.'],
+    image: 'panels.png', width: 2360, height: 1480, alt: 'PaneRook mit zwei nativen Dateipanels, Pfadzeilen und der Funktionstastenleiste.',
+    caption: 'Zwei unabhängige Dateilisten und die wichtigsten Aktionen direkt im Fenster.', anchor: 'erste-schritte', link: 'Die Panels kennenlernen',
+  },
+  {
+    number: '02', tag: 'GIT & WORKTREES', title: 'Vom Unterschied zum Commit.',
+    description: 'Erkenne den Repository-Status im Dateipanel und öffne die Git-Werkzeuge direkt über die Branchanzeige. So bleiben Dateien und Versionsverwaltung zusammen.',
+    details: ['Unified oder Side-by-Side: Diffs mit Zeilennummern und farbigen Änderungen lesen.', 'Dateien stagen, Commits erstellen und Verlauf, Branches oder Stashes öffnen.', 'Besuchte Repositories und ihre Worktrees über die Favoriten wiederfinden.'],
+    image: 'git-diff.png', width: 2360, height: 1440, alt: 'Git-Fenster von PaneRook mit einer Side-by-Side-Gegenüberstellung einer geänderten Textdatei.',
+    caption: 'Vorher und Nachher nebeneinander: Änderungen direkt im Git-Fenster prüfen.', anchor: 'git', link: 'Mit Git arbeiten',
+  },
+  {
+    number: '03', tag: 'ZIP, TAR & TGZ', title: 'Archive wie Ordner öffnen.',
+    description: 'Öffne ein Archiv mit Enter und navigiere durch seine Unterordner im gewohnten Dateipanel. Kopiere gezielt einzelne Inhalte, ohne vorher alles in einen Ordner zu entpacken.',
+    details: ['Dateien und Ordner zwischen lokalem Ordner und Archiv kopieren.', 'Einträge umbenennen, verschieben und neue Ordner im Archiv anlegen.', 'Ausgewählte Inhalte für Quick Look als temporäre Kopie bereitstellen.'],
+    image: 'archives.png', width: 2360, height: 1480, alt: 'Ein geöffnetes ZIP-Archiv im PaneRook-Dateipanel neben einem lokalen Ordner.',
+    caption: 'Der Archivinhalt bleibt im Panel navigierbar, der lokale Ordner daneben erreichbar.', anchor: 'archive', link: 'Archive öffnen und bearbeiten',
+  },
+  {
+    number: '04', tag: 'REMOTE & VERBINDUNGEN', title: 'Deine Ziele. Immer griffbereit.',
+    description: 'Speichere wiederkehrende FTP-, SSH-, SFTP- und Nextcloud-Verbindungen im durchsuchbaren Verbindungsarchiv. Ein separater Remote-Browser verbindet sie mit deinem lokalen Panel.',
+    details: ['Remote-Ordner durchsuchen, Dateien hoch- und herunterladen.', 'Verbindungen nach Name, Server, Benutzer oder Protokoll finden.', 'SSH-Schlüssel oder Agent nutzen; Nextcloud über HTTPS und App-Passwort verbinden.'],
+    image: 'connections.png', width: 1700, height: 984, alt: 'Das durchsuchbare Verbindungsarchiv von PaneRook mit gespeicherten Demo-Verbindungen.',
+    caption: 'Verbindungsdaten zentral verwalten; Passwörter werden nicht im Archiv gespeichert.', anchor: 'remote', link: 'Remote-Verbindungen einrichten',
+  },
 ];
-const shortcuts = [ ['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopieren'], ['F6', 'Verschieben'], ['F7', 'Neuer Ordner'], ['⌘K', 'Verbindungen'] ];
-const files = [ ['Dokumente', 'Ordner', 'folder'], ['Projekte', 'Ordner', 'folder'], ['Entwürfe.zip', '12,4 MB', 'archive'], ['Notizen.md', '2 KB', 'file'] ];
+const tools = [
+  { title: 'Finden und vergleichen', description: 'Dateien und Text rekursiv suchen, Treffer ins Panel übernehmen, Ordnergrößen berechnen und Dateien oder Verzeichnisse vergleichen.', anchor: 'suche-aufgaben' },
+  { title: 'Aufgaben im Hintergrund', description: 'Längere Aktionen zeigen ihren Fortschritt und lassen sich abbrechen oder in den Hintergrund legen. Weitere Aufgaben starten der Reihe nach.', anchor: 'suche-aufgaben' },
+  { title: 'Auf deinem Mac zu Hause', description: 'Native AppKit-Oberfläche, Quick Look, Finder-Anbindung und helle oder dunkle Darstellung. Ab macOS 26 mit Liquid Glass.', anchor: 'einstellungen' },
+];
+const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopieren'], ['F6', 'Verschieben'], ['F7', 'Neuer Ordner'], ['⌘K', 'Verbindungen']];
 ---
 
-<!doctype html>
-<html lang="de">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content={description} />
-    <meta name="theme-color" content="#17141e" />
-    <meta property="og:title" content="PaneRook · Zwei Panels. Alles im Griff." />
-    <meta property="og:description" content={description} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={new URL(base + '/', Astro.site)} />
-    <meta property="og:image" content={new URL(base + '/icon.png', Astro.site)} />
-    <link rel="canonical" href={new URL(base + '/', Astro.site)} />
-    <link rel="icon" type="image/svg+xml" href={icon} />
-    <title>PaneRook · Zwei Panels. Alles im Griff.</title>
-  </head>
-  <body>
-    <a class="skip-link" href="#inhalt">Zum Inhalt</a>
-    <header class="site-header wrap">
-      <a class="brand" href={`${base}/`} aria-label="PaneRook Startseite"><img src={icon} width="38" height="38" alt="" /><span>PaneRook</span></a>
-      <nav aria-label="Hauptnavigation">
-        <a href="#funktionen">Funktionen</a>
-        <a href={`${repository}#readme`}>Handbuch <span aria-hidden="true">↗</span></a>
-        <a class="nav-github" href={repository}>GitHub <span aria-hidden="true">↗</span></a>
-      </nav>
-    </header>
+<SiteLayout title="PaneRook · Zwei Panels. Alles im Griff." description="PaneRook ist ein nativer macOS-Dateimanager mit zwei Panels, Tastaturbedienung, Git-Diffs, Archiven und Remote-Verbindungen.">
+  <main id="inhalt">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> NATIV FÜR MACOS · VERSION {version}</div>
+      <h1 id="hero-title">Zwei Panels.<br /><span>Alles im Griff.</span></h1>
+      <p class="hero-copy">Deine Dateien, direkt auf Kurs. PaneRook verbindet den Arbeitsfluss von Midnight Commander mit einer nativen Mac-Oberfläche.</p>
+      <div class="hero-actions">
+        <a class="button primary" href={release}>Für macOS herunterladen <span aria-hidden="true">↓</span></a>
+        <a class="button secondary" href={documentation}>Installation & erste Schritte <span aria-hidden="true">→</span></a>
+      </div>
+      <p class="requirements">Ab macOS 14 · Apple Silicon & Intel · Signiert & notarisiert</p>
+      <figure class="hero-screenshot">
+        <a href={`${base}/screenshots/panels.png`} aria-label="Screenshot der beiden Dateipanels in voller Größe öffnen">
+          <img src={`${base}/screenshots/panels.png`} width="2360" height="1480" alt="Die native PaneRook-App mit zwei Dateipanels und einer Leiste für die Funktionstasten." fetchpriority="high" />
+        </a>
+        <figcaption>PaneRook auf macOS · App-Screenshot mit Beispieldateien</figcaption>
+      </figure>
+      <div class="shortcut-strip" aria-label="Die wichtigsten Tastaturkürzel">
+        {shortcuts.map(([key, action]) => <span><kbd>{key}</kbd>{action}</span>)}
+      </div>
+    </section>
 
-    <main id="inhalt">
-      <section class="hero wrap" aria-labelledby="hero-title">
-        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> NATIV FÜR MACOS · VERSION 0.2.0</div>
-        <h1 id="hero-title">Zwei Panels.<br /><span>Alles im Griff.</span></h1>
-        <p class="hero-copy">Deine Dateien, direkt auf Kurs. PaneRook verbindet den Arbeitsfluss von Midnight Commander mit einer nativen Mac-Oberfläche.</p>
-        <div class="hero-actions">
-          <a class="button primary" href={release}>Für macOS herunterladen <span aria-hidden="true">↓</span></a>
-          <a class="button secondary" href={repository}>Quellcode ansehen <span aria-hidden="true">↗</span></a>
-        </div>
-        <p class="requirements">Ab macOS 14 · Apple Silicon & Intel · <a href="#installation">Installationshinweise</a></p>
-
-        <div class="app-illustration" role="img" aria-label="Schematische Darstellung: zwei Dateipanels mit Ordnern und einer Funktionstastenleiste.">
-          <div class="window-bar"><div class="traffic-lights"><i></i><i></i><i></i></div><span>PaneRook</span><span class="window-menu">☰</span></div>
-          <div class="panes">
-            <div class="pane active">
-              <div class="path"><span class="home-icon">⌂</span> / Benutzer / Zuhause <span>⌄</span></div>
-              <div class="column-labels"><span>Name</span><span>Größe</span></div>
-              <div class="file-row parent"><span>↰ &nbsp; ..</span><span></span></div>
-              {files.map(([name, size, type], i) => <div class:list={['file-row', { selected: i === 1 }]}><span><b class={type}>{type === 'folder' ? '▰' : type === 'archive' ? '▤' : '▱'}</b>{name}</span><span>{size}</span></div>)}
-              <div class="pane-status">4 Einträge <span>1 ausgewählt</span></div>
+    <section class="features wrap" id="funktionen" aria-labelledby="features-title">
+      <div class="section-intro">
+        <p class="eyebrow">WENIGER UMWEGE</p>
+        <h2 id="features-title">Die Werkzeuge für deinen Alltag.<br />Direkt an deinen Dateien.</h2>
+        <p>Von der schnellen Kopie bis zum Git-Diff: Entdecke die Funktionen in echten App-Ansichten und finde die passende Anleitung dazu.</p>
+      </div>
+      <div class="feature-list">
+        {features.map(feature => (
+          <article class="feature" aria-labelledby={`feature-${feature.number}`}>
+            <div class="feature-copy">
+              <p class="feature-tag"><span>{feature.number}</span>{feature.tag}</p>
+              <h3 id={`feature-${feature.number}`}>{feature.title}</h3>
+              <p>{feature.description}</p>
+              <ul>{feature.details.map(detail => <li>{detail}</li>)}</ul>
+              <a class="text-link" href={`${documentation}#${feature.anchor}`}>{feature.link} <span aria-hidden="true">→</span></a>
             </div>
-            <div class="pane">
-              <div class="path"><span class="home-icon">⌂</span> / Benutzer / Archiv <span>⌄</span></div>
-              <div class="column-labels"><span>Name</span><span>Größe</span></div>
-              <div class="file-row parent"><span>↰ &nbsp; ..</span><span></span></div>
-              <div class="file-row"><span><b class="folder">▰</b>Fotos</span><span>Ordner</span></div>
-              <div class="file-row"><span><b class="folder">▰</b>Backups</span><span>Ordner</span></div>
-              <div class="file-row"><span><b class="file">▱</b>Übersicht.pdf</span><span>820 KB</span></div>
-              <div class="file-row placeholder"><span>&nbsp;</span></div>
-              <div class="pane-status">3 Einträge <span>Bereit</span></div>
-            </div>
-          </div>
-          <div class="function-bar">{shortcuts.map(([key, action]) => <span><b>{key}</b>{action}</span>)}</div>
-        </div>
-        <p class="illustration-caption">Der Arbeitsfluss auf einen Blick · Schematische Ansicht</p>
-      </section>
+            <figure class="feature-screenshot">
+              <a href={`${base}/screenshots/${feature.image}`} aria-label={`${feature.title} Screenshot in voller Größe öffnen`}>
+                <img src={`${base}/screenshots/${feature.image}`} width={feature.width} height={feature.height} alt={feature.alt} loading="lazy" decoding="async" />
+              </a>
+              <figcaption>{feature.caption}</figcaption>
+            </figure>
+          </article>
+        ))}
+      </div>
+      <div class="tool-grid">
+        {tools.map(tool => <article><h3>{tool.title}</h3><p>{tool.description}</p><a class="text-link" href={`${documentation}#${tool.anchor}`}>Mehr erfahren <span aria-hidden="true">→</span></a></article>)}
+      </div>
+      <p class="feature-note">Du möchtest einen Ablauf genauer kennenlernen? <a href={documentation}>Zur vollständigen Dokumentation →</a></p>
+    </section>
 
-      <section class="features wrap" id="funktionen" aria-labelledby="features-title">
-        <div class="section-intro"><p class="eyebrow">WENIGER UMWEGE</p><h2 id="features-title">Platz für deine Dateien.<br />Tempo für deine Arbeit.</h2><p>Von der schnellen Kopie bis zur Remote-Verbindung: Die Werkzeuge bleiben dort, wo du sie brauchst.</p></div>
-        <div class="feature-grid">{features.map(feature => <article><span class="feature-number">{feature.number}</span><h3>{feature.title}</h3><p>{feature.description}</p></article>)}</div>
-        <div class="detail-strip"><span>Dateisuche & Vergleiche</span><span>Aufgaben-Queue mit Fortschritt</span><span>Favoriten & Netzwerkfreigaben</span><span>Hell & Dunkel</span></div>
-      </section>
-
-      <section class="installation wrap" id="installation" aria-labelledby="installation-title">
-        <div><p class="eyebrow">VERSION 0.2.0</p><h2 id="installation-title">Bereit für deinen Mac.</h2><p>Version 0.2.0 bringt Git-Werkzeuge, Side-by-Side-Diffs und automatische Update-Prüfungen. Lade das Universal-DMG für Apple Silicon und Intel auf GitHub herunter, öffne es und ziehe PaneRook auf die Verknüpfung zum Programme-Ordner. Alternativ steht ein ZIP zum Entpacken bereit.</p><p class="install-note">App und DMG sind mit Apple Developer ID signiert und von Apple notarisiert. Zu beiden Downloads gibt es eine SHA-256-Prüfsumme zur Überprüfung. Von Version 0.1.1 bitte einmal manuell aktualisieren; danach sind Updates direkt in der App möglich.</p><a class="text-link" href={release}>Zu Download & Release-Hinweisen <span aria-hidden="true">↗</span></a></div>
-        <div class="source-card"><span class="source-label">SELBER BAUEN</span><p>Swift + AppKit.<br />Direkt aus dem Repository.</p><pre><code>git clone {repository}.git
+    <section class="installation wrap" id="installation" aria-labelledby="installation-title">
+      <div>
+        <p class="eyebrow">VERSION {version}</p>
+        <h2 id="installation-title">Bereit für deinen Mac.</h2>
+        <p>Lade das Universal-DMG für Apple Silicon und Intel herunter, öffne es und ziehe PaneRook auf die Verknüpfung zum Programme-Ordner. Alternativ steht ein ZIP zum Entpacken bereit.</p>
+        <p class="install-note">App und DMG sind mit Apple Developer ID signiert und von Apple notarisiert. Zu beiden Downloads gibt es eine SHA-256-Prüfsumme. Von Version 0.1.1 bitte einmal manuell aktualisieren; danach sind Updates direkt in der App möglich.</p>
+        <div class="install-links"><a class="text-link" href={`${documentation}#installation`}>Installationsanleitung →</a><a class="text-link" href={`${base}/release-notes/`}>Was ist neu? Release Notes →</a></div>
+      </div>
+      <div class="source-card">
+        <span class="source-label">SELBER BAUEN</span><p>Swift + AppKit.<br />Direkt aus dem Repository.</p>
+        <pre><code>git clone {repository}.git
 cd panerook
-./scripts/build-app.sh release</code></pre><a href={`${repository}#starten`}>Voraussetzungen & Anleitung <span aria-hidden="true">↗</span></a></div>
-      </section>
-    </main>
-
-    <footer class="site-footer wrap"><a class="brand" href={`${base}/`}><img src={icon} width="28" height="28" alt="" /><span>PaneRook</span></a><p>Ein nativer Dateimanager. Inspiriert von Midnight Commander.</p><a href={repository}>Auf GitHub mitarbeiten <span aria-hidden="true">↗</span></a></footer>
-  </body>
-</html>
+make run</code></pre>
+        <a href={`${repository}#starten`}>Voraussetzungen & Entwicklung <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+  </main>
+</SiteLayout>
 
 <style>
-  :global(*) { box-sizing: border-box; }
-  :global(html) { scroll-behavior: smooth; scroll-padding-top: 32px; }
-  :global(body) { margin: 0; color: #f3f0f8; background: #17141e; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
-  :global(a) { color: inherit; text-decoration: none; }
-  :global(a:focus-visible) { outline: 3px solid #c8b0ff; outline-offset: 5px; border-radius: 4px; }
-  :global(a:hover) { color: #dccdff; }
-  :global(p) { line-height: 1.7; }
-  :global(h1), :global(h2), :global(h3), :global(p) { margin-top: 0; }
-  .wrap { width: min(1120px, calc(100% - 64px)); margin-inline: auto; }
-  .skip-link { position: absolute; left: 16px; top: -60px; padding: 12px; background: #fff; color: #17141e; z-index: 10; }
-  .skip-link:focus { top: 16px; }
-  .site-header { min-height: 100px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-  .brand { display: inline-flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 650; letter-spacing: -.5px; }
-  .brand img { display: block; }
-  nav { display: flex; gap: 30px; align-items: center; font-size: 13px; color: #bfb7cc; }
-  .nav-github { padding: 9px 15px; border: 1px solid #48404f; border-radius: 7px; color: #e9e2f2; }
   .hero { padding-top: 66px; text-align: center; }
   .eyebrow { display: flex; align-items: center; justify-content: center; gap: 9px; color: #b9a0ed; font-size: 11px; font-weight: 650; letter-spacing: 1.9px; }
   .status-dot { width: 6px; height: 6px; border-radius: 100%; background: #ba98ff; box-shadow: 0 0 12px #ab7cfa88; }
@@ -124,65 +126,77 @@ cd panerook
   .primary { color: #fff; background: #8853df; border: 1px solid #a879f0; box-shadow: 0 4px 20px #8b4ce221; }
   .primary:hover { background: #9a68ec; color: #fff; }
   .secondary { color: #ddd5e8; border: 1px solid #443b50; background: #211c2a; }
-  .requirements { margin: 16px 0 50px; font-size: 11px; color: #aaa0b8; }
-  .requirements a { text-decoration: underline; text-underline-offset: 3px; }
-  .app-illustration { max-width: 920px; margin: auto; overflow: hidden; border: 1px solid #5b5069; border-radius: 13px; background: #24212c; box-shadow: 0 30px 90px #0005, 0 -10px 100px #9f6cf514; text-align: left; }
-  .window-bar { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; color: #bdb5c7; font-size: 11px; background: #302938; border-bottom: 1px solid #403748; }
-  .traffic-lights { display: flex; gap: 6px; }
-  .traffic-lights i { width: 9px; height: 9px; border-radius: 50%; background: #ef7771; }
-  .traffic-lights i:nth-child(2) { background: #e2b45b; }
-  .traffic-lights i:nth-child(3) { background: #76b586; }
-  .window-menu { width: 39px; text-align: right; font-size: 16px; }
-  .panes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #51465f; }
-  .pane { min-width: 0; background: #24212c; }
-  .path { margin: 10px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #51495b; border-radius: 5px; font-size: 11px; color: #c6bdcf; white-space: nowrap; }
-  .path span:last-child { margin-left: auto; }
-  .active .path { border-color: #9f76d3; background: #34283f; }
-  .home-icon { color: #b993f0; font-size: 15px; }
-  .column-labels, .file-row, .pane-status { display: flex; align-items: center; justify-content: space-between; }
-  .column-labels { border-block: 1px solid #3c3545; padding: 7px 16px; font-size: 10px; color: #9c91aa; }
-  .file-row { height: 36px; padding: 0 16px; font-size: 12px; color: #dfd8e8; }
-  .file-row span:first-child { display: flex; align-items: center; }
-  .file-row span:last-child { font-size: 10px; color: #a59bae; }
-  .file-row b { display: inline-block; width: 25px; font-size: 18px; line-height: 1; font-weight: 400; }
-  .folder { color: #bd9aed; }
-  .archive { color: #c8ae79; }
-  .file { color: #a39bae; }
-  .selected { background: #7549a5; color: #fff; }
-  .selected span:last-child, .selected b { color: #efe2ff; }
-  .parent { color: #a79bad; }
-  .pane-status { border-top: 1px solid #3c3545; margin-top: 18px; padding: 9px 14px; font-size: 9px; color: #a99eb4; }
-  .function-bar { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid #4c4257; background: #2d2735; }
-  .function-bar span { display: flex; gap: 7px; justify-content: center; align-items: center; padding: 11px 4px; color: #b8adca; font-size: 9px; border-right: 1px solid #43394f; }
-  .function-bar span:last-child { border-right: 0; }
-  .function-bar b { color: #dfc8ff; font-weight: 500; }
-  .illustration-caption { margin: 14px 0 0; color: #958a9f; font-size: 10px; }
-  .features { padding-block: 108px 72px; }
-  .section-intro { max-width: 560px; }
+  .requirements { margin: 16px 0 42px; font-size: 11px; color: #aaa0b8; }
+  figure { margin: 0; min-width: 0; }
+  figure > a { display: block; overflow: hidden; border: 1px solid #554762; border-radius: 10px; background: #24212c; box-shadow: 0 18px 60px #0004; }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { margin-top: 14px; color: #a89ab6; font-size: 11px; line-height: 1.6; }
+  .hero-screenshot { max-width: 1000px; margin-inline: auto; }
+  .hero-screenshot > a { box-shadow: 0 30px 90px #0005, 0 -10px 100px #9f6cf514; }
+  .shortcut-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 28px; margin-top: 32px; }
+  .shortcut-strip span { display: inline-flex; gap: 9px; align-items: center; font-size: 11px; color: #b7a9c6; }
+  kbd { min-width: 30px; padding: 5px 7px; border: 1px solid #53435f; border-bottom-width: 2px; border-radius: 5px; background: #251d2e; color: #d8baff; font-size: 11px; }
+  .features { padding-block: 104px 64px; }
+  .section-intro { max-width: 700px; }
   .section-intro .eyebrow, .installation .eyebrow { justify-content: start; }
   h2 { font-size: clamp(30px, 4vw, 41px); line-height: 1.16; letter-spacing: -1.6px; font-weight: 600; margin-bottom: 20px; }
-  .section-intro > p:last-child { max-width: 450px; color: #aaa1b8; font-size: 14px; }
-  .feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 30px; margin-top: 40px; }
-  .feature-grid article { padding-top: 22px; border-top: 1px solid #44364f; }
-  .feature-number { color: #aa85dc; font-size: 11px; font-variant-numeric: tabular-nums; }
-  h3 { margin-block: 22px 12px; font-size: 17px; line-height: 1.4; font-weight: 550; letter-spacing: -.25px; }
-  .feature-grid p { font-size: 13px; color: #aaa1b8; }
-  .detail-strip { display: flex; flex-wrap: wrap; gap: 10px 24px; padding-top: 30px; color: #b4a9c1; font-size: 11px; }
-  .detail-strip span::before { content: '+'; padding-right: 7px; color: #b18adb; }
+  .section-intro > p:last-child { max-width: 530px; color: #b7adbf; font-size: 15px; }
+  .feature-list { margin-top: 54px; }
+  .feature { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr); align-items: center; gap: 48px; padding-block: 48px; border-top: 1px solid #40334c; }
+  .feature:nth-child(even) { grid-template-columns: minmax(0, 1.3fr) minmax(0, .85fr); }
+  .feature:nth-child(even) .feature-copy { order: 2; }
+  .feature-tag { display: flex; gap: 12px; align-items: center; color: #b193d7; font-size: 10px; font-weight: 600; letter-spacing: 1.5px; }
+  .feature-tag span { color: #9f81bf; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+  h3 { margin-block: 20px 14px; font-size: clamp(23px, 3vw, 30px); line-height: 1.18; font-weight: 600; letter-spacing: -.8px; }
+  .feature-copy > p:not(.feature-tag) { font-size: 14px; color: #b8adc4; }
+  .feature-copy ul { padding-left: 17px; margin-block: 20px; font-size: 12px; line-height: 1.8; color: #b8adc4; }
+  .feature-copy li { margin-bottom: 8px; padding-left: 3px; }
+  .feature-copy li::marker { color: #a17bc8; }
+  .text-link { display: inline-block; color: #c2a2f2; margin-top: 8px; font-size: 13px; line-height: 1.7; }
+  .text-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+  .tool-grid article { padding: 25px; border: 1px solid #40334c; border-radius: 9px; background: #201b28; }
+  .tool-grid h3 { margin-top: 0; font-size: 18px; line-height: 1.35; letter-spacing: -.3px; }
+  .tool-grid p { margin-bottom: 10px; font-size: 13px; color: #b8adc4; }
+  .tool-grid a { font-size: 12px; }
+  .feature-note { margin: 28px 0 0; color: #a99bb8; font-size: 12px; line-height: 1.9; }
+  .feature-note a { color: #c2a2f2; }
   .installation { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding-block: 64px 86px; border-top: 1px solid #382f42; }
-  .installation p:not(.eyebrow) { color: #aaa1b8; font-size: 14px; }
+  .installation p:not(.eyebrow) { color: #b1a6bf; font-size: 14px; }
   .installation .install-note { font-size: 12px !important; color: #c1b2ce !important; }
-  .text-link { display: inline-block; color: #c2a2f2; margin-top: 8px; font-size: 13px; }
-  .source-card { align-self: center; border: 1px solid #42374d; padding: 27px; border-radius: 9px; background: #201b28; }
+  .install-links { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .source-card { align-self: center; min-width: 0; border: 1px solid #42374d; padding: 27px; border-radius: 9px; background: #201b28; }
   .source-label { font-size: 10px; color: #ac91cc; letter-spacing: 1.5px; }
   .source-card p { margin-block: 16px; color: #e9e0f4 !important; font-size: 19px !important; line-height: 1.45; }
   pre { padding: 15px; margin: 20px 0; overflow-x: auto; border-radius: 5px; border: 1px solid #383040; background: #18131f; color: #c9b2e8; font-size: 10px; line-height: 1.9; }
   .source-card > a { font-size: 11px; color: #bcb0cc; }
-  .site-footer { min-height: 100px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid #382f42; }
-  .site-footer .brand { font-size: 14px; }
-  .site-footer p { margin: 0; color: #968b9f; font-size: 11px; }
-  .site-footer > a:last-child { font-size: 11px; color: #b4a7c1; }
-  @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } .installation { gap: 32px; } .site-footer { flex-wrap: wrap; padding-block: 24px; } .site-footer p { order: 3; width: 100%; } }
-  @media (max-width: 600px) { .wrap { width: calc(100% - 36px); } .site-header { min-height: 80px; gap: 12px; } .brand { font-size: 16px; } nav { gap: 15px; font-size: 11px; } .nav-github { display: none; } .hero { padding-top: 42px; } h1 { letter-spacing: -2.8px; } .hero-copy { font-size: 15px; } .eyebrow { font-size: 9px; letter-spacing: 1.5px; } .hero-actions { flex-direction: column; max-width: 300px; margin-inline: auto; } .requirements { font-size: 10px; line-height: 1.8; margin-bottom: 36px; } .app-illustration { border-radius: 9px; } .window-bar { height: 32px; } .path { margin: 7px 5px; padding: 6px; font-size: 7px; gap: 3px; } .home-icon { font-size: 11px; } .column-labels { padding: 5px 8px; font-size: 8px; } .file-row { height: 29px; padding: 0 8px; font-size: 9px; } .file-row b { width: 17px; font-size: 14px; } .file-row span:last-child { font-size: 7px; } .pane-status { padding: 7px; font-size: 7px; margin-top: 12px; } .function-bar { grid-template-columns: repeat(3, 1fr); } .function-bar span { padding: 8px 2px; font-size: 8px; } .function-bar span:nth-child(-n+3) { border-bottom: 1px solid #43394f; } .function-bar span:nth-child(3) { border-right: 0; } .features { padding-top: 72px; padding-bottom: 48px; } .feature-grid { gap: 20px; margin-top: 28px; } h3 { font-size: 15px; } .feature-grid p { font-size: 12px; } .detail-strip { gap: 12px 20px; font-size: 10px; } .installation { grid-template-columns: 1fr; padding-block: 48px; gap: 30px; } .source-card { padding: 22px; } .site-footer p { font-size: 10px; } }
-  @media (prefers-reduced-motion: reduce) { :global(html) { scroll-behavior: auto; } .button { transition: none; } }
+  @media (max-width: 900px) {
+    .feature, .feature:nth-child(even) { gap: 28px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .tool-grid { gap: 14px; }
+    .tool-grid article { padding: 20px; }
+    .installation { gap: 32px; }
+  }
+  @media (max-width: 700px) {
+    .feature, .feature:nth-child(even) { grid-template-columns: 1fr; gap: 28px; padding-block: 36px; }
+    .feature:nth-child(even) .feature-copy { order: 0; }
+    .feature-copy { max-width: 530px; }
+    .tool-grid { grid-template-columns: 1fr; gap: 14px; }
+    .tool-grid article { padding: 24px; }
+  }
+  @media (max-width: 600px) {
+    .hero { padding-top: 36px; }
+    h1 { letter-spacing: -2.8px; }
+    .hero-copy { font-size: 15px; }
+    .eyebrow { font-size: 9px; letter-spacing: 1.5px; }
+    .hero-actions { flex-direction: column; max-width: 310px; margin-inline: auto; }
+    .requirements { font-size: 10px; line-height: 1.8; margin-bottom: 30px; }
+    .shortcut-strip { justify-content: start; gap: 14px; display: grid; grid-template-columns: repeat(3, 1fr); }
+    .shortcut-strip span { flex-direction: column; align-items: center; gap: 7px; font-size: 10px; }
+    .features { padding-block: 68px 44px; }
+    .section-intro > p:last-child { font-size: 14px; }
+    .feature-list { margin-top: 36px; }
+    .installation { grid-template-columns: 1fr; padding-block: 48px; gap: 30px; }
+    .source-card { padding: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .button { transition: none; } }
 </style>

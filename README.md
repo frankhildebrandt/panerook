@@ -76,7 +76,7 @@ Falls die Umgebung das Erzeugen von dSYM-Dateien verhindert, lässt sich zusätz
 
 ## Projektseite und Releases
 
-Die statische Website liegt unter `website/` und wird mit Astro gebaut:
+Die statische Website liegt unter `website/` und wird mit Astro gebaut. Neben der Produktseite mit App-Screenshots gibt es eine [Dokumentation für Installation und Nutzung](https://frankhildebrandt.github.io/panerook/dokumentation/) sowie [Release Notes](https://frankhildebrandt.github.io/panerook/release-notes/). Alle Seiten verwenden dieselbe Hauptnavigation.
 
 ```sh
 cd website
@@ -84,7 +84,7 @@ npm ci
 npm run build
 ```
 
-`astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
+`astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Die Release-Notes-Seite übernimmt die versionierten Markdown-Dateien aus `docs/releases/` automatisch und sortiert sie absteigend nach Version. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website oder diesen Release-Dateien auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
 
 Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Release 0.1.1 ist die erste signierte und notarisierte Ausgabe mit DMG und ZIP.
 
