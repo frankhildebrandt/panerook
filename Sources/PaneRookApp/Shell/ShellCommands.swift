@@ -157,11 +157,8 @@ extension CommanderController {
             }
         ) { [weak self] in self?.appUpdater?.checkForUpdates(nil) }
         registry.add(.application, "Update-Einstellungen …", id: "app.updateSettings", order: 20,
-            enabled: { [weak self] in
-                guard let updater = self?.appUpdater else { return false }
-                return updater.validateMenuItem(NSMenuItem(title: "", action: #selector(AppUpdater.showSettings(_:)), keyEquivalent: ""))
-            }
-        ) { [weak self] in self?.appUpdater?.showSettings(nil) }
+            enabled: { [weak self] in self?.canUseMenus == true }
+        ) { [weak self] in self?.preferences.showSettings(section: .updates) }
         for (index, action) in [
             ("editing.undo", "Widerrufen", "z", Selector(("undo:"))),
             ("editing.redo", "Wiederholen", "z", Selector(("redo:"))),

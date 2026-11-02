@@ -58,13 +58,17 @@ final class CommandRegistryTests: XCTestCase {
         for id in ["help", "userMenu", "preview", "edit", "copy", "move", "mkdir", "trash", "menu", "exit"] {
             XCTAssertNotNil(registry[id], "Persisted command IDs must remain stable: \(id)")
         }
-        XCTAssertNotNil(registry["preferences.keyBindings"])
+        for id in ["preferences.keyBindings", "preferences.layout", "preferences.appearance", "remote.preferences"] {
+            XCTAssertNotNil(registry[id], "Settings pages must retain persisted shortcut IDs: \(id)")
+        }
+        XCTAssertEqual(registry.defaultsByID["preferences.configuration"]?.label, "⌘,")
+        XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertEqual(registry.commands(in: .file).count, 21)
         XCTAssertEqual(registry.commands(in: .command).count, 31)
         XCTAssertNotNil(registry["git.workspace"])
         XCTAssertNotNil(registry["git.initialize"])
-        XCTAssertEqual(registry.commands(in: .options).count, 10)
+        XCTAssertEqual(registry.commands(in: .options).count, 3)
         XCTAssertEqual(registry.commands(in: .left).count, registry.commands(in: .right).count)
         XCTAssertEqual(Set(registry.commands.map(\.id)).count, registry.commands.count)
     }

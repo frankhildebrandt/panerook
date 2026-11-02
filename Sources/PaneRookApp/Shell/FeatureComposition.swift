@@ -15,6 +15,10 @@ extension CommanderController: InspectionHost, RemoteHost, MetadataHost, Workflo
     func recordFiles(_ urls: [URL]) { workflow.recordFiles(urls) }
     func openUsingExtension(_ urls: [URL]) -> Bool { workflow.openUsingExtension(urls) }
     func refreshHighlights() { workflow.applyHighlights() }
+    func setHiddenFilesVisible(_ visible: Bool) {
+        if left.showHidden != visible { toggleHidden() }
+    }
+    func remoteSettingsChanged() { remote.settingsChanged() }
     func showConnectionArchive(pane: any PanelAccess) { remote.showArchive(pane: pane) }
     func savedBookmarks() throws -> [ConnectionBookmark] { try remote.savedBookmarks() }
     func openSavedBookmark(_ bookmark: ConnectionBookmark, pane: any PanelAccess) {

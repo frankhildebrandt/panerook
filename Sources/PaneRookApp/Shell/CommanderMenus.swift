@@ -24,9 +24,10 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         native(app, "app.about", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
         if let updater {
             native(app, "app.updates", #selector(AppUpdater.checkForUpdates(_:)), target: updater)
-            native(app, "app.updateSettings", #selector(AppUpdater.showSettings(_:)), target: updater)
-            for item in app.items.suffix(2) { item.toolTip = updater.unavailableReason }
+            app.items.last?.toolTip = updater.unavailableReason
         }
+        app.addItem(.separator())
+        native(app, "preferences.configuration", #selector(performCommand(_:)), target: self)
         app.addItem(.separator())
         native(app, "app.hide", #selector(NSApplication.hide(_:)), target: NSApp)
         app.addItem(.separator())

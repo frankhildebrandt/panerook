@@ -180,9 +180,6 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         statusBar.addArrangedSubview(progress)
         statusBar.addArrangedSubview(status)
         statusBar.addArrangedSubview(NSView())
-        let queueButton = NSButton(title: "Aufgaben …", target: self, action: #selector(showTaskQueue))
-        AppStyle.configureButton(queueButton); queueButton.controlSize = .small
-        statusBar.addArrangedSubview(queueButton)
         tasks.onChange = { [weak self] in self?.updateTaskStatus() }
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
@@ -228,6 +225,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         static let refresh = NSToolbarItem.Identifier("PaneRook.Refresh")
         static let swap = NSToolbarItem.Identifier("PaneRook.Swap")
         static let hidden = NSToolbarItem.Identifier("PaneRook.Hidden")
+        static let tasks = NSToolbarItem.Identifier("PaneRook.Tasks")
         static let help = NSToolbarItem.Identifier("PaneRook.Help")
         static let menu = NSToolbarItem.Identifier("PaneRook.Menu")
     }
@@ -240,7 +238,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         return toolbar
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.home, ToolbarID.refresh, ToolbarID.swap, ToolbarID.menu, .flexibleSpace, ToolbarID.hidden, ToolbarID.help]
+        [ToolbarID.home, ToolbarID.refresh, ToolbarID.swap, ToolbarID.menu, .flexibleSpace, ToolbarID.hidden, ToolbarID.tasks, ToolbarID.help]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
@@ -260,6 +258,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         case ToolbarID.home: (title, symbol, action) = ("Benutzerordner", "house", #selector(goHome))
         case ToolbarID.refresh: (title, symbol, action) = ("Aktualisieren", "arrow.clockwise", #selector(refresh))
         case ToolbarID.swap: (title, symbol, action) = ("Panels tauschen", "arrow.left.arrow.right", #selector(swapPanels))
+        case ToolbarID.tasks: (title, symbol, action) = ("Aufgaben", "list.bullet.rectangle", #selector(showTaskQueue))
         case ToolbarID.help: (title, symbol, action) = ("Hilfe", "questionmark.circle", #selector(showHelp))
         case ToolbarID.menu: (title, symbol, action) = ("Menü", "line.3.horizontal", #selector(showMenu))
         default: return nil
@@ -270,7 +269,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         item.target = self
         item.action = action
         item.isBordered = true
-        item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu
+        item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu && id != ToolbarID.tasks
         return item
     }
 
@@ -284,7 +283,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private func updateDirectoryActionAvailability() {
         let bindings = commandRegistry.bindings
         hiddenButton.toolTip = commandHint("panels.showHidden", title: "Versteckte Dateien", bindings: bindings)
-        let toolbarCommands = [ToolbarID.home: "navigation.home", ToolbarID.refresh: "panels.refresh", ToolbarID.swap: "panels.swap", ToolbarID.help: "help", ToolbarID.menu: "menu"]
+        let toolbarCommands = [ToolbarID.home: "navigation.home", ToolbarID.refresh: "panels.refresh", ToolbarID.swap: "panels.swap", ToolbarID.help: "help", ToolbarID.menu: "menu", ToolbarID.tasks: "tasks.showQueue"]
         for item in view.window?.toolbar?.items ?? [] {
             if let id = toolbarCommands[item.itemIdentifier] { item.toolTip = commandHint(id, title: item.label, bindings: bindings) }
         }
@@ -439,7 +438,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         alert.informativeText = ids.compactMap { id -> String? in
             guard let command = commandRegistry[id], let binding = bindings[id] else { return nil }
             return binding.label + ": " + command.title
-        }.joined(separator: "\n") + "\n\nAlle Aktionen und eigene Belegung: Optionen → Tastaturbelegung.\nAuf Apple-Tastaturen ggf. zusätzlich fn drücken."
+        }.joined(separator: "\n") + "\n\nAlle Aktionen und eigene Belegung: Einstellungen → Tastatur → Belegung bearbeiten.\nAuf Apple-Tastaturen ggf. zusätzlich fn drücken."
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: view.window!)
     }

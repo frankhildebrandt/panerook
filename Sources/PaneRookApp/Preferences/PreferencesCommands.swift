@@ -3,31 +3,25 @@ import AppKit
 extension PreferencesTools {
     func registerCommands(in registry: CommandRegistry) {
         registry.add(
-            .options, "Konfiguration …", id: "preferences.configuration", order: 10, group: 0,
+            .options, "Einstellungen …", id: "preferences.configuration", order: 10, group: 0, key: ",",
             enabled: { self.owner.canUseMenus }
-        ) { self.configuration() }
-        registry.add(
-            .options, "Layout …", id: "preferences.layout", order: 20, group: 0, enabled: { self.owner.canUseMenus }
-        ) { self.layout() }
-        registry.add(
-            .options, "Paneloptionen …", id: "preferences.panels", order: 30, group: 0,
-            enabled: { self.owner.canUseMenus }
-        ) { self.panelOptions() }
-        registry.add(
-            .options, "Nachfragen …", id: "preferences.confirmations", order: 40, group: 0,
-            enabled: { self.owner.canUseMenus }
-        ) { self.confirmations() }
-        registry.add(
-            .options, "Aussehen …", id: "preferences.appearance", order: 50, group: 0,
-            enabled: { self.owner.canUseMenus }
-        ) { self.appearance() }
-        registry.add(
-            .options, "Darstellungsbits …", id: "preferences.encoding", order: 60, group: 0,
-            enabled: { self.owner.canUseMenus }
-        ) { self.encoding() }
-        registry.add(
-            .options, "Tastaturbelegung …", id: "preferences.keyBindings", order: 70, group: 0, key: ",",
-            enabled: { self.owner.canUseMenus }
+        ) { self.showSettings() }
+        // Preserve existing action IDs while all pages now live in the settings window.
+        for (id, title, section) in [
+            ("preferences.layout", "Layout …", SettingsSection.layout),
+            ("preferences.panels", "Paneloptionen …", .panels),
+            ("preferences.confirmations", "Nachfragen …", .confirmations),
+            ("preferences.appearance", "Aussehen …", .appearance),
+            ("preferences.encoding", "Darstellungsbits …", .encoding),
+            ("preferences.connections", "Verbindungseinstellungen …", .connections),
+            ("remote.preferences", "VFS-Einstellungen …", .connections)
+        ] {
+            registry.add(.options, title, id: id, order: 20, visibleInMenu: false,
+                enabled: { self.owner.canUseMenus }
+            ) { self.showSettings(section: section) }
+        }
+        registry.add(.options, "Tastaturbelegung …", id: "preferences.keyBindings", order: 70,
+            visibleInMenu: false, enabled: { self.owner.canUseMenus }
         ) { self.learnKeys() }
     }
 }
