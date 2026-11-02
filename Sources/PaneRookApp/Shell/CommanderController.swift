@@ -181,9 +181,6 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         statusBar.addArrangedSubview(progress)
         statusBar.addArrangedSubview(status)
         statusBar.addArrangedSubview(NSView())
-        let queueButton = NSButton(title: "Aufgaben …", target: self, action: #selector(showTaskQueue))
-        AppStyle.configureButton(queueButton); queueButton.controlSize = .small
-        statusBar.addArrangedSubview(queueButton)
         tasks.onChange = { [weak self] in self?.updateTaskStatus() }
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
@@ -230,6 +227,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         static let refresh = NSToolbarItem.Identifier("PaneRook.Refresh")
         static let swap = NSToolbarItem.Identifier("PaneRook.Swap")
         static let hidden = NSToolbarItem.Identifier("PaneRook.Hidden")
+        static let tasks = NSToolbarItem.Identifier("PaneRook.Tasks")
         static let help = NSToolbarItem.Identifier("PaneRook.Help")
         static let menu = NSToolbarItem.Identifier("PaneRook.Menu")
     }
@@ -242,7 +240,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         return toolbar
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.home, ToolbarID.refresh, ToolbarID.swap, ToolbarID.menu, .flexibleSpace, ToolbarID.hidden, ToolbarID.help]
+        [ToolbarID.home, ToolbarID.refresh, ToolbarID.swap, ToolbarID.menu, .flexibleSpace, ToolbarID.hidden, ToolbarID.tasks, ToolbarID.help]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
@@ -262,6 +260,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         case ToolbarID.home: (title, symbol, action) = ("Benutzerordner", "house", #selector(goHome))
         case ToolbarID.refresh: (title, symbol, action) = ("Aktualisieren", "arrow.clockwise", #selector(refresh))
         case ToolbarID.swap: (title, symbol, action) = ("Panels tauschen", "arrow.left.arrow.right", #selector(swapPanels))
+        case ToolbarID.tasks: (title, symbol, action) = ("Aufgaben", "list.bullet.rectangle", #selector(showTaskQueue))
         case ToolbarID.help: (title, symbol, action) = ("Hilfe", "questionmark.circle", #selector(showHelp))
         case ToolbarID.menu: (title, symbol, action) = ("Menü · F9", "line.3.horizontal", #selector(showMenu))
         default: return nil
@@ -272,7 +271,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         item.target = self
         item.action = action
         item.isBordered = true
-        item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu
+        item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu && id != ToolbarID.tasks
         return item
     }
 

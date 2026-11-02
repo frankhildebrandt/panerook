@@ -265,6 +265,61 @@ final class RemotePanelTests: XCTestCase {
         XCTAssertTrue(host.errors.isEmpty)
     }
 
+    func testSettingsChangesRefreshBothConnectedPanesWithoutReplacingThem() throws {
+        let (root, leftDirectory, rightDirectory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let left = PaneController(label: "Left", directory: leftDirectory)
+        let right = PaneController(label: "Right", directory: rightDirectory)
+        try loadAndSelectFile(in: left)
+        _ = right.view
+        let host = Host(active: left, other: right)
+        let tools = RemoteTools(owner: host)
+        let lock = NSLock()
+        var requests = [RemoteProtocol: Int]()
+        let windows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        defer { tools.closeAll() }
+
+        for (kind, target) in [(RemoteProtocol.shell, left), (.sftp, right)] {
+            let connection = try RemoteConnection(kind: kind, host: "host.test", port: 22, user: "me")
+            tools.openBrowser(connection, directory: "/home/me", pane: target, runner: { _, _ in
+                let count = lock.withLock {
+                    requests[kind, default: 0] += 1
+                    return requests[kind, default: 0]
+                }
+                let names = count == 1 ? ["initial.txt"] : ["first.txt", "second.txt"]
+                return Data(names.map { "-rw-r--r-- 1 501 20 12 Nov  1 10:00 \($0)\n" }.joined().utf8)
+            })
+        }
+        let leftBrowser = try XCTUnwrap(left.remoteContent as? RemoteBrowser)
+        let rightBrowser = try XCTUnwrap(right.remoteContent as? RemoteBrowser)
+        let table = NSTableView()
+        let loaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !leftBrowser.isBusy && !rightBrowser.isBusy
+                && leftBrowser.numberOfRows(in: table) == 1 && rightBrowser.numberOfRows(in: table) == 1
+        }, object: nil)
+        wait(for: [loaded], timeout: 10)
+        XCTAssertTrue(host.activePane === right)
+
+        tools.settingsChanged()
+
+        let refreshed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !leftBrowser.isBusy && !rightBrowser.isBusy
+                && leftBrowser.numberOfRows(in: table) == 2 && rightBrowser.numberOfRows(in: table) == 2
+        }, object: nil)
+        wait(for: [refreshed], timeout: 10)
+        XCTAssertEqual(lock.withLock { requests[.shell] }, 2)
+        XCTAssertEqual(lock.withLock { requests[.sftp] }, 2)
+        XCTAssertTrue(left.remoteContent === leftBrowser)
+        XCTAssertTrue(right.remoteContent === rightBrowser)
+        XCTAssertTrue(leftBrowser.parent === left)
+        XCTAssertTrue(rightBrowser.parent === right)
+        XCTAssertTrue(host.activePane === right)
+        XCTAssertEqual(left.directory, leftDirectory)
+        XCTAssertEqual(right.directory, rightDirectory)
+        XCTAssertEqual(Set(NSApp.windows.map(ObjectIdentifier.init)), windows)
+        XCTAssertTrue(host.errors.isEmpty)
+    }
+
     func testRemotePathEditingActivatesItsPaneWithoutRefocusingTheList() throws {
         let (root, leftDirectory, rightDirectory) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }

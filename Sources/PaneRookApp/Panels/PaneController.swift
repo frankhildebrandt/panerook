@@ -19,6 +19,27 @@ final class FileTable: NSTableView {
     }
 }
 
+private final class ThemedFileRow: NSTableRowView {
+    override var interiorBackgroundStyle: NSView.BackgroundStyle {
+        ThemeManager.theme == .paneRook ? super.interiorBackgroundStyle : .normal
+    }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard ThemeManager.theme != .paneRook else { super.drawSelection(in: dirtyRect); return }
+        let frame = bounds.insetBy(dx: 2, dy: 1)
+        let shape = NSBezierPath(roundedRect: frame, xRadius: 5, yRadius: 5)
+        let base = ThemeManager.surfaceColor
+        let accent = ThemeManager.accentColor
+        (base.blended(withFraction: isEmphasized ? 0.22 : 0.12, of: accent) ?? base).setFill()
+        shape.fill()
+        if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
+            accent.setStroke()
+            shape.lineWidth = 1
+            shape.stroke()
+        }
+    }
+}
+
 final class PaneController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, PanelAccess {
     let table = FileTable()
     let pathField = NSTextField()
@@ -41,6 +62,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let gitStatusCache: GitStatusCache
     private var cachedGitHeader: GitHeaderStatus?
     private var watchObserver: NSObjectProtocol?
+    private var themeObserver: NSObjectProtocol?
     private let surface = PaneSurface()
     private let listing = NSScrollView()
     private let content = NSView()
@@ -102,6 +124,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         if let watchObserver { NotificationCenter.default.removeObserver(watchObserver) }
+        if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
     }
 
     override func loadView() {
@@ -151,6 +174,22 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.didFocus = { [weak self] in self?.onActivate?() }
         table.handleKey = { [weak self] event in self?.onKey?(event) ?? false }
         table.setAccessibilityLabel("\(label): Dateiliste")
+        table.backgroundColor = ThemeManager.surfaceColor
+        themeObserver = NotificationCenter.default.addObserver(forName: ThemeManager.didChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.table.backgroundColor = ThemeManager.surfaceColor
+            self.table.needsDisplay = true
+            self.table.enumerateAvailableRowViews { row, _ in
+                // Preserve selected text contrast when switching between the native
+                // selection and a tinted theme, without rebuilding cells or icons.
+                for case let cell as NSTableCellView in row.subviews {
+                    cell.backgroundStyle = row.interiorBackgroundStyle
+                }
+                row.needsDisplay = true
+            }
+            self.favoritesButton.contentTintColor = ThemeManager.accentColor
+            self.watchButton.contentTintColor = ThemeManager.accentColor
+        }
         for (id, title, width) in [("name", "Name", 270.0), ("git", "Git", 66.0), ("size", "Größe", 85.0), ("modified", "Geändert", 132.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title
@@ -596,6 +635,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ThemedFileRow() }
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateSummary(); updateGitBar(); onSelectionChanged?(selectedFiles.first)
     }
@@ -693,6 +733,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         guard isViewLoaded else { return }
         pathField.textColor = isActive ? .labelColor : .secondaryLabelColor
         surface.isActive = isActive
+        favoritesButton.contentTintColor = ThemeManager.accentColor
+        watchButton.contentTintColor = ThemeManager.accentColor
         back.isEnabled = mode == .network || !history.isEmpty
         updateGitBar()
     }

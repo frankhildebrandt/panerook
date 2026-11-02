@@ -115,33 +115,8 @@ final class RemoteTools {
         }
     }
 
-    func configure() {
-        guard owner.canUseMenus, let window = owner.presentationWindow else { return }
-        let alert = NSAlert(); alert.messageText = "Virtuelles Dateisystem"
-        let timeout = NSTextField(string: String(max(3, UserDefaults.standard.integer(forKey: "remoteTimeout") == 0 ? 20 : UserDefaults.standard.integer(forKey: "remoteTimeout"))))
-        AppStyle.configureField(timeout)
-        let hidden = NSButton(checkboxWithTitle: "Versteckte Remote-Dateien anzeigen", target: nil, action: nil)
-        hidden.state = UserDefaults.standard.bool(forKey: "remoteShowHidden") ? .on : .off
-        alert.accessoryView = Self.form([("Verbindungs-Timeout (s)", timeout), ("", hidden)])
-        alert.addButton(withTitle: "Speichern"); alert.addButton(withTitle: "Abbrechen"); alert.configureKeyboardShortcuts()
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            UserDefaults.standard.set(max(3, min(Int(timeout.stringValue) ?? 20, 300)), forKey: "remoteTimeout")
-            UserDefaults.standard.set(hidden.state == .on, forKey: "remoteShowHidden")
-            self?.browsers.forEach { $0.refresh() }
-        }
-    }
-
-    private static func form(_ rows: [(String, NSView)]) -> NSView {
-        let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
-        for (title, control) in rows {
-            let row = NSStackView(); row.spacing = 10
-            let label = NSTextField(labelWithString: title); label.font = .systemFont(ofSize: 12); label.widthAnchor.constraint(equalToConstant: 145).isActive = true
-            row.addArrangedSubview(label); row.addArrangedSubview(control); control.widthAnchor.constraint(equalToConstant: 290).isActive = true
-            stack.addArrangedSubview(row)
-        }
-        stack.frame.size = NSSize(width: 445, height: CGFloat(rows.count * 36))
-        return stack
+    func settingsChanged() {
+        browsers.forEach { $0.refresh() }
     }
 }
 
