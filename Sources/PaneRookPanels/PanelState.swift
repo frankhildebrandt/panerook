@@ -81,7 +81,7 @@ public struct PanelState {
     }
     /// Git inspection follows a listing generation, independently of filtering or sorting.
     @discardableResult
-    public mutating func applyGitStatus(_ status: GitRepositoryStatus, for url: URL, request: Int) -> Bool {
+    public mutating func applyGitStatus(_ status: GitRepositoryStatus?, for url: URL, request: Int) -> Bool {
         guard request == generation, !loading, !panelized, !isArchiveDirectory,
               allEntries.contains(where: { $0.url == url && $0.isDirectory && !$0.isParent }) else { return false }
         gitStatuses[url] = status

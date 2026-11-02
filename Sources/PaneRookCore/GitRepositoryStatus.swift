@@ -1,7 +1,7 @@
 import Foundation
 
 /// A local snapshot of one working tree, including its already-known upstream state.
-public struct GitRepositoryStatus: Equatable, Sendable {
+public struct GitRepositoryStatus: Codable, Equatable, Sendable {
     public let branch: String?
     public let stagedCount: Int
     public let modifiedCount: Int

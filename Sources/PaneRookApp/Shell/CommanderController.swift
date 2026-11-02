@@ -73,10 +73,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         root.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(root)
         NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
-            root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14)
+            root.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 2),
+            root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -2),
+            root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 2),
+            root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -2)
         ])
 
         hiddenButton.title = ""
@@ -187,7 +187,6 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         tasks.onChange = { [weak self] in self?.updateTaskStatus() }
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-        statusBar.isHidden = false
         updateTaskStatus()
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification] {
@@ -394,9 +393,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { panel.dataSource = nil }
     @objc private func showTaskQueue() { tasks.showQueue() }
     private func updateTaskStatus() {
+        let hasActiveTasks = tasks.hasActiveTasks
         status.stringValue = tasks.summary
-        statusBar.isHidden = false
-        if tasks.hasActiveTasks { progress.startAnimation(nil) }
+        statusBar.isHidden = !hasActiveTasks
+        if hasActiveTasks { progress.startAnimation(nil) }
         else { progress.stopAnimation(nil) }
     }
     func showError(_ error: Error, detail: String = "") {

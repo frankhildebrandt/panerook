@@ -60,7 +60,7 @@ final class PaneSurface: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 18
+        layer?.cornerRadius = 6
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
         updateColors()
