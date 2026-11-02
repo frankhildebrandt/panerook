@@ -28,6 +28,9 @@ struct SFTPTransport: RemoteProvider {
     func remove(_ path: String, directory: Bool, token: RemoteCancellation) throws {
         _ = try sftp("\(directory ? "rmdir" : "rm") \(RemoteFileSystem.sftpQuote(path))", token: token)
     }
+    func move(_ path: String, to destination: String, token: RemoteCancellation) throws {
+        _ = try sftp("rename \(RemoteFileSystem.sftpQuote(path)) \(RemoteFileSystem.sftpQuote(destination))", token: token)
+    }
 }
 
 extension SFTPTransport {

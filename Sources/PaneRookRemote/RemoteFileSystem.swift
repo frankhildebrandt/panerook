@@ -79,6 +79,135 @@ public final class RemoteFileSystem: @unchecked Sendable {
     public func upload(_ source: URL, to directory: String, cancellation: RemoteCancellation = RemoteCancellation()) throws {
         try uploadContent(source, path: Self.normalizedPath(source.lastPathComponent, relativeTo: directory), token: cancellation, depth: 0)
     }
+    /// Moving a local source validates its captured tree before deleting any
+    /// data. Cleanup unlinks captured files and removes only empty directories.
+    public func upload(_ source: URL, to directory: String, movingSource: Bool,
+                       cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        guard movingSource else { try upload(source, to: directory, cancellation: cancellation); return }
+        let snapshot = try LocalTransferSnapshot.capture(source, cancellation: cancellation)
+        try upload(source, to: directory, cancellation: cancellation)
+        guard try LocalTransferSnapshot.capture(source, cancellation: cancellation) == snapshot else { throw RemoteError.sourceChanged }
+        try snapshot.remove(source, cancellation: cancellation)
+    }
+
+    /// Download and remove only the unchanged entries captured for this move.
+    public func move(_ entry: RemoteEntry, from directory: String, to destination: URL,
+                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        let snapshot = try captureTransferSnapshot(entry, from: directory, cancellation: cancellation)
+        try download(snapshot.entry, from: directory, to: destination, cancellation: cancellation)
+        try removeTransferredSnapshot(snapshot, from: directory, cancellation: cancellation)
+    }
+    /// Rename or move an entry within this connection without downloading it.
+    /// An existing destination is never intentionally replaced or merged.
+    public func move(_ entry: RemoteEntry, from directory: String, to destinationPath: String,
+                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        try cancellation.check()
+        guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
+        guard !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
+        let source = try Self.normalizedPath(entry.name, relativeTo: directory)
+        let destination = try Self.normalizedPath(destinationPath, relativeTo: directory)
+        guard destination != "/", !entry.isDirectory || !destination.hasPrefix(source + "/") else {
+            throw RemoteError.invalidPath
+        }
+        if destination == source { return }
+        try available(destination, token: cancellation)
+        try cancellation.check()
+        try transport.move(source, to: destination, token: cancellation)
+    }
+
+    /// Copies through private local staging so every pair of providers can be
+    /// used as ordinary source and destination panels. Staging is always removed.
+    public func copy(_ entry: RemoteEntry, from directory: String, to destination: RemoteFileSystem,
+                     directory destinationDirectory: String,
+                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        try cancellation.check()
+        guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
+        let target = try Self.normalizedPath(entry.name, relativeTo: destinationDirectory)
+        if sharesEndpoint(with: destination) {
+            let source = try Self.normalizedPath(entry.name, relativeTo: directory)
+            guard source != target else { throw RemoteError.collision(entry.name) }
+            guard !entry.isDirectory || !target.hasPrefix(source + "/") else { throw RemoteError.invalidPath }
+        }
+        // Reject collisions before spending time downloading the source.
+        try destination.available(target, token: cancellation)
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("PaneRookRemote-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let local = staging.appendingPathComponent(entry.name, isDirectory: entry.isDirectory)
+        try download(entry, from: directory, to: local, cancellation: cancellation)
+        try destination.upload(local, to: destinationDirectory, cancellation: cancellation)
+    }
+
+    /// Same-endpoint moves use the server's rename operation. Across connections
+    /// the source is removed only after its entire copy has completed.
+    public func move(_ entry: RemoteEntry, from directory: String, to destination: RemoteFileSystem,
+                     directory destinationDirectory: String,
+                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if sharesEndpoint(with: destination) {
+            try move(entry, from: directory,
+                     to: Self.normalizedPath(entry.name, relativeTo: destinationDirectory), cancellation: cancellation)
+        } else {
+            let snapshot = try captureTransferSnapshot(entry, from: directory, cancellation: cancellation)
+            try copy(snapshot.entry, from: directory, to: destination, directory: destinationDirectory, cancellation: cancellation)
+            try removeTransferredSnapshot(snapshot, from: directory, cancellation: cancellation)
+        }
+    }
+
+    private func sharesEndpoint(with other: RemoteFileSystem) -> Bool {
+        connection.kind == other.connection.kind && connection.host == other.connection.host
+            && connection.port == other.connection.port && connection.user == other.connection.user
+            && connection.password == other.connection.password && connection.identityFile == other.connection.identityFile
+    }
+
+    private func captureTransferSnapshot(_ entry: RemoteEntry, from directory: String,
+                                         cancellation: RemoteCancellation) throws -> RemoteTransferSnapshot {
+        guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
+        guard let current = try list(directory, cancellation: cancellation).first(where: { $0.name == entry.name }) else {
+            throw RemoteError.sourceChanged
+        }
+        return try captureTransferTree(current, path: Self.normalizedPath(entry.name, relativeTo: directory), depth: 0, cancellation: cancellation)
+    }
+
+    private func captureTransferTree(_ entry: RemoteEntry, path: String, depth: Int,
+                                     cancellation: RemoteCancellation) throws -> RemoteTransferSnapshot {
+        try cancellation.check()
+        guard depth < 256, Self.validName(entry.name) else { throw RemoteError.invalidPath }
+        guard !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
+        guard entry.isDirectory || entry.isRegularFile else { throw RemoteError.specialFile }
+        let children = entry.isDirectory ? try list(path, cancellation: cancellation).sorted { $0.name < $1.name }.map {
+            try captureTransferTree($0, path: Self.normalizedPath($0.name, relativeTo: path), depth: depth + 1, cancellation: cancellation)
+        } : []
+        return RemoteTransferSnapshot(entry: entry, children: children)
+    }
+
+    private func removeTransferredSnapshot(_ snapshot: RemoteTransferSnapshot, from directory: String,
+                                           cancellation: RemoteCancellation) throws {
+        // Check the whole source before the first deletion. This also detects a
+        // destination nested inside the source through another connection alias.
+        guard try captureTransferSnapshot(snapshot.entry, from: directory, cancellation: cancellation) == snapshot else {
+            throw RemoteError.sourceChanged
+        }
+        try removeTransferTree(snapshot, path: Self.normalizedPath(snapshot.entry.name, relativeTo: directory), cancellation: cancellation)
+    }
+
+    private func removeTransferTree(_ snapshot: RemoteTransferSnapshot, path: String,
+                                    cancellation: RemoteCancellation) throws {
+        try cancellation.check()
+        let parent = (path as NSString).deletingLastPathComponent
+        guard try list(parent, cancellation: cancellation).first(where: { $0.name == snapshot.entry.name }) == snapshot.entry else {
+            throw RemoteError.sourceChanged
+        }
+        if snapshot.entry.isDirectory {
+            for child in snapshot.children {
+                try removeTransferTree(child, path: Self.normalizedPath(child.entry.name, relativeTo: path), cancellation: cancellation)
+            }
+            // Never recursively rescan here: files added after copying were not
+            // transferred. rmdir on SSH/SFTP/FTP also enforces emptiness remotely.
+            guard try list(path, cancellation: cancellation).isEmpty else { throw RemoteError.sourceChanged }
+        }
+        try cancellation.check()
+        try transport.remove(path, directory: snapshot.entry.isDirectory, token: cancellation)
+    }
     private func uploadContent(_ source: URL, path: String, token: RemoteCancellation, depth: Int) throws {
         try token.check()
         let values = try source.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])

@@ -11,16 +11,61 @@ protocol RemotePanelContent: AnyObject {
     var hasSelection: Bool { get }
     var canDownload: Bool { get }
     var canUpload: Bool { get }
+    var canMove: Bool { get }
+    var canRename: Bool { get }
+    var canPreview: Bool { get }
+    var showHidden: Bool { get set }
+    var sortKey: String { get }
+    var sortAscending: Bool { get }
+    var filterPattern: String { get }
+    var isBriefListing: Bool { get }
     func focus()
     func focusPath()
     func refresh()
     func goUp()
+    func goBack()
     func openSelection()
     func download()
     func upload()
+    func moveSelection()
+    func moveLocalSelection()
+    func renameSelection()
+    func preparePreview(completion: @escaping ([URL]) -> Void)
+    func setFilter(_ pattern: String)
+    func setSort(key: String, ascending: Bool)
+    func setBriefListing(_ brief: Bool)
+    func applyDisplayOptions(rowHeight: CGFloat, showIcons: Bool, showSummary: Bool)
+    func selectMatching(_ pattern: String, select: Bool)
+    func invertSelection()
+    func installFavoritesMenu(_ menu: NSMenu)
+    func showFavorites()
     func makeDirectory()
     func deleteSelected()
     func disconnect()
+}
+
+extension RemotePanelContent {
+    var canMove: Bool { false }
+    var canRename: Bool { false }
+    var canPreview: Bool { false }
+    var showHidden: Bool { get { false } set {} }
+    var sortKey: String { "name" }
+    var sortAscending: Bool { true }
+    var filterPattern: String { "" }
+    var isBriefListing: Bool { false }
+    func goBack() {}
+    func moveSelection() {}
+    func moveLocalSelection() {}
+    func renameSelection() {}
+    func preparePreview(completion: @escaping ([URL]) -> Void) {}
+    func setFilter(_ pattern: String) {}
+    func setSort(key: String, ascending: Bool) {}
+    func setBriefListing(_ brief: Bool) {}
+    func applyDisplayOptions(rowHeight: CGFloat, showIcons: Bool, showSummary: Bool) {}
+    func selectMatching(_ pattern: String, select: Bool) {}
+    func invertSelection() {}
+    func installFavoritesMenu(_ menu: NSMenu) {}
+    func showFavorites() {}
 }
 
 /// Feature-facing panel API. Table, path field and controller lifetime stay private to Panels/Shell.

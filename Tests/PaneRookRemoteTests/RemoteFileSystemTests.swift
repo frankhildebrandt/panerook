@@ -121,6 +121,13 @@ final class RemoteFileSystemTests: XCTestCase {
         try fs.remove(entries[0], from: remote.path)
         XCTAssertTrue(try fs.list(remote.path).isEmpty)
 
+        try fs.upload(local.appendingPathComponent(literal), to: remote.path)
+        let renamed = "renamed [2]*?\\\".txt"
+        try fs.move(RemoteEntry(name: literal, isDirectory: false), from: remote.path, to: renamed)
+        XCTAssertEqual(try fs.list(remote.path).map(\.name), [renamed])
+        XCTAssertEqual(try Data(contentsOf: remote.appendingPathComponent(renamed)), Data("literal bytes".utf8))
+        try fs.remove(RemoteEntry(name: renamed, isDirectory: false), from: remote.path)
+
         let folder = local.appendingPathComponent("folder [2]")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         try Data("nested".utf8).write(to: folder.appendingPathComponent("nested.txt"))

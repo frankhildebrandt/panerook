@@ -16,21 +16,21 @@ extension CommanderController {
             .file, "Gruppe auswählen …", id: "selection.selectGroup", order: 180, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus && self.active.remoteContent == nil
+                return self.canUseMenus
             }
         ) { [weak self] in self?.selectGroup(select: true) }
         registry.add(
             .file, "Gruppe abwählen …", id: "selection.deselectGroup", order: 190, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus && self.active.remoteContent == nil
+                return self.canUseMenus
             }
         ) { [weak self] in self?.selectGroup(select: false) }
         registry.add(
             .file, "Auswahl umkehren", id: "selection.invert", order: 200, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus && self.active.remoteContent == nil
+                return self.canUseMenus
             }
         ) { [weak self] in self?.active.invertSelection() }
         registry.add(

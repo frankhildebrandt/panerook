@@ -7,6 +7,7 @@ protocol RemoteTransport {
     func createDirectory(_ path: String, token: RemoteCancellation) throws
     func download(_ path: String, to destination: URL, token: RemoteCancellation) throws
     func upload(_ source: URL, to path: String, token: RemoteCancellation) throws
+    func move(_ path: String, to destination: String, token: RemoteCancellation) throws
     func remove(_ path: String, directory: Bool, token: RemoteCancellation) throws
 }
 
