@@ -36,37 +36,35 @@ final class SettingsDialogTests: XCTestCase {
                                     updaterView: { NSTextField(labelWithString: "Update-Einstellungen") }, onClose: {})
         let window = try XCTUnwrap(dialog.window)
         let root = try XCTUnwrap(window.contentView)
-        for size in [NSSize(width: 1180, height: 800), NSSize(width: 1020, height: 700), NSSize(width: 860, height: 560)] {
-            window.setContentSize(size)
-            for section in SettingsSection.allCases {
-                dialog.show(section)
-                // A legacy scroller can appear or disappear after the first layout,
-                // changing the clip width and requiring a second layout pass.
-                for _ in 0..<3 {
+        for style: NSScroller.Style in [.legacy, .overlay] {
+            try XCTUnwrap(descendants(root).compactMap { $0 as? NSScrollView }.first).scrollerStyle = style
+            for size in [NSSize(width: 1180, height: 800), NSSize(width: 1020, height: 700), NSSize(width: 860, height: 560)] {
+                window.setContentSize(size)
+                for section in SettingsSection.allCases {
+                    dialog.show(section)
                     root.superview?.layoutSubtreeIfNeeded()
                     root.layoutSubtreeIfNeeded()
-                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
-                }
-                XCTAssertEqual(root.bounds.width, size.width, accuracy: 1, section.title)
-                let scroll = try XCTUnwrap(descendants(root).compactMap { $0 as? NSScrollView }.first)
-                let document = try XCTUnwrap(scroll.documentView)
-                XCTAssertGreaterThan(document.frame.height, 50, section.title)
-                XCTAssertEqual(document.frame.width, scroll.contentView.bounds.width, accuracy: 1, section.title)
-                for control in descendants(document).compactMap({ $0 as? NSControl }) {
-                    XCTAssertGreaterThan(control.frame.width, 0, "\(section.title): \(control)")
-                    XCTAssertGreaterThan(control.frame.height, 0, "\(section.title): \(control)")
-                }
-                if let directory = ProcessInfo.processInfo.environment["PANEROOK_SETTINGS_SNAPSHOT_DIR"], size.width == 1180 {
-                    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-                    let bitmap = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
-                    root.cacheDisplay(in: root.bounds, to: bitmap)
-                    try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(section.rawValue + ".png"))
-                    if section == .appearance || section == .general || section == .layout || section == .panels {
-                        root.appearance = NSAppearance(named: .darkAqua)
-                        root.displayIfNeeded()
+                    XCTAssertEqual(root.bounds.width, size.width, accuracy: 1, section.title)
+                    let scroll = try XCTUnwrap(descendants(root).compactMap { $0 as? NSScrollView }.first)
+                    let document = try XCTUnwrap(scroll.documentView)
+                    XCTAssertGreaterThan(document.frame.height, 50, section.title)
+                    XCTAssertEqual(document.frame.width, scroll.contentView.bounds.width, accuracy: 1, section.title)
+                    for control in descendants(document).compactMap({ $0 as? NSControl }) {
+                        XCTAssertGreaterThan(control.frame.width, 0, "\(section.title): \(control)")
+                        XCTAssertGreaterThan(control.frame.height, 0, "\(section.title): \(control)")
+                    }
+                    if let directory = ProcessInfo.processInfo.environment["PANEROOK_SETTINGS_SNAPSHOT_DIR"], size.width == 1180 {
+                        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+                        let bitmap = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
                         root.cacheDisplay(in: root.bounds, to: bitmap)
-                        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(section.rawValue + "-dark.png"))
-                        root.appearance = nil
+                        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(section.rawValue + ".png"))
+                        if section == .appearance || section == .general || section == .layout || section == .panels {
+                            root.appearance = NSAppearance(named: .darkAqua)
+                            root.displayIfNeeded()
+                            root.cacheDisplay(in: root.bounds, to: bitmap)
+                            try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(section.rawValue + "-dark.png"))
+                            root.appearance = nil
+                        }
                     }
                 }
             }

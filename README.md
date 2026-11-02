@@ -8,7 +8,7 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhän
 
 [Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller Release](https://github.com/frankhildebrandt/panerook/releases/latest)
 
-Die vorbereitete Version **0.3.0** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
+Version **0.3.1** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
 
 ## Starten
 
@@ -41,7 +41,7 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 ./scripts/package-release.sh
 ```
 
-Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.3.0`) muss mit `Resources/Info.plist` übereinstimmen.
+Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.3.1`) muss mit `Resources/Info.plist` übereinstimmen.
 
 Für das Paketieren müssen zusätzlich `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` gesetzt sein. Die einmalige Einrichtung steht unter [Update-Signierung](docs/signing.md#sparkle-update-signierung). Das Skript erstellt außerdem `appcast.xml` für GitHub Releases und prüft, dass Update-Signatur und eingebetteter öffentlicher Schlüssel zusammenpassen.
 

@@ -174,7 +174,9 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         add(rule, to: root)
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
-        scroll.autohidesScrollers = true
+        // Keep the legacy scroller gutter stable when switching between pages.
+        // Otherwise AppKit changes the clip width during document layout.
+        scroll.autohidesScrollers = false
         add(scroll, to: root)
         // Flipped document coordinates keep short pages at the top and make scrolling predictable.
         let document = SettingsDocumentView()
