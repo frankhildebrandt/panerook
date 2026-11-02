@@ -71,8 +71,8 @@ final class SparseFileDialog: NSWindowController {
         let cancel = NSButton(title: "Abbrechen", target: self, action: #selector(cancel(_:)))
         let create = NSButton(title: "Erstellen", target: self, action: #selector(confirm(_:)))
         for button in [cancel, create] { AppStyle.configureButton(button) }
-        cancel.keyEquivalent = "\u{1b}"; cancel.keyEquivalentModifierMask = []
-        create.keyEquivalent = "\r"; create.keyEquivalentModifierMask = []
+        ContextCommands.configure(cancel, id: "dialog.cancel")
+        ContextCommands.configure(create, id: "dialog.accept")
         let buttons = NSStackView(views: [NSView(), cancel, create])
         buttons.spacing = 10
         stack.addArrangedSubview(buttons)
@@ -109,8 +109,7 @@ final class SparseFileDialog: NSWindowController {
         // in a field or the default button can accept this dialog.
         if sender is NSTextField {
             guard let event = NSApp.currentEvent, event.type == .keyDown,
-                  event.keyCode == 36 || event.keyCode == 76,
-                  event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return }
+                  ContextCommands.matching(event, scope: .dialog)?.hasPrefix("dialog.accept") == true else { return }
         }
         guard acceptedRequest == nil else { return }
         do {

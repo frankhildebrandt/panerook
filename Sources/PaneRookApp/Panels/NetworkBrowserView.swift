@@ -48,6 +48,7 @@ final class NetworkBrowserView: NSView, NSTableViewDataSource, NSTableViewDelega
     private var resolving: NetService?
     private var mountRequest: AsyncRequestID?
     private var mounting = false
+    private var keyMonitor: Any?
     private var busy: Bool { resolving != nil || mounting }
 
     override init(frame frameRect: NSRect) {
@@ -81,7 +82,7 @@ final class NetworkBrowserView: NSView, NSTableViewDataSource, NSTableViewDelega
         refreshButton.target = self; refreshButton.action = #selector(refresh)
         refreshButton.toolTip = "Netzwerk aktualisieren"
         cancelButton.target = self; cancelButton.action = #selector(cancelPending)
-        cancelButton.keyEquivalent = "\u{1b}"; cancelButton.keyEquivalentModifierMask = []
+        ContextCommands.configure(cancelButton, id: "dialog.cancel")
         for button in [connectButton, refreshButton, cancelButton] {
             AppStyle.configureButton(button); button.controlSize = .small
             button.font = .systemFont(ofSize: 11)
@@ -102,6 +103,12 @@ final class NetworkBrowserView: NSView, NSTableViewDataSource, NSTableViewDelega
             content.widthAnchor.constraint(equalTo: root.widthAnchor), footer.widthAnchor.constraint(equalTo: root.widthAnchor)
         ])
         content.setContentHuggingPriority(.defaultLow, for: .vertical)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let window = self.window, event.window === window,
+                  self.active, !self.isHiddenOrHasHiddenAncestor,
+                  ContextCommands.canHandle(event, in: window), self.handleContextKey(event) else { return event }
+            return nil
+        }
         let center = NSWorkspace.shared.notificationCenter
         for notification in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
             observers.append(center.addObserver(forName: notification, object: nil, queue: .main) { [weak self] _ in self?.loadMountedVolumes() })
@@ -109,6 +116,7 @@ final class NetworkBrowserView: NSView, NSTableViewDataSource, NSTableViewDelega
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
     deinit {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         browsers.forEach { $0.stop() }
         resolving?.stop()
         if let mountRequest { NetFSMountURLCancel(mountRequest) }
@@ -298,13 +306,20 @@ final class NetworkBrowserView: NSView, NSTableViewDataSource, NSTableViewDelega
         status.stringValue = message; status.toolTip = message
         onError?(NSError(domain: "PaneRook.Network", code: 1, userInfo: [NSLocalizedDescriptionKey: message]))
     }
-    private func handleKey(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if busy, (((event.keyCode == 53 || event.keyCode == 109) && flags.isEmpty) || (event.keyCode == 5 && flags == .control)) {
-            cancelPending(); return true
+    private func handleContextKey(_ event: NSEvent) -> Bool {
+        guard !KeyboardCaptureState.isRecording else { return false }
+        if busy, ContextCommands.isCancellation(event) { cancelPending(); return true }
+        guard !busy, let id = ContextCommands.matching(event, scope: .network) else { return false }
+        switch id {
+        case "network.open", "network.open.keypad": openSelection()
+        case "network.connect": connectToServer()
+        case "network.refresh": refresh()
+        default: return false
         }
-        if flags.isEmpty && (event.keyCode == 36 || event.keyCode == 76) { openSelection(); return true }
-        return onKey?(event) ?? false
+        return true
+    }
+    private func handleKey(_ event: NSEvent) -> Bool {
+        handleContextKey(event) || (onKey?(event) ?? false)
     }
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

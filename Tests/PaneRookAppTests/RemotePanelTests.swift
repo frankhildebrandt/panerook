@@ -166,6 +166,38 @@ final class RemotePanelTests: XCTestCase {
         XCTAssertEqual(remote.deleted, 2)
     }
 
+    func testRemappedCopyHotkeyDownloadsWithoutLeavingASecondF5Binding() throws {
+        let (root, leftDirectory, rightDirectory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "PaneRook-RemoteHotkeys-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pane = PaneController(label: "Left", directory: leftDirectory)
+        let other = PaneController(label: "Right", directory: rightDirectory)
+        try loadAndSelectFile(in: pane)
+        let remote = RemoteContent()
+        pane.showRemoteContent(remote)
+        let host = Host(active: pane, other: other)
+        let operations = FileOperations(owner: host)
+        let registry = CommandRegistry(defaults: defaults)
+        operations.registerCommands(in: registry)
+        registry.addContextDefinitions()
+        func key(_ code: UInt16, _ characters: String, flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                isARepeat: false, keyCode: code))
+        }
+        try registry.setBinding(.physical(2, characters: "d", modifiers: [.control, .option]), for: "copy")
+        let f5 = try key(96, AppKeyBinding.function(5).characters)
+        XCTAssertNil(registry.matching(f5))
+        XCTAssertNil(ContextCommands.matching(f5, scope: .remote, defaults: defaults))
+        XCTAssertTrue(try XCTUnwrap(registry.matching(key(2, "d", flags: [.control, .option]))).perform())
+        XCTAssertEqual(remote.downloaded, 1)
+        XCTAssertThrowsError(try registry.setBinding(.function(7), for: "remote.download"),
+                             "Remote shortcuts share the main window and must not shadow New Folder")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: leftDirectory.appendingPathComponent("local.txt").path))
+    }
+
     func testCopyFromLocalPaneUploadsToOppositeConnectionAndMoveIsUnavailable() throws {
         let (root, leftDirectory, rightDirectory) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }

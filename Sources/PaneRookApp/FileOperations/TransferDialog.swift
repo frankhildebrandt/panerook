@@ -72,12 +72,10 @@ final class TransferDialog: NSWindowController {
         buttons.addArrangedSubview(NSView())
         let cancel = NSButton(title: "Abbrechen", target: self, action: #selector(cancel(_:)))
         AppStyle.configureButton(cancel)
-        cancel.keyEquivalent = "\u{1b}"
-        cancel.keyEquivalentModifierMask = []
+        ContextCommands.configure(cancel, id: "dialog.cancel")
         let submit = NSButton(title: kind == .copy ? "Kopieren" : "Verschieben", target: self, action: #selector(confirm(_:)))
         AppStyle.configureButton(submit)
-        submit.keyEquivalent = "\r"
-        submit.keyEquivalentModifierMask = []
+        ContextCommands.configure(submit, id: "dialog.accept")
         buttons.addArrangedSubview(cancel)
         buttons.addArrangedSubview(submit)
         stack.addArrangedSubview(buttons)
@@ -120,6 +118,10 @@ final class TransferDialog: NSWindowController {
         destination.selectText(nil)
     }
     @objc private func confirm(_ sender: Any?) {
+        if sender is NSTextField {
+            guard let event = NSApp.currentEvent, event.type == .keyDown,
+                  ContextCommands.matching(event, scope: .dialog)?.hasPrefix("dialog.accept") == true else { return }
+        }
         do {
             acceptedPlan = try TransferPlan(sources: sources, sourcePattern: mask.stringValue,
                 destinationPath: destination.stringValue, relativeTo: sourceDirectory, kind: kind)

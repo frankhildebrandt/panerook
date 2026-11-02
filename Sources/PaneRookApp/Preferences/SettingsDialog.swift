@@ -38,7 +38,7 @@ enum SettingsSection: String, CaseIterable {
         case .panels: return "Paneloptionen Zeilenhöhe Kompakt Standard Groß Dateisymbole Icons Auswahlstatus versteckte Dateien"
         case .confirmations: return "Sicherheit Löschen Papierkorb bestätigen Rückfragen"
         case .encoding: return "Darstellungsbits Textvorschau Inhaltsansicht Unicode UTF-8 UTF-16 Westeuropäisch Mac OS Roman Links Rechts"
-        case .keyboard: return "Tasten lernen Tastenkombinationen Funktionstasten F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 Belegung zurücksetzen"
+        case .keyboard: return "Tasten lernen Tastaturbelegung Tastenkombinationen Funktionstasten F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 Aktionen suchen belegen entfernen Konflikte Standard zurücksetzen"
         case .connections: return "Virtuelles Dateisystem VFS Remote Timeout Zeitlimit versteckte Dateien FTP SFTP SSH Nextcloud"
         case .updates: return "Automatisch Aktualisierung Version Sparkle herunterladen installieren prüfen"
         }
@@ -65,8 +65,6 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
     private var navigationActionCount = 0
     private var themeObserver: NSObjectProtocol?
     private(set) var selectedSection: SettingsSection
-    private var capture: SettingsKeyCapture?
-    private let keyStatus = NSTextField(wrappingLabelWithString: "")
 
     init(preferences: PreferencesTools, section: SettingsSection, defaults: UserDefaults = .standard,
          updaterView: @escaping () -> NSView, onClose: @escaping () -> Void) {
@@ -101,8 +99,6 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
     func show(_ section: SettingsSection) {
         commitTimeoutEditing()
         selectedSection = section
-        capture?.onCapture = nil
-        capture = nil
         clear(pages)
         actions.removeSubrange(navigationActionCount..<actions.count)
         let content = makePage(section)
@@ -170,9 +166,8 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         add(breadcrumb, to: header)
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Einstellungen schließen")!, target: nil, action: nil)
         close.isBordered = false
-        close.keyEquivalent = "\u{1b}"
-        close.keyEquivalentModifierMask = []
-        close.toolTip = "Schließen · Esc"
+        ContextCommands.configure(close, id: "dialog.cancel")
+        close.toolTip = ContextCommands.binding(for: "dialog.cancel").map { "Einstellungen schließen · " + $0.label } ?? "Einstellungen schließen"
         bind(close) { [weak self] in self?.dismiss() }
         add(close, to: header)
         let rule = SettingsDivider()
@@ -294,35 +289,21 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
             }
             append(SettingsStyle.section("Textvorschau", rows: encodingRows))
         case .keyboard:
-            var shortcutRows: [NSView] = []
-            let explanation = label("Aktion auswählen und eine neue Tastenkombination drücken. Esc und Ctrl-G bleiben zum Abbrechen reserviert.", size: 12, wrapping: true)
+            let explanation = label("Alle App-Aktionen können eine eigene Tastenkombination erhalten – auch Aktionen ohne Standardbelegung. Die Belegungen gelten für ihren jeweiligen Bereich, etwa Dateipanels, Dialoge, Git oder Remote-Browser.", size: 12, wrapping: true)
             explanation.textColor = SettingsStyle.secondaryTextColor
             append(explanation)
-            for command in preferences.owner.commandRegistry.customizableCommands {
-                let button = NSButton(title: preferences.owner.commandRegistry.bindings[command.id]?.label ?? "Belegen …", target: nil, action: nil)
-                button.setAccessibilityLabel("Tastenkombination für " + command.title)
-                bind(button) { [weak self, weak button] in
-                    guard let self, let button else { return }
-                    self.beginCapture(command, button: button)
-                }
-                button.controlSize = .small
-                button.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-                shortcutRows.append(row(command.title, detail: "", control: button))
+            let edit = NSButton(title: "Belegung bearbeiten …", target: nil, action: nil)
+            edit.identifier = .init("settings.keyboardMapping")
+            edit.setAccessibilityLabel("Tastaturbelegung bearbeiten")
+            edit.controlSize = .small
+            edit.bezelStyle = .rounded
+            bind(edit) { [weak self] in
+                guard let self, let window = self.window else { return }
+                self.preferences.learnKeys(from: window)
             }
-            append(SettingsStyle.section("Tastenbelegung", rows: shortcutRows))
-            let reset = NSButton(title: "Standardbelegung wiederherstellen", target: nil, action: nil)
-            bind(reset) { [weak self] in
-                guard let self else { return }
-                self.defaults.removeObject(forKey: "keyBindings")
-                self.preferences.owner.hotkeysChanged()
-                self.show(.keyboard)
-            }
-            reset.controlSize = .small
-            reset.bezelStyle = .rounded
-            stack.addArrangedSubview(reset)
-            keyStatus.textColor = .secondaryLabelColor
-            keyStatus.font = .systemFont(ofSize: 12)
-            append(keyStatus)
+            append(SettingsStyle.section("Tastaturbelegung", rows: [
+                row("Aktionen und Tastenkombinationen", detail: "Belegungen durchsuchen, aufzeichnen, entfernen und einzeln oder vollständig zurücksetzen. Konflikte werden vor dem Speichern angezeigt.", control: edit)
+            ]))
         case .connections:
             let saved = max(3, min(300, defaults.object(forKey: "remoteTimeout") as? Int ?? 20))
             let timeout = NSTextField(string: String(saved))
@@ -375,46 +356,6 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
     }
     private func row(_ title: String, detail: String, control: NSView) -> NSView {
         SettingsStyle.row(title, detail: detail, control: control)
-    }
-    private func beginCapture(_ command: AppCommand, button: NSButton) {
-        capture?.onCapture = nil
-        if let capture { pages.removeArrangedSubview(capture); capture.removeFromSuperview() }
-        let targetButton = button
-        let input = SettingsKeyCapture()
-        input.placeholderString = "Tastenkombination drücken …"
-        input.isEditable = false
-        input.font = .systemFont(ofSize: 13)
-        keyStatus.stringValue = command.title + ": Tastenkombination drücken …"
-        pages.addArrangedSubview(input)
-        input.widthAnchor.constraint(equalTo: pages.widthAnchor).isActive = true
-        capture = input
-        input.onCapture = { [weak self, weak targetButton, weak input] binding in
-            guard let self, let targetButton else { return }
-            var bindings = self.preferences.owner.commandRegistry.bindings
-            if let duplicate = bindings.first(where: { id, existing in
-                guard id != command.id, existing.modifiers == binding.modifiers else { return false }
-                let physicalKeyMatches = self.preferences.owner.commandRegistry[id]?.customizable == true && existing.keyCode == binding.keyCode
-                return physicalKeyMatches || existing.characters.caseInsensitiveCompare(binding.characters) == .orderedSame
-            }) {
-                let title = self.preferences.owner.commandRegistry[duplicate.key]?.title ?? duplicate.key
-                self.keyStatus.stringValue = "Bereits mit „\(title)“ belegt. Bitte eine andere Kombination wählen."
-                self.keyStatus.textColor = .systemRed
-                NSSound.beep()
-                return
-            }
-            bindings[command.id] = binding
-            if let data = try? JSONEncoder().encode(bindings) { self.defaults.set(data, forKey: "keyBindings") }
-            self.preferences.owner.hotkeysChanged()
-            targetButton.title = binding.label
-            self.keyStatus.textColor = .secondaryLabelColor
-            self.keyStatus.stringValue = "Tastenkombination gespeichert."
-            self.window?.makeFirstResponder(targetButton)
-            if let input { self.pages.removeArrangedSubview(input); input.removeFromSuperview() }
-            self.capture = nil
-        }
-        window?.contentView?.layoutSubtreeIfNeeded()
-        input.scrollToVisible(input.bounds)
-        window?.makeFirstResponder(input)
     }
     func controlTextDidChange(_ obj: Notification) {
         guard obj.object as? NSSearchField === search else { return }
@@ -478,23 +419,4 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
 
 private final class SettingsDocumentView: NSView {
     override var isFlipped: Bool { true }
-}
-
-private final class SettingsKeyCapture: NSTextField {
-    var onCapture: ((AppKeyBinding) -> Void)?
-    override var acceptsFirstResponder: Bool { true }
-    override func becomeFirstResponder() -> Bool { true }
-    override func keyDown(with event: NSEvent) { capture(event) }
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if event.keyCode == 53 || event.keyCode == 109 || (event.keyCode == 5 && flags == .control) { return false }
-        capture(event)
-        return true
-    }
-    private func capture(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard ![53, 36, 76, 109].contains(event.keyCode), !(event.keyCode == 5 && flags == .control),
-              let characters = event.charactersIgnoringModifiers, !characters.isEmpty else { return }
-        onCapture?(AppKeyBinding(keyCode: event.keyCode, modifiers: flags.rawValue, characters: characters))
-    }
 }

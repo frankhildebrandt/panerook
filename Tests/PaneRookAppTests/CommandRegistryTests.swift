@@ -54,9 +54,15 @@ final class CommandRegistryTests: XCTestCase {
         _ = NSApplication.shared
         let commander = CommanderController()
         let registry = commander.commandRegistry
-        XCTAssertEqual(
-            registry.customizableCommands.map(\.id),
-            ["help", "userMenu", "preview", "edit", "copy", "move", "mkdir", "trash", "menu", "exit"])
+        XCTAssertEqual(Set(registry.customizableCommands.map(\.id)), Set(registry.commands.map(\.id)))
+        for id in ["help", "userMenu", "preview", "edit", "copy", "move", "mkdir", "trash", "menu", "exit"] {
+            XCTAssertNotNil(registry[id], "Persisted command IDs must remain stable: \(id)")
+        }
+        for id in ["preferences.keyBindings", "preferences.layout", "preferences.appearance", "remote.preferences"] {
+            XCTAssertNotNil(registry[id], "Settings pages must retain persisted shortcut IDs: \(id)")
+        }
+        XCTAssertEqual(registry.defaultsByID["preferences.configuration"]?.label, "⌘,")
+        XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertEqual(registry.commands(in: .file).count, 21)
         XCTAssertEqual(registry.commands(in: .command).count, 31)

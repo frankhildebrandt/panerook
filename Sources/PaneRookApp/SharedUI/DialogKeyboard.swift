@@ -1,33 +1,28 @@
 import AppKit
 
 extension NSAlert {
-    /// Explicit equivalents work with text fields and avoid depending on localized button titles.
+    /// Stable identifiers let the dialog dispatcher invoke the buttons with the current mapping.
     func configureKeyboardShortcuts() {
-        buttons.first?.keyEquivalent = "\r"
+        if buttons.isEmpty { addButton(withTitle: "OK") }
+        if let button = buttons.first { ContextCommands.configure(button, id: "dialog.accept") }
         buttons.first?.keyEquivalentModifierMask = []
         if buttons.count > 1 {
-            buttons.last?.keyEquivalent = "\u{1b}"
+            if let button = buttons.last { ContextCommands.configure(button, id: "dialog.cancel") }
             buttons.last?.keyEquivalentModifierMask = []
-        } else {
-            let close = NSButton(title: "", target: self, action: #selector(dismissWithEscape))
-            close.keyEquivalent = "\u{1b}"
-            close.keyEquivalentModifierMask = []
-            close.frame = NSRect(x: -1, y: -1, width: 0, height: 0)
-            window.contentView?.addSubview(close)
         }
+        window.defaultButtonCell = nil
     }
-    @objc private func dismissWithEscape() {
-        if let parent = window.sheetParent { parent.endSheet(window, returnCode: .cancel) }
-    }
+
 }
 
 final class TransferPanel: NSPanel {
     var onCancel: (() -> Void)?
-    override func cancelOperation(_ sender: Any?) { onCancel?() }
+    override func cancelOperation(_ sender: Any?) {
+        if let event = NSApp.currentEvent, event.type == .keyDown, !ContextCommands.isCancellation(event) { return }
+        onCancel?()
+    }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        if (event.keyCode == 53 && modifiers.isEmpty) || (event.keyCode == 109 && modifiers.isEmpty)
-            || (event.keyCode == 5 && modifiers == .control) {
+        if !ContextCommands.preservesTextInput(event, in: self), ContextCommands.isCancellation(event) {
             onCancel?()
             return true
         }

@@ -180,6 +180,7 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         connection.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let close = NSButton(title: "Trennen", target: self, action: #selector(disconnectClicked))
         AppStyle.configureButton(close); close.controlSize = .small
+        ContextCommands.configure(close, id: "remote.close")
         let header = NSStackView(views: [connection, NSView(), close]); header.spacing = 8
         stack.addArrangedSubview(header); header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         let pathRow = NSStackView(); pathRow.spacing = 8
@@ -190,10 +191,10 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .noBorder; scroll.drawsBackground = false
         table.didFocus = { [weak self] in self?.onActivate?() }
         table.handleKey = { [weak self] event in
-            guard let self, self.view.window?.attachedSheet == nil else { return false }
-            let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            if self.busy && (event.keyCode == 53 || (event.keyCode == 5 && flags == .control)) {
-                self.cancelRemoteOperation(); return true
+            guard let self else { return false }
+            // Cancellation must not fall through to the main window's Quit action while work is active.
+            if self.busy, ContextCommands.isCancellation(event) || ContextCommands.matches("remote.close", event) {
+                return self.handleContextKey(event)
             }
             return self.onKey?(event) ?? false
         }
@@ -218,11 +219,18 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor; status.lineBreakMode = .byTruncatingMiddle
         cancel.target = self; cancel.action = #selector(cancelRemoteOperation); AppStyle.configureButton(cancel); cancel.controlSize = .small; cancel.isHidden = true
+        ContextCommands.configure(cancel, id: "dialog.cancel")
         statusRow.addArrangedSubview(spinner); statusRow.addArrangedSubview(status); statusRow.addArrangedSubview(NSView()); statusRow.addArrangedSubview(cancel)
         stack.addArrangedSubview(statusRow); statusRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
     private func button(_ title: String, _ action: Selector) -> NSButton {
-        let result = NSButton(title: title, target: self, action: action); AppStyle.configureButton(result); result.controlSize = .small; buttons.append(result); return result
+        let result = NSButton(title: title, target: self, action: action)
+        AppStyle.configureButton(result); result.controlSize = .small
+        let ids = ["goUp": "remote.parent", "download": "remote.download", "upload": "remote.upload",
+                   "makeDirectory": "remote.mkdir", "deleteSelected": "remote.delete", "reload": "remote.refresh"]
+        if let id = ids[NSStringFromSelector(action)] { ContextCommands.configure(result, id: id) }
+        buttons.append(result)
+        return result
     }
     @objc private func disconnectClicked() { disconnect() }
     func show(directory: String) { navigate(directory); focus() }
@@ -372,6 +380,36 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         let alert = NSAlert(); alert.alertStyle = .warning; alert.messageText = error.localizedDescription
         alert.configureKeyboardShortcuts(); alert.beginSheetModal(for: window)
     }
+    /// The commander calls this inside its menu/focus guard before the shared command dispatcher.
+    /// Shared copy/open/navigation defaults belong to the main registry; remote-only overrides stay here.
+    func handleContextKey(_ event: NSEvent) -> Bool {
+        guard isActive, !disconnected, !KeyboardCaptureState.isRecording, isViewLoaded,
+              let window = view.window, window.isKeyWindow, event.window === window,
+              window.attachedSheet == nil, let responder = window.firstResponder as? NSView,
+              responder === view || responder.isDescendant(of: view) || pathField.currentEditor() === responder,
+              !ContextCommands.preservesTextInput(event, in: window) else { return false }
+        if busy, ContextCommands.isCancellation(event) { cancelRemoteOperation(); return true }
+        guard let id = ContextCommands.matching(event, scope: .remote) else { return false }
+        if id == "remote.close" {
+            if busy { cancelRemoteOperation() } else { disconnect() }
+            return true
+        }
+        guard ContextCommands.canHandle(event, in: window) else { return false }
+        guard !busy else { return true }
+        switch id {
+        case "remote.focusPath": focusPath()
+        case "remote.open", "remote.open.keypad": openSelected()
+        case "remote.parent", "remote.parent.delete": goUp()
+        case "remote.download": download()
+        case "remote.upload": upload()
+        case "remote.mkdir": makeDirectory()
+        case "remote.delete": deleteSelected()
+        case "remote.refresh": reload()
+        default: return false
+        }
+        return true
+    }
+
     func tableViewSelectionDidChange(_ notification: Notification) { onStateChanged?() }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

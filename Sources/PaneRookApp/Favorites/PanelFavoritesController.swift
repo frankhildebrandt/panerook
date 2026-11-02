@@ -69,14 +69,41 @@ final class PanelFavoritesController: NSObject, NSMenuDelegate, NSMenuItemValida
         pane.installFavoritesMenu(menu)
         rebuild()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isTracking else { return event }
-            let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            if ((event.keyCode == 53 || event.keyCode == 109) && flags.isEmpty) || (event.keyCode == 5 && flags == .control) {
-                for menu in self.menus { menu.cancelTrackingWithoutAnimation() }
-                return nil
+            guard let self else { return event }
+            if self.isTracking {
+                if ContextCommands.isCancellation(event) {
+                    for menu in self.menus { menu.cancelTrackingWithoutAnimation() }
+                    return nil
+                }
+                return event
             }
-            return event
+            guard self.owner.activePane === self.pane, self.owner.canUseMenus,
+                  let window = self.owner.presentationWindow, event.window === window,
+                  ContextCommands.canHandle(event, in: window),
+                  let id = ContextCommands.matching(event, scope: .favorites), self.performCommand(id) else { return event }
+            return nil
         }
+    }
+    private func performCommand(_ id: String) -> Bool {
+        switch id {
+        case "favorites.addCurrent":
+            guard pane.mode != .network, !pane.isArchiveDirectory else { return false }
+            do { try store.addFolder(pane.directory) } catch { owner.showError(error) }
+        case "favorites.addFolder": chooseFavoriteFolder()
+        case "favorites.remove": removeFavorite()
+        case "favorites.connections": owner.showConnectionArchive(pane: pane)
+        case "favorites.refreshRepositories":
+            guard !repositories.refreshing else { return false }
+            repositories.refresh(); pane.refresh()
+        default:
+            if id.hasPrefix("favorites.cloud.choose."), let kind = FavoriteLocationKind(rawValue: String(id.dropFirst("favorites.cloud.choose.".count))) {
+                chooseCloudFolder(kind, navigate: false)
+            } else if id.hasPrefix("favorites.cloud.reset."), let kind = FavoriteLocationKind(rawValue: String(id.dropFirst("favorites.cloud.reset.".count))) {
+                guard store.overriddenLocation(kind) != nil else { return false }
+                store.clearOverrideLocation(kind)
+            } else { return false }
+        }
+        return true
     }
     deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
     func menuNeedsUpdate(_ menu: NSMenu) {

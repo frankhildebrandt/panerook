@@ -3,6 +3,7 @@ import PaneRookPanels
 
 final class PreferencesTools {
     unowned let owner: any PreferencesHost
+    private(set) var keyboardMapping: KeyboardMappingController?
     private let defaults: UserDefaults
     init(owner: any PreferencesHost, defaults: UserDefaults = .standard) {
         self.owner = owner
@@ -37,6 +38,27 @@ final class PreferencesTools {
     }
     func encoding(pane: (any PanelAccess)? = nil) {
         showSettings(section: .encoding)
+    }
+    /// Reuse the same editor from the keyboard settings page and from a mapped action.
+    func learnKeys(from parent: NSWindow? = nil) {
+        if let keyboardMapping {
+            keyboardMapping.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+        guard parent != nil || owner.canUseMenus,
+              let window = parent ?? owner.presentationWindow, window.attachedSheet == nil else { return }
+        let pane = owner.activePane
+        let previous = window.firstResponder
+        let controller = KeyboardMappingController(registry: owner.commandRegistry, didChange: { [weak self] in
+            self?.owner.hotkeysChanged()
+        }, didClose: { [weak self, weak window, weak previous] in
+            guard let self else { return }
+            self.keyboardMapping = nil
+            if parent != nil { window?.makeFirstResponder(previous) }
+            else { self.owner.activate(pane) }
+        })
+        keyboardMapping = controller
+        controller.present(asSheetOf: window)
     }
     func filter(pane: any PanelAccess) {
         ToolUI.prompt(owner: owner, title: "Filter", label: "Dateimaske · leer zeigt alle Dateien", value: pane.filterPattern, accept: "Anwenden") { value in pane.setFilter(value) }

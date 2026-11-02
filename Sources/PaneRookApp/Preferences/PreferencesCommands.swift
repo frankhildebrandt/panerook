@@ -6,6 +6,23 @@ extension PreferencesTools {
             .options, "Einstellungen …", id: "preferences.configuration", order: 10, group: 0, key: ",",
             enabled: { self.owner.canUseMenus }
         ) { self.showSettings() }
+        // Preserve existing action IDs while all pages now live in the settings window.
+        for (id, title, section) in [
+            ("preferences.layout", "Layout …", SettingsSection.layout),
+            ("preferences.panels", "Paneloptionen …", .panels),
+            ("preferences.confirmations", "Nachfragen …", .confirmations),
+            ("preferences.appearance", "Aussehen …", .appearance),
+            ("preferences.encoding", "Darstellungsbits …", .encoding),
+            ("preferences.connections", "Verbindungseinstellungen …", .connections),
+            ("remote.preferences", "VFS-Einstellungen …", .connections)
+        ] {
+            registry.add(.options, title, id: id, order: 20, visibleInMenu: false,
+                enabled: { self.owner.canUseMenus }
+            ) { self.showSettings(section: section) }
+        }
+        registry.add(.options, "Tastaturbelegung …", id: "preferences.keyBindings", order: 70,
+            visibleInMenu: false, enabled: { self.owner.canUseMenus }
+        ) { self.learnKeys() }
     }
 }
 

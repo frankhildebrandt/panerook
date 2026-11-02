@@ -44,13 +44,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         menus = CommanderMenus(commander: commander, updater: updater)
         menus.install()
         dialogKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
-            guard (event.keyCode == 109 && flags.isEmpty) || (event.keyCode == 5 && flags == .control),
-                  let sheet = NSApp.keyWindow, let parent = sheet.sheetParent else { return event }
-            if let transfer = sheet as? TransferPanel { transfer.cancelOperation(nil) }
-            else if let tool = sheet as? ToolPanel { tool.cancelOperation(nil) }
-            else { parent.endSheet(sheet, returnCode: .cancel) }
-            return nil
+            guard !KeyboardCaptureState.isRecording,
+                  let sheet = NSApp.keyWindow ?? NSApp.modalWindow,
+                  sheet.sheetParent != nil || NSApp.modalWindow === sheet,
+                  !ContextCommands.preservesTextInput(event, in: sheet),
+                  let id = ContextCommands.matching(event, scope: .dialog) else { return event }
+            if id.hasPrefix("dialog.cancel") {
+                if let transfer = sheet as? TransferPanel { transfer.cancelOperation(nil) }
+                else if let tool = sheet as? ToolPanel { tool.cancelOperation(nil) }
+                else if let parent = sheet.sheetParent { parent.endSheet(sheet, returnCode: .cancel) }
+                else { NSApp.abortModal() }
+                return nil
+            }
+            // NSAlert owns its confirmation action; invoke the visible button to retain validation.
+            if id.hasPrefix("dialog.accept"), let button = ContextCommands.button(in: sheet.contentView, id: "dialog.accept"), button.isEnabled {
+                button.performClick(nil)
+                return nil
+            }
+            return event
         }
         window.makeKeyAndOrderFront(nil)
         commander.activate(commander.left)
@@ -64,6 +75,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = "Beim Beenden werden laufende und wartende Aufgaben abgebrochen. Bereits abgeschlossene Einträge bleiben erhalten."
         alert.addButton(withTitle: "Weiterarbeiten")
         alert.addButton(withTitle: "Aufgaben abbrechen und beenden")
+        alert.configureKeyboardShortcuts()
         guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         commander.tasks.cancelAll {
             // Let the worker finish cleanup before ending the process.

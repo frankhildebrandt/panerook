@@ -188,11 +188,11 @@ final class SettingsDialogTests: XCTestCase {
         }
     }
 
-    func testShortcutCapturePersistsNewBindingAndRejectsDuplicates() throws {
+    func testKeyboardSettingsOpensTheSharedEditorAndPreservesConflictChecks() throws {
         _ = NSApplication.shared
         let suite = "PaneRook-KeyboardSettings-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { defaults.removePersistentDomain(forName: suite); KeyboardCaptureState.isRecording = false }
         let commander = CommanderController()
         _ = commander.view
         let registry = CommandRegistry(defaults: defaults)
@@ -201,24 +201,39 @@ final class SettingsDialogTests: XCTestCase {
         commander.commandRegistry = registry
         let preferences = PreferencesTools(owner: commander, defaults: defaults)
         let dialog = SettingsDialog(preferences: preferences, section: .keyboard, defaults: defaults, updaterView: { NSView() }, onClose: {})
-        let root = try XCTUnwrap(dialog.window?.contentView)
-        func captureButton(_ title: String) throws -> NSButton {
-            try XCTUnwrap(descendants(root).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == title })
+        let parent = try XCTUnwrap(dialog.window)
+        defer { if let sheet = parent.attachedSheet { parent.endSheet(sheet) } }
+        let root = try XCTUnwrap(parent.contentView)
+        let open = try XCTUnwrap(descendants(root).compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "settings.keyboardMapping" })
+        open.performClick(nil)
+        let sheet = try XCTUnwrap(preferences.keyboardMapping?.window)
+        let content = try XCTUnwrap(sheet.contentView)
+        let table = try XCTUnwrap(descendants(content).compactMap { $0 as? NSTableView }.first)
+        let capture = try XCTUnwrap(descendants(content).compactMap { $0 as? KeyCapture }.first)
+        func button(_ title: String) throws -> NSButton {
+            try XCTUnwrap(descendants(content).compactMap { $0 as? NSButton }.first { $0.title == title })
         }
-        func input() throws -> NSTextField {
-            try XCTUnwrap(descendants(root).compactMap { $0 as? NSTextField }.first { $0.placeholderString == "Tastenkombination drücken …" })
-        }
+        let copy = try XCTUnwrap(registry.customizableCommands.firstIndex { $0.id == "copy" })
+        table.selectRowIndexes(IndexSet(integer: copy), byExtendingSelection: false)
+        try button("Belegen …").performClick(nil)
+        XCTAssertTrue(KeyboardCaptureState.isRecording)
         let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .option, timestamp: 0, windowNumber: 0, context: nil, characters: "c", charactersIgnoringModifiers: "c", isARepeat: false, keyCode: 8))
-        try captureButton("Kopieren").performClick(nil)
-        XCTAssertTrue(try input().performKeyEquivalent(with: event))
+        XCTAssertTrue(capture.performKeyEquivalent(with: event))
+        try button("Speichern").performClick(nil)
+        XCTAssertFalse(KeyboardCaptureState.isRecording)
         XCTAssertEqual(registry.bindings["copy"]?.keyCode, 8)
-        XCTAssertEqual(registry.bindings["copy"]?.modifiers, NSEvent.ModifierFlags.option.rawValue)
-        try captureButton("Verschieben").performClick(nil)
-        XCTAssertTrue(try input().performKeyEquivalent(with: event))
+        let move = try XCTUnwrap(registry.customizableCommands.firstIndex { $0.id == "move" })
+        table.selectRowIndexes(IndexSet(integer: move), byExtendingSelection: false)
+        try button("Belegen …").performClick(nil)
+        XCTAssertTrue(capture.performKeyEquivalent(with: event))
+        XCTAssertFalse(try button("Speichern").isEnabled)
         XCTAssertEqual(registry.bindings["move"]?.keyCode, AppKeyBinding.function(6).keyCode)
-        XCTAssertTrue(descendants(root).compactMap { $0 as? NSTextField }.contains { $0.stringValue.contains("Bereits mit „Kopieren“ belegt") })
-        dialog.show(.general)
-        XCTAssertFalse(descendants(root).compactMap { $0 as? NSTextField }.contains { $0.placeholderString == "Tastenkombination drücken …" })
+        try button("Abbrechen").performClick(nil)
+        XCTAssertFalse(KeyboardCaptureState.isRecording)
+        XCTAssertTrue(preferences.keyboardMapping?.window === sheet)
+        XCTAssertEqual(dialog.selectedSection, .keyboard)
+        try button("Fertig").performClick(nil)
+        XCTAssertNil(preferences.keyboardMapping)
     }
 
 }

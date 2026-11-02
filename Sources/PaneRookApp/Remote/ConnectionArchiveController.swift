@@ -21,7 +21,6 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
     private var chosen: ConnectionBookmark?
     private var creationKind: RemoteProtocol
     private let kinds: [RemoteProtocol] = RemoteProtocol.available
-    private var keyMonitor: Any?
 
     init(store: ConnectionBookmarkStore, initialKind: RemoteProtocol? = nil, completion: @escaping (ConnectionBookmark?) -> Void) {
         self.store = store; self.completion = completion
@@ -46,11 +45,6 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
         table.target = self; table.doubleAction = #selector(connectSelected)
         table.setAccessibilityLabel("Gespeicherte Verbindungen")
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        table.handleKey = { [weak self] event in
-            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-                  event.keyCode == 36 || event.keyCode == 76 else { return false }
-            self?.connectSelected(); return true
-        }
         for (id, title, width) in [("name", "Name", 230.0), ("kind", "Protokoll", 90.0), ("server", "Server", 350.0)] {
             let column = NSTableColumn(identifier: .init(id)); column.title = title; column.width = width
             column.minWidth = id == "kind" ? 80 : 130
@@ -69,17 +63,17 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
         errorLabel.font = .systemFont(ofSize: 12); errorLabel.textColor = .systemRed; errorLabel.isHidden = true
         errorLabel.setAccessibilityLabel("Fehler im Verbindungsarchiv")
         let new = NSButton(title: "Neu …", target: self, action: #selector(newBookmark))
-        new.keyEquivalent = "n"; new.keyEquivalentModifierMask = .command
+        ContextCommands.configure(new, id: "connections.new")
         edit.target = self; edit.action = #selector(editSelected)
-        edit.keyEquivalent = "e"; edit.keyEquivalentModifierMask = .command
+        ContextCommands.configure(edit, id: "connections.edit")
         remove.target = self; remove.action = #selector(removeSelected)
-        remove.keyEquivalent = "\u{8}"; remove.keyEquivalentModifierMask = .command
+        ContextCommands.configure(remove, id: "connections.remove")
         undo.target = self; undo.action = #selector(undoRemoval)
-        undo.keyEquivalent = "z"; undo.keyEquivalentModifierMask = .command; undo.isHidden = true
+        ContextCommands.configure(undo, id: "connections.undo"); undo.isHidden = true
         connect.target = self; connect.action = #selector(connectSelected)
-        connect.keyEquivalent = "\r"; connect.keyEquivalentModifierMask = []
+        ContextCommands.configure(connect, id: "connections.connect")
         let close = NSButton(title: "Schließen", target: self, action: #selector(closeArchive(_:)))
-        close.keyEquivalent = "\u{1b}"; close.keyEquivalentModifierMask = []
+        ContextCommands.configure(close, id: "dialog.cancel")
         for button in [new, edit, remove, undo, connect, close] { AppStyle.configureButton(button); button.controlSize = .small }
         let footer = NSStackView(views: [new, edit, remove, undo, NSView(), close, connect]); footer.spacing = 8
         let root = NSStackView(views: [filter, content, errorLabel, footer])
@@ -95,23 +89,23 @@ final class ConnectionArchiveController: NSWindowController, NSTableViewDataSour
         for index in keyViews.indices { keyViews[index].nextKeyView = keyViews[(index + 1) % keyViews.count] }
         panel.initialFirstResponder = table
         reload()
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window, self.window?.attachedSheet == nil,
-                  event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command else { return event }
-            // Handle archive actions before the main window's menu equivalents.
-            // Text fields retain their normal deletion and text-undo behavior.
-            let editingText = self.window?.firstResponder is NSTextView
-            switch event.keyCode {
-            case 45: self.newBookmark() // Cmd-N
-            case 14: self.editSelected() // Cmd-E
-            case 51 where !editingText: self.removeSelected() // Cmd-Backspace
-            case 6 where !editingText && !self.deleted.isEmpty: self.undoRemoval() // Cmd-Z
-            default: return event
+        panel.configureCommands(scope: .connections) { [weak self] id in
+            guard let self else { return false }
+            let editingText = (self.window?.firstResponder as? NSTextView)?.isEditable == true
+            switch id {
+            case "connections.new": self.newBookmark()
+            case "connections.edit" where self.edit.isEnabled: self.editSelected()
+            case "connections.remove" where !editingText && self.remove.isEnabled: self.removeSelected()
+            case "connections.undo" where !editingText && !self.deleted.isEmpty: self.undoRemoval()
+            case "connections.connect", "connections.connect.keypad":
+                guard self.connect.isEnabled else { return false }
+                self.connectSelected()
+            case "connections.search": self.window?.makeFirstResponder(self.search); self.search.selectText(nil)
+            default: return false
             }
-            return nil
+            return true
         }
     }
-    deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
     func begin(on parent: NSWindow) {
         guard let window else { return }

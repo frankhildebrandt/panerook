@@ -37,7 +37,9 @@ Aktionen gehören in die `*Commands.swift`-Datei ihres Features. Eine Definition
 
 Bei einer neuen Aktion in einem bestehenden Feature ändern sich weder `CommanderMenus` noch die zentrale Tastaturverteilung. Reihenfolge und Gruppen werden anhand expliziter Werte zusammengeführt; zwischen vorhandenen Werten bleiben Plätze für weitere Aktionen. Ein neues Feature wird einmal in `FeatureComposition` registriert. IDs sind persistente Kennungen: insbesondere `help`, `userMenu`, `preview`, `edit`, `copy`, `move`, `mkdir`, `trash`, `menu` und `exit` müssen für vorhandene Tastatureinstellungen erhalten bleiben.
 
-Native Bearbeiten-Kürzel laufen weiterhin durch AppKits Responder Chain. F10 bleibt in offenen Menüs und Dialogen eine Abbruchaktion. Menü- und Dock-Callbacks dürfen den Commander nicht dauerhaft festhalten.
+Alle Befehle sind belegbar, auch ohne Standardkürzel. `CommandScope` trennt die aktiven Kontexte; unmodifizierte Hauptfensteraktionen laufen nur in Dateilisten, native Bearbeiten-Aktionen weiterhin durch AppKits Responder Chain. `Commands/ContextCommands` hält die Definitionen für separate Feature-Fenster und Dialoge bereits vor deren Öffnen bereit. Ein Kontext führt dieselben Aktionen mit denselben Verfügbarkeitsprüfungen wie seine Schaltflächen aus. Neue Fensteraktionen brauchen dort eine stabile Definition und eine Zuordnung im zuständigen Feature.
+
+`AppKeyBinding` unterscheidet layoutabhängige Zeichen-Vorgaben und aufgezeichnete physische Tasten. Gespeicherte Änderungen unter `keyBindings` überschreiben nur einzelne Vorgaben; ein expliziter leerer Eintrag entfernt eine Belegung dauerhaft. Fehlende Einträge erhalten weiterhin ihre Standardbelegung. Bestehende Daten ohne Kennzeichnung des Tastentyps bleiben lesbar. Die Tastaturkonfiguration bietet Suche, Konfliktprüfung sowie Entfernen und selektives oder vollständiges Zurücksetzen. Auch Dialogbestätigung und Abbruch sind konfigurierbar; standardmäßig brechen Esc, F10 und Ctrl-G ab. Während der Aufzeichnung lassen alle App- und Kontextmonitoren die Eingabe zum Recorder durch. Menü- und Dock-Callbacks dürfen den Commander nicht dauerhaft festhalten.
 
 ## Remote-Anbieter erweitern
 
