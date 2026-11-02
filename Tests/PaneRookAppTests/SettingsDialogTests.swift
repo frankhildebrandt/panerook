@@ -40,8 +40,13 @@ final class SettingsDialogTests: XCTestCase {
             window.setContentSize(size)
             for section in SettingsSection.allCases {
                 dialog.show(section)
-                root.superview?.layoutSubtreeIfNeeded()
-                root.layoutSubtreeIfNeeded()
+                // A legacy scroller can appear or disappear after the first layout,
+                // changing the clip width and requiring a second layout pass.
+                for _ in 0..<3 {
+                    root.superview?.layoutSubtreeIfNeeded()
+                    root.layoutSubtreeIfNeeded()
+                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+                }
                 XCTAssertEqual(root.bounds.width, size.width, accuracy: 1, section.title)
                 let scroll = try XCTUnwrap(descendants(root).compactMap { $0 as? NSScrollView }.first)
                 let document = try XCTUnwrap(scroll.documentView)
