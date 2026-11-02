@@ -7,3 +7,11 @@ xcuserdata/
 website/node_modules/
 website/.astro/
 website/dist/
+
+# Signing credentials must stay outside the checkout.
+*.p12
+*.p8
+*.key
+*.keychain-db
+private-key.pem
+*-password.txt

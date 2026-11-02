@@ -8,6 +8,12 @@ if [[ "$configuration" != debug && "$configuration" != release ]] ||
   echo "Usage: $0 [debug|release] [native|universal]" >&2
   exit 1
 fi
+identity="${PANEROOK_SIGNING_IDENTITY:--}"
+timestamp="${PANEROOK_SIGNING_TIMESTAMP:-none}"
+if [[ "$timestamp" != none && "$timestamp" != secure ]]; then
+  echo "PANEROOK_SIGNING_TIMESTAMP must be none or secure." >&2
+  exit 1
+fi
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PWD/.build/clang-module-cache}"
 swift_options=(--cache-path "$PWD/.build/cache")
 if [[ "${PANEROOK_DISABLE_BUILD_SANDBOX:-0}" == 1 ]]; then
@@ -32,6 +38,18 @@ if [[ "$architecture" == universal ]]; then
 fi
 # Mark the rebuilt application as changed so its bundle icon can be refreshed.
 touch "$bundle"
-/usr/bin/codesign --force --sign - "$bundle"
-/usr/bin/codesign --verify --strict "$bundle"
+signing_options=(--force --sign "$identity")
+if [[ -n "${PANEROOK_SIGNING_KEYCHAIN:-}" ]]; then
+  signing_options+=(--keychain "$PANEROOK_SIGNING_KEYCHAIN")
+fi
+if [[ "$identity" != - ]]; then
+  signing_options+=(--options runtime)
+fi
+if [[ "$timestamp" == secure ]]; then
+  signing_options+=(--timestamp)
+else
+  signing_options+=(--timestamp=none)
+fi
+/usr/bin/codesign "${signing_options[@]}" "$bundle"
+/usr/bin/codesign --verify --strict --all-architectures "$bundle"
 echo "$bundle"

@@ -21,14 +21,86 @@ jobs:
       - uses: actions/checkout@v7
       - name: Test
         run: swift test
-      - name: Package universal app
+      - name: Import private signing identity
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.PANEROOK_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.PANEROOK_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.PANEROOK_SIGNING_IDENTITY }}
         shell: bash
         run: |
+          set -euo pipefail
+          for name in CERTIFICATE_BASE64 CERTIFICATE_PASSWORD SIGNING_IDENTITY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing signing secret: $name. Run scripts/setup-signing.sh --github."
+              exit 1
+            fi
+          done
+          if [[ ! "$SIGNING_IDENTITY" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo "::error::PANEROOK_SIGNING_IDENTITY must be the certificate's SHA-1 fingerprint."
+            exit 1
+          fi
+          certificate="$RUNNER_TEMP/panerook-certificate.p12"
+          keychain="$RUNNER_TEMP/panerook-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 48)"
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          chmod 600 "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          rm -f "$certificate"
+          echo "PANEROOK_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "PANEROOK_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+      - name: Configure optional Apple notarization
+        env:
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$NOTARY_KEY$NOTARY_KEY_ID$NOTARY_ISSUER_ID" ]]; then
+            exit 0
+          fi
+          if [[ -z "$NOTARY_KEY" || -z "$NOTARY_KEY_ID" || -z "$NOTARY_ISSUER_ID" ]]; then
+            echo "::error::Set all three APPLE_NOTARY_* secrets to enable notarization."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/panerook-notary.p8"
+          printf '%s' "$NOTARY_KEY" > "$key"
+          chmod 600 "$key"
+          xcrun notarytool store-credentials panerook-notary \
+            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --keychain "$PANEROOK_SIGNING_KEYCHAIN"
+          rm -f "$key"
+          echo 'PANEROOK_NOTARY_PROFILE=panerook-notary' >> "$GITHUB_ENV"
+          echo "PANEROOK_NOTARY_KEYCHAIN=$PANEROOK_SIGNING_KEYCHAIN" >> "$GITHUB_ENV"
+          echo 'PANEROOK_SIGNING_TIMESTAMP=secure' >> "$GITHUB_ENV"
+      - name: Package signed universal ZIP and DMG
+        env:
+          PANEROOK_SIGNING_TIMESTAMP: ${{ vars.PANEROOK_SIGNING_TIMESTAMP || 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${PANEROOK_NOTARY_PROFILE:-}" ]]; then
+            export PANEROOK_SIGNING_TIMESTAMP=secure
+          fi
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             ./scripts/package-release.sh "$GITHUB_REF_NAME"
           else
             ./scripts/package-release.sh
           fi
+      - name: Remove signing credentials
+        if: always()
+        shell: bash
+        run: |
+          keychain="$RUNNER_TEMP/panerook-signing.keychain-db"
+          if [[ -f "$keychain" ]]; then
+            security delete-keychain "$keychain"
+          fi
+          rm -f "$RUNNER_TEMP/panerook-certificate.p12" "$RUNNER_TEMP/panerook-notary.p8"
       - uses: actions/upload-artifact@v7
         with:
           name: PaneRook-macOS-universal
