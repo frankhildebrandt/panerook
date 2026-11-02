@@ -39,10 +39,12 @@ security unlock-keychain -p "$(cat "$signing_directory/keychain-password.txt")" 
 PANEROOK_SIGNING_IDENTITY="$(cat "$signing_directory/identity.txt")" \
 PANEROOK_SIGNING_KEYCHAIN="$signing_directory/signing.keychain-db" \
 PANEROOK_SIGNING_TIMESTAMP=secure \
+PANEROOK_NOTARY_PROFILE=panerook-notary \
+PANEROOK_NOTARY_KEYCHAIN="$signing_directory/signing.keychain-db" \
 ./scripts/package-release.sh
 ```
 
-Die Apple-Notarisierung wird zusätzlich über ein lokales `notarytool`-Profil oder die vorgesehenen GitHub-Secrets aktiviert. Ein signierter Build allein ist noch nicht notarisiert. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
+Die Apple-Notarisierung ist über das lokale Profil `panerook-notary` und die GitHub-Secrets eingerichtet. Der Release-Workflow notarisiert App und DMG automatisch und heftet die Tickets an. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
 
 ```sh
 swift test
