@@ -1,0 +1,4 @@
+interface:
+  display_name: "PaneRook Release"
+  short_description: "Releases mit Doku, Screenshots und Release Notes"
+  default_prompt: "Nutze $panerook-release, um den nächsten PaneRook-Release mit Dokumentation, Screenshots, Release-Unterseite, Landingpage und aufgeräumter README.md vorzubereiten."
