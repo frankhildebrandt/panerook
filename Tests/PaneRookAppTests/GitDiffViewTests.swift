@@ -168,4 +168,60 @@ final class GitDiffViewTests: XCTestCase {
             XCTAssertGreaterThan(table.frame.width, try XCTUnwrap(table.enclosingScrollView).contentSize.width)
         }
     }
+
+    func testPaneStyleUpdatesRenderedThemeAndAppearanceWithoutLosingSelectionOrContent() throws {
+        let suite = "PaneRook.DiffPaneThemeTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let previousAppearance = NSApplication.shared.appearance
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            ThemeManager.apply()
+            NSApplication.shared.appearance = previousAppearance
+        }
+        defaults.set("ocean", forKey: "appTheme")
+        defaults.set(1, forKey: "appearance")
+        ThemeManager.apply(defaults: defaults)
+        let view = GitDiffView(frame: NSRect(x: 0, y: 0, width: 320, height: 220))
+        view.appearance = NSAppearance(named: .aqua)
+        view.usePaneStyle()
+        let document = GitDiffDocument(patch: patch)
+        view.show(document)
+        view.layoutSubtreeIfNeeded()
+        let unified = try XCTUnwrap(descendants(of: view).compactMap { $0 as? NSTextView }.first)
+        let selector = try control(in: view)
+        XCTAssertGreaterThanOrEqual(view.bounds.width, selector.frame.maxX)
+        XCTAssertFalse(unified.isEditable)
+        unified.setSelectedRange(NSRange(location: 2, length: 7))
+        let (left, right) = try tables(in: view)
+        let row = try XCTUnwrap(document.rows.firstIndex { $0.kind == .change })
+        view.setPresentation(1)
+        left.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        let hunk = (patch as NSString).range(of: "@@").location
+        XCTAssertNotEqual(hunk, NSNotFound)
+        func hunkColor() throws -> CGColor {
+            let color = try XCTUnwrap(unified.textStorage?.attribute(.foregroundColor, at: hunk,
+                effectiveRange: nil) as? NSColor)
+            var result: CGColor?
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                result = color.usingColorSpace(.sRGB)?.cgColor
+            }
+            return try XCTUnwrap(result)
+        }
+        let firstHunkColor = try hunkColor()
+        defaults.set("iris", forKey: "appTheme")
+        ThemeManager.apply(defaults: defaults)
+        XCTAssertNotEqual(try hunkColor(), firstHunkColor)
+        XCTAssertEqual(unified.string, patch)
+        XCTAssertEqual(unified.selectedRange(), NSRange(location: 2, length: 7))
+        XCTAssertEqual(left.selectedRowIndexes, IndexSet(integer: row))
+        XCTAssertEqual(right.selectedRowIndexes, left.selectedRowIndexes)
+        XCTAssertEqual(selector.selectedSegment, 1)
+        let lightBackground = try XCTUnwrap(view.layer?.backgroundColor)
+        view.appearance = NSAppearance(named: .darkAqua)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertNotEqual(view.layer?.backgroundColor, lightBackground)
+        XCTAssertEqual(unified.string, patch)
+        XCTAssertEqual(left.numberOfRows, document.rows.count)
+        XCTAssertEqual(selector.selectedSegment, 1)
+    }
 }

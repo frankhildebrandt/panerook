@@ -52,6 +52,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let gitFilterButton = NSPopUpButton()
     private let watchButton = NSButton()
     private var contentTop: NSLayoutConstraint?
+    private var contentBottom: NSLayoutConstraint?
+    private var historyContentEdges: [NSLayoutConstraint] = []
     private var gitInlineWidth: NSLayoutConstraint?
     private var gitInlineConstraints: [NSLayoutConstraint] = []
     private var gitRowConstraints: [NSLayoutConstraint] = []
@@ -261,6 +263,12 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         }
         let contentTop = content.topAnchor.constraint(equalTo: navigation.bottomAnchor)
         self.contentTop = contentTop
+        let contentBottom = content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10)
+        self.contentBottom = contentBottom
+        historyContentEdges = [
+            content.topAnchor.constraint(equalTo: surface.topAnchor, constant: 1),
+            content.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -1)
+        ]
         let gitInlineWidth = gitBar.widthAnchor.constraint(equalToConstant: 0)
         self.gitInlineWidth = gitInlineWidth
         gitInlineConstraints = [
@@ -282,7 +290,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             contentTop,
             content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 1),
             content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -1),
-            content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10),
+            contentBottom,
             summary.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 14),
             summary.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -14),
             summary.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -12),
@@ -381,6 +389,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if self.mode == .network && mode != .network { network.stop() }
         if self.mode == .gitHistory && mode != .gitHistory { gitHistory.stop() }
         self.mode = mode
+        let historyVisible = mode == .gitHistory
+        navigation.isHidden = historyVisible
+        summary.isHidden = historyVisible || !summaryVisible
+        NSLayoutConstraint.deactivate(historyContentEdges)
+        contentTop?.isActive = !historyVisible
+        contentBottom?.isActive = !historyVisible
+        if historyVisible { NSLayoutConstraint.activate(historyContentEdges) }
         listing.isHidden = mode != .listing
         inspection.isHidden = mode != .quickView && mode != .info
         tree.isHidden = mode != .tree
@@ -473,7 +488,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.rowHeight = min(44, max(18, rowHeight)); tree.outline.rowHeight = table.rowHeight
         iconsVisible = showIcons
         summaryVisible = showSummary
-        summary.isHidden = !showSummary
+        summary.isHidden = !showSummary || mode == .gitHistory
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
         table.reloadData()

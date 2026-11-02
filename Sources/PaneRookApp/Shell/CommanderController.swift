@@ -306,6 +306,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     @objc func goUp() { active.goUp() }
     @objc func goHome() { active.navigate(to: FileManager.default.homeDirectoryForCurrentUser) }
     @objc func focusPath() {
+        if active.mode == .gitHistory { active.setMode(.listing) }
         if let remote = active.remoteContent { remote.focusPath(); return }
         view.window?.makeFirstResponder(active.pathField)
         active.pathField.selectText(nil)

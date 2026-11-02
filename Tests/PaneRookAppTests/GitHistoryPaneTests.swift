@@ -74,6 +74,12 @@ final class GitHistoryPaneTests: XCTestCase {
         try XCTUnwrap(descendants(of: view).compactMap { $0 as? T }.first { $0.accessibilityLabel() == label })
     }
 
+    private func showsCommit(_ subject: String, in viewer: GitHistoryView, text: NSTextView) -> Bool {
+        let heading = descendants(of: viewer).compactMap { $0 as? NSTextField }
+            .first { $0.accessibilityLabel() == "Commit-Nachricht" }
+        return heading?.stringValue == subject && text.string.hasPrefix("diff --git ")
+    }
+
     private func invoke(_ control: NSControl) {
         XCTAssertTrue(control.sendAction(control.action, to: control.target))
     }
@@ -136,7 +142,8 @@ extension GitHistoryPaneTests {
         let newer = try control(NSButton.self, label: "Neuere Version", in: viewer)
         try eventually { text.string.contains("+two") && versions.numberOfItems == 2 }
         XCTAssertEqual(scope.indexOfSelectedItem, 1)
-        XCTAssertTrue(scope.titleOfSelectedItem?.contains(file.lastPathComponent) == true)
+        let title = try control(NSTextField.self, label: "Git-Auswahl", in: viewer)
+        XCTAssertEqual(title.stringValue, file.lastPathComponent)
         XCTAssertTrue(older.isEnabled)
         XCTAssertFalse(newer.isEnabled)
 
@@ -162,7 +169,7 @@ extension GitHistoryPaneTests {
         choose(source, 2)
         try eventually { text.string.contains("-two") && text.string.contains("+staged") }
         choose(source, 0)
-        try eventually { text.string.contains("Second version") && text.string.contains("+two") }
+        try eventually { showsCommit("Second version", in: viewer, text: text) && text.string.contains("+two") }
 
         let close = try XCTUnwrap(descendants(of: viewer).compactMap { $0 as? NSButton }.first { $0.title == "Dateiliste" })
         invoke(close)
@@ -216,21 +223,21 @@ extension GitHistoryPaneTests {
         XCTAssertEqual(commander.left.pathField.stringValue, commander.right.selectedFiles.first?.path)
         XCTAssertEqual(commander.right.mode, .listing)
         invoke(older)
-        try eventually { text.string.contains("First version") }
+        try eventually { showsCommit("First version", in: viewer, text: text) }
         let oldVersion = versions.titleOfSelectedItem
         commander.right.onSelectionChanged?(commander.right.selectedFiles.first)
         XCTAssertEqual(versions.titleOfSelectedItem, oldVersion)
-        XCTAssertTrue(text.string.contains("First version"))
+        XCTAssertTrue(showsCommit("First version", in: viewer, text: text))
         commander.right.refresh()
         try eventually {
             commander.right.canApplyTaskResult(in: self.repository)
                 && commander.right.selectedFiles.first?.lastPathComponent == self.file.lastPathComponent
         }
         XCTAssertEqual(versions.titleOfSelectedItem, oldVersion)
-        XCTAssertTrue(text.string.contains("First version"))
+        XCTAssertTrue(showsCommit("First version", in: viewer, text: text))
 
         try select("component", in: commander.right)
-        try eventually { text.string.contains("Directory second") && versions.numberOfItems == 2 }
+        try eventually { showsCommit("Directory second", in: viewer, text: text) && versions.numberOfItems == 2 }
         XCTAssertTrue(scope.titleOfSelectedItem?.contains("Verzeichnis") == true)
         XCTAssertEqual(commander.left.pathField.stringValue, commander.right.selectedFiles.first?.path)
         XCTAssertFalse(content.isEnabled(forSegment: 1))
@@ -238,12 +245,14 @@ extension GitHistoryPaneTests {
         XCTAssertTrue(text.string.contains("+directory two"))
         XCTAssertFalse(text.string.contains("unrelated sibling"))
         invoke(older)
-        try eventually { text.string.contains("Directory first") && text.string.contains("+directory one") }
+        try eventually { showsCommit("Directory first", in: viewer, text: text) && text.string.contains("+directory one") }
 
         // Selecting the parent entry falls back to the other pane's current repository.
         try select("..", in: commander.right)
-        try eventually { versions.numberOfItems == 5 && text.string.contains("Directory second") }
+        try eventually { versions.numberOfItems == 5 && showsCommit("Directory second", in: viewer, text: text) }
         XCTAssertEqual(scope.indexOfSelectedItem, 0)
+        XCTAssertEqual(try control(NSTextField.self, label: "Git-Auswahl", in: viewer).stringValue,
+            repository.lastPathComponent)
         XCTAssertEqual(commander.left.pathField.stringValue, commander.right.directory.path)
 
         let sourceMode = try control(NSSegmentedControl.self,
@@ -259,7 +268,7 @@ extension GitHistoryPaneTests {
         try eventually { text.string.contains("Keine nicht vorgemerkten Änderungen") }
         XCTAssertEqual(sourceMode.selectedSegment, 1)
         choose(sourceMode, 0)
-        try eventually { text.string.contains("Second version") }
+        try eventually { showsCommit("Second version", in: viewer, text: text) }
 
         // Navigation into a different repository replaces the captured root as well.
         let firstRepository = repository!
@@ -272,9 +281,9 @@ extension GitHistoryPaneTests {
         try git(["commit", "-m", "Other repository version"])
         repository = firstRepository
         commander.right.navigate(to: otherRepository)
-        try eventually { commander.right.directory == otherRepository && text.string.contains("Other repository version") }
+        try eventually { commander.right.directory == otherRepository && showsCommit("Other repository version", in: viewer, text: text) }
         XCTAssertEqual(versions.numberOfItems, 1)
-        XCTAssertFalse(text.string.contains("Directory second"))
+        XCTAssertFalse(showsCommit("Directory second", in: viewer, text: text))
 
         commander.right.navigate(to: ordinary)
         try eventually { commander.right.directory == self.ordinary && text.string.contains("keinem Git-Repository") }
@@ -304,7 +313,7 @@ extension GitHistoryPaneTests {
         try eventually { text.string.contains("keinem Git-Repository") }
 
         viewer.open(directory: repository, selectedFile: nil)
-        try eventually { text.string.contains("Second version") && versions.numberOfItems == 2 }
+        try eventually { showsCommit("Second version", in: viewer, text: text) && versions.numberOfItems == 2 }
         let scope = try control(NSPopUpButton.self, label: "Git-Verlauf: Repository, Datei oder Verzeichnis", in: viewer)
         XCTAssertEqual(scope.indexOfSelectedItem, 0)
         XCTAssertFalse(scope.isEnabled)
@@ -316,7 +325,7 @@ extension GitHistoryPaneTests {
         let versions = try control(NSPopUpButton.self, label: "Git-Version auswählen", in: viewer)
         let source = try control(NSSegmentedControl.self, label: "Git-Version, Arbeitskopie oder Staged-Diff", in: viewer)
         viewer.follow(directory: repository, selection: file, isDirectory: false)
-        try eventually { text.string.contains("Second version") }
+        try eventually { showsCommit("Second version", in: viewer, text: text) }
         viewer.follow(directory: nil, selection: nil, isDirectory: false)
         XCTAssertTrue(text.string.contains("Im anderen Panel"))
         XCTAssertEqual(versions.numberOfItems, 0)
@@ -324,7 +333,7 @@ extension GitHistoryPaneTests {
         viewer.refresh()
         XCTAssertTrue(text.string.contains("Im anderen Panel"))
         viewer.follow(directory: repository, selection: file, isDirectory: false)
-        try eventually { text.string.contains("Second version") && versions.numberOfItems == 2 }
+        try eventually { showsCommit("Second version", in: viewer, text: text) && versions.numberOfItems == 2 }
     }
 
     func testOpeningHistoryDuringOtherPaneNavigationFollowsTheCompletedDirectory() throws {
@@ -362,6 +371,77 @@ extension GitHistoryPaneTests {
         XCTAssertTrue(scroll.contentView.documentVisibleRect.contains(close.convert(close.bounds, to: document)))
         XCTAssertFalse(window.isVisible)
     }
+
+    func testStructuredCommitHeaderAndAppearanceChangesKeepThePatchReadable() throws {
+        let viewer = GitHistoryView(frame: NSRect(x: 0, y: 0, width: 800, height: 700))
+        let window = NSWindow(contentRect: viewer.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = viewer
+        defer { window.close() }
+        viewer.open(directory: repository, selectedFile: file)
+        let text = try control(NSTextView.self, label: "Git-Diff und Versionsvorschau", in: viewer)
+        let versions = try control(NSPopUpButton.self, label: "Git-Version auswählen", in: viewer)
+        let title = try control(NSTextField.self, label: "Git-Auswahl", in: viewer)
+        let subtitle = try control(NSTextField.self, label: "Git-Quelle", in: viewer)
+        let details = try control(NSTextField.self, label: "Ausgewählte Git-Version", in: viewer)
+        try eventually { showsCommit("Second version", in: viewer, text: text) }
+        XCTAssertEqual(title.stringValue, file.lastPathComponent)
+        XCTAssertTrue(subtitle.stringValue.contains(repository.lastPathComponent))
+        XCTAssertTrue(details.stringValue.contains("PaneRook Tests"))
+        let entry = try XCTUnwrap(GitRepository(directory: repository).historyEntries(path: file.lastPathComponent).first)
+        XCTAssertTrue(details.stringValue.contains(entry.commit.shortID))
+        XCTAssertFalse(text.string.contains("AuthorDate:"))
+        XCTAssertFalse(text.string.contains("PaneRook Tests"))
+        XCTAssertFalse(versions.titleOfSelectedItem?.contains("PaneRook Tests") == true)
+        XCTAssertFalse(text.isEditable)
+
+        let patch = text.string
+        let selectedVersion = versions.titleOfSelectedItem
+        let oldTheme = ThemeManager.theme
+        let oldScheme = ThemeManager.colorScheme
+        let suite = "PaneRookGitDesign-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer {
+            defaults.set(oldTheme.rawValue, forKey: "appTheme")
+            defaults.set(oldScheme.rawValue, forKey: "appearance")
+            ThemeManager.apply(defaults: defaults)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        defaults.set(AppTheme.iris.rawValue, forKey: "appTheme")
+        for (name, scheme) in [("light", AppColorScheme.light), ("dark", .dark)] {
+            defaults.set(scheme.rawValue, forKey: "appearance")
+            ThemeManager.apply(defaults: defaults)
+            viewer.layoutSubtreeIfNeeded()
+            viewer.displayIfNeeded()
+            XCTAssertEqual(text.string, patch)
+            XCTAssertEqual(versions.titleOfSelectedItem, selectedVersion)
+            XCTAssertTrue(showsCommit("Second version", in: viewer, text: text))
+            if let directory = ProcessInfo.processInfo.environment["PANEROOK_GIT_DESIGN_SNAPSHOT_DIR"] {
+                let destination = URL(fileURLWithPath: directory, isDirectory: true)
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                let bitmap = try XCTUnwrap(viewer.bitmapImageRepForCachingDisplay(in: viewer.bounds))
+                viewer.cacheDisplay(in: viewer.bounds, to: bitmap)
+                let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                try png.write(to: destination.appendingPathComponent("git-pane-\(name).png"))
+            }
+        }
+        XCTAssertFalse(window.isVisible)
+    }
+
+    func testHistoricalFileContentThatResemblesAPatchIsPreservedVerbatim() throws {
+        try git(["reset", "--hard", "HEAD"])
+        let content = "commit literal source text\nAuthor: literal\n\ndiff --git this is actual file content\n+keep this\n"
+        try Data(content.utf8).write(to: file)
+        try git(["add", "--", file.lastPathComponent])
+        try git(["commit", "-m", "Patch-like source content"])
+        let viewer = GitHistoryView(frame: .zero)
+        viewer.open(directory: repository, selectedFile: file)
+        let text = try control(NSTextView.self, label: "Git-Diff und Versionsvorschau", in: viewer)
+        let contentMode = try control(NSSegmentedControl.self, label: "Commit-Diff oder Datei dieser Version", in: viewer)
+        try eventually { showsCommit("Patch-like source content", in: viewer, text: text) }
+        choose(contentMode, 1)
+        try eventually { text.string == content }
+    }
 }
 
 extension GitHistoryPaneTests {
@@ -374,7 +454,7 @@ extension GitHistoryPaneTests {
         window.contentView = viewer
         viewer.open(directory: repository, selectedFile: file)
         let text = try control(NSTextView.self, label: "Git-Diff und Versionsvorschau", in: viewer)
-        try eventually { text.string.contains("Second version") }
+        try eventually { showsCommit("Second version", in: viewer, text: text) }
         let diff = try XCTUnwrap(descendants(of: viewer).compactMap { $0 as? GitDiffView }.first)
         let controls = descendants(of: viewer).compactMap { $0 as? NSControl }.filter {
             ($0 is NSButton || $0 is NSSegmentedControl) && !($0 is NSPopUpButton)
@@ -384,15 +464,17 @@ extension GitHistoryPaneTests {
             window.setContentSize(size)
             viewer.layoutSubtreeIfNeeded()
             let description = "at \(Int(size.width)) × \(Int(size.height))"
+            let scroll = try XCTUnwrap(viewer.subviews.first as? NSScrollView)
+            let document = try XCTUnwrap(scroll.documentView)
             XCTAssertGreaterThanOrEqual(diff.bounds.height, 150, description)
-            XCTAssertEqual(diff.bounds.width, viewer.bounds.width - 16, accuracy: 1, description)
+            XCTAssertEqual(diff.bounds.width, viewer.bounds.width - 24, accuracy: 1, description)
             for item in controls + popups {
                 guard !item.isHiddenOrHasHiddenAncestor else { continue }
-                let frame = item.convert(item.bounds, to: viewer)
+                let frame = item.convert(item.bounds, to: document)
                 XCTAssertGreaterThanOrEqual(frame.minX, -1, description + ": " + (item.accessibilityLabel() ?? "control"))
-                XCTAssertLessThanOrEqual(frame.maxX, viewer.bounds.maxX + 1, description + ": " + (item.accessibilityLabel() ?? "control"))
+                XCTAssertLessThanOrEqual(frame.maxX, document.bounds.maxX + 1, description + ": " + (item.accessibilityLabel() ?? "control"))
                 XCTAssertGreaterThanOrEqual(frame.minY, -1, description)
-                XCTAssertLessThanOrEqual(frame.maxY, viewer.bounds.maxY + 1, description)
+                XCTAssertLessThanOrEqual(frame.maxY, document.bounds.maxY + 1, description)
                 if item is NSSegmentedControl || (item as? NSButton)?.title == "Dateiliste" {
                     XCTAssertGreaterThanOrEqual(item.bounds.width + 1, item.fittingSize.width,
                         description + ": " + (item.accessibilityLabel() ?? "Dateiliste"))
