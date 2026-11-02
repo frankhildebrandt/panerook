@@ -47,7 +47,7 @@ public final class CommandExecution: @unchecked Sendable {
         guard cdError == 0 else { throw POSIXError(POSIXErrorCode(rawValue: cdError) ?? .EIO) }
         posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
         posix_spawnattr_setpgroup(&attributes, 0)
-        let arguments = ["/bin/zsh", "-l", "-c", command].map { strdup($0)! }
+        let arguments = ["/bin/zsh", "-l", "-c", command].map { (argument: String) in strdup(argument)! }
         var argv: [UnsafeMutablePointer<CChar>?] = arguments.map { $0 } + [nil]
         var environment = ProcessInfo.processInfo.environment
         additions.forEach { environment[$0.key] = $0.value }
