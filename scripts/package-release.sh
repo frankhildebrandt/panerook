@@ -20,6 +20,12 @@ if [[ -n "${PANEROOK_NOTARY_PROFILE:-}" && "$identity" == - ]]; then
   echo "Notarization requires a Developer ID Application signing identity." >&2
   exit 1
 fi
+for name in PANEROOK_SPARKLE_PUBLIC_KEY PANEROOK_SPARKLE_PRIVATE_KEY; do
+  if [[ -z "${!name:-}" ]]; then
+    echo "Missing update signing key: $name. See docs/signing.md." >&2
+    exit 1
+  fi
+done
 
 ./scripts/build-app.sh release universal
 bundle="$PWD/build/PaneRook.app"
@@ -72,6 +78,28 @@ fi
 /usr/bin/codesign --verify --strict --all-architectures "$bundle"
 
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$bundle" "$output/$artifact.zip"
+# Sparkle's tools are shipped alongside its SwiftPM binary framework.
+sign_update=""
+for candidate in "$PWD"/.build/artifacts/*/*/bin/sign_update; do
+  if [[ -x "$candidate" ]]; then
+    sign_update="$candidate"
+    break
+  fi
+done
+if [[ -z "$sign_update" ]]; then
+  echo "Sparkle's sign_update tool was not found in the SwiftPM artifacts." >&2
+  exit 1
+fi
+private_key="$staging/sparkle-private-key"
+(umask 077; printf '%s' "$PANEROOK_SPARKLE_PRIVATE_KEY" > "$private_key")
+# Capture diagnostics because sign_update can echo malformed private key input.
+if ! "$sign_update" --ed-key-file "$private_key" -p "$output/$artifact.zip" > "$staging/signature" 2> "$staging/signing.log"; then
+  echo "Sparkle update signing failed. Check PANEROOK_SPARKLE_PRIVATE_KEY." >&2
+  exit 1
+fi
+rm -f "$private_key"
+swift scripts/generate-appcast.swift "$bundle/Contents/Info.plist" "$output/$artifact.zip" \
+  "$staging/signature" "$output/appcast.xml"
 mkdir "$staging/dmg"
 /usr/bin/ditto "$bundle" "$staging/dmg/PaneRook.app"
 ln -s /Applications "$staging/dmg/Applications"
@@ -104,3 +132,4 @@ fi
 )
 echo "$output/$artifact.zip"
 echo "$output/$artifact.dmg"
+echo "$output/appcast.xml"

@@ -39,6 +39,10 @@ security unlock-keychain -p "$(cat "$signing_directory/keychain-password.txt")" 
 export PANEROOK_SIGNING_IDENTITY="$(cat "$signing_directory/identity.txt")"
 export PANEROOK_SIGNING_KEYCHAIN="$signing_directory/signing.keychain-db"
 export PANEROOK_SIGNING_TIMESTAMP=secure
+# Update-Schlüssel zuvor wie unten beschrieben einrichten:
+update_directory="$HOME/Library/Application Support/PaneRook/Signing/Sparkle"
+export PANEROOK_SPARKLE_PUBLIC_KEY="$(cat "$update_directory/public-key.txt")"
+export PANEROOK_SPARKLE_PRIVATE_KEY="$(cat "$update_directory/private-key.txt")"
 ./scripts/package-release.sh
 ```
 
@@ -48,9 +52,41 @@ Dieselben Variablen gelten für `./scripts/build-app.sh release`. Ohne `PANEROOK
 
 - `PaneRook-<Version>-macOS-universal.dmg` mit App und Verknüpfung zu `/Applications`;
 - `PaneRook-<Version>-macOS-universal.zip` mit dem App-Bundle;
-- jeweils eine passende Datei mit Endung `.sha256`.
+- jeweils eine passende Datei mit Endung `.sha256`;
+- `appcast.xml` mit der Ed25519-Signatur des ZIPs und dessen GitHub-Downloadadresse.
 
 Die Versionsnummer stammt aus `Resources/Info.plist`. Ein optionales Argument wie `./scripts/package-release.sh v0.1.1` muss dazu passen. Die ZIP-Datei enthält die signierte App; das DMG trägt zusätzlich eine eigene Signatur.
+
+## Sparkle-Update-Signierung
+
+Die Apple-Code-Signierung und die Sparkle-Update-Signierung verwenden getrennte Schlüssel. Das Paketierskript verlangt `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY`. Der öffentliche Schlüssel wird als `SUPublicEDKey` in das gebaute App-Bundle geschrieben. Das ZIP erhält eine Ed25519-Signatur; vor dem Erzeugen des Feeds wird diese gegen den eingebetteten öffentlichen Schlüssel geprüft. Fehlende oder unpassende Schlüssel lassen die Paketierung fehlschlagen. Ein normaler Entwicklungsbuild mit `build-app.sh` bleibt ohne Update-Schlüssel möglich und deaktiviert dann den Updater.
+
+Die folgenden Schritte sind einmalig einzurichten; die neuen Sparkle-Secrets werden durch diese Codeänderung nicht automatisch in GitHub angelegt. Nach einem ersten `./scripts/build-app.sh` liegen Sparkles Werkzeuge unter `.build/artifacts/sparkle/Sparkle/bin/`. Die Optionen sind in [Sparkles Dokumentation](https://sparkle-project.org/documentation/#eddsa-ed25519-signatures) und im [Quellcode von `generate_keys`](https://github.com/sparkle-project/Sparkle/blob/2.10.0/generate_keys/main.swift) beschrieben.
+
+```sh
+umask 077
+update_directory="$HOME/Library/Application Support/PaneRook/Signing/Sparkle"
+mkdir -p "$update_directory"
+sparkle_tools="$PWD/.build/artifacts/sparkle/Sparkle/bin"
+"$sparkle_tools/generate_keys" --account panerook
+"$sparkle_tools/generate_keys" --account panerook -x "$update_directory/private-key.txt"
+"$sparkle_tools/generate_keys" --account panerook -p > "$update_directory/public-key.txt"
+```
+
+`generate_keys` speichert den privaten Schlüssel im macOS-Schlüsselbund. Der Export schreibt ihn direkt in die angegebene Datei und überschreibt keine vorhandene Datei. Den privaten Ordner verschlüsselt sichern; der Schlüssel muss für spätere Updates erhalten bleiben. Die Exportdatei gehört nicht in das Repository oder in Build-Artefakte. Der öffentliche Schlüssel ist eine Base64-Zeichenfolge mit 32 dekodierten Bytes. Der private Export wird unverändert verwendet und nicht nochmals Base64-kodiert.
+
+Die Dateien als Actions-Secrets hinterlegen, ohne ihren Inhalt auszugeben:
+
+```sh
+gh secret set PANEROOK_SPARKLE_PUBLIC_KEY --repo frankhildebrandt/panerook < "$update_directory/public-key.txt"
+gh secret set PANEROOK_SPARKLE_PRIVATE_KEY --repo frankhildebrandt/panerook < "$update_directory/private-key.txt"
+```
+
+Für lokale Builds die beiden Variablen wie im obigen Paketierbeispiel aus den Dateien einlesen. `build-app.sh` benötigt nur den öffentlichen Schlüssel; der private Schlüssel wird ausschließlich beim Paketieren zum Signieren verwendet. Die eingebetteten Sparkle-Helfer werden von innen nach außen mit derselben Code-Signing-Identität wie die App signiert.
+
+Der Feed wird unter `https://github.com/frankhildebrandt/panerook/releases/latest/download/appcast.xml` abgerufen und verweist auf das ZIP des jeweiligen Release-Tags. Er enthält `CFBundleVersion`, `CFBundleShortVersionString` und die Mindestversion von macOS aus dem gebauten Bundle. Sparkle prüft die ZIP-Signatur vor dem Entpacken. Der Feed selbst wird über HTTPS ausgeliefert und ist nicht zusätzlich signiert.
+
+Vor einem neuen Release `CFBundleVersion` erhöhen und `CFBundleShortVersionString` samt Tag aktualisieren. Der Feed des neuesten stabilen Releases bietet keine Vorabversionen an. Bestehende Nutzer von 0.1.1 müssen die erste Ausgabe mit Updater manuell installieren; alte App-Bundles erhalten diese Funktion nicht nachträglich.
 
 Signatur und Inhalt lassen sich mit den macOS-Werkzeugen prüfen:
 
@@ -98,6 +134,15 @@ Das Repository `frankhildebrandt/panerook` verwendet folgende Actions-Secrets f�
 
 Die Secret-Werte werden nicht in Workflow-Dateien geschrieben. Die Repository-Variable `PANEROOK_SIGNING_TIMESTAMP` steht für Developer-ID-Builds auf `secure`.
 
+Für den Updater kommen zwei verpflichtende Secrets hinzu:
+
+| Secret | Inhalt |
+| --- | --- |
+| `PANEROOK_SPARKLE_PUBLIC_KEY` | Base64-kodierter öffentlicher Ed25519-Schlüssel für `SUPublicEDKey` |
+| `PANEROOK_SPARKLE_PRIVATE_KEY` | Unveränderter privater Export von Sparkles `generate_keys -x` |
+
+Die Einrichtung steht unter [Sparkle-Update-Signierung](#sparkle-update-signierung). Der Workflow bricht bei fehlenden Update-Secrets ab.
+
 Für die Notarisierung ist der eigene App-Store-Connect-Team-Schlüssel **PaneRook Notarization** mit der Rolle **Developer** eingerichtet. Seine private `.p8`-Datei liegt ebenfalls im privaten Developer-ID-Ordner. Das lokale Schlüsselbundprofil heißt `panerook-notary`. In GitHub sind alle drei Secrets hinterlegt:
 
 | Secret | Inhalt |
@@ -110,7 +155,7 @@ Mit vollständigen Notarisierungs-Secrets richtet der Workflow das `notarytool`-
 
 Der Workflow `.github/workflows/release.yml` testet zunächst die App und importiert die hinterlegte Identität anschließend in einen temporären Schlüsselbund auf dem macOS-Runner. App und DMG werden damit signiert und bei konfigurierter Notarisierung von Apple geprüft. Ein abschließender Schritt entfernt den Schlüsselbund und temporäre Zugangsdaten auch nach einem Buildfehler.
 
-**Actions → App release → Run workflow** erstellt ZIP, DMG und Prüfsummen als Artefakt `PaneRook-macOS-universal`. Ein Tag `v<Version>` veröffentlicht diese Dateien als GitHub-Release. Vor dem Tag müssen die Versionsangaben im App-Bundle und gegebenenfalls `docs/releases/<Version>.md` aktualisiert sein.
+**Actions → App release → Run workflow** erstellt ZIP, DMG, Prüfsummen und `appcast.xml` als Artefakt `PaneRook-macOS-universal`. Ein Tag `v<Version>` veröffentlicht diese Dateien als GitHub-Release. Vor dem Tag müssen beide Versionsangaben im App-Bundle und gegebenenfalls `docs/releases/<Version>.md` aktualisiert sein; `CFBundleVersion` muss gegenüber der vorherigen Ausgabe steigen.
 
 Release `v0.1.1` ist das erste mit Apple Developer ID signierte und von Apple notarisierte Release mit Universal-DMG und Universal-ZIP. Das frühere Release `v0.1.0` enthält das ursprünglich veröffentlichte ad-hoc-signierte ZIP.
 

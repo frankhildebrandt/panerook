@@ -5,13 +5,15 @@ PaneRook ist ein modularer Monolith. SwiftPM erzwingt die Grenzen der fachlichen
 ## Targets und Abhängigkeiten
 
 - `PaneRook`: ausführbarer Einstieg; startet `PaneRookApp`.
-- `PaneRookApp`: AppKit-Oberfläche, Feature-Abläufe und Zusammenstellung. Abhängig von Core, Tasks, Remote und Panels.
+- `PaneRookApp`: AppKit-Oberfläche, Feature-Abläufe und Zusammenstellung. Abhängig von Core, Tasks, Remote, Panels und Sparkle 2.10.0.
 - `PaneRookPanels`: Panelzustand, Navigationsgenerationen, Verlauf, Filter und Sortierung; abhängig von Core, ohne AppKit.
 - `PaneRookCore`: lokale Dateiaktionen, Archive, Metadaten, Suche, Vergleiche und Shell-Ausführung; abhängig von Tasks und der Systembibliothek CArchive.
 - `PaneRookTasks`: Queue, Fortschrittswerte und Aufgabenstatus; nur Foundation.
 - `PaneRookRemote`: Verbindungen, Verbindungsarchiv, Remote-Transferregeln und Transportanbieter; unabhängig von App, Panels, Core und Tasks.
 
 Die Domain-Targets dürfen keine Oberfläche importieren. Es gibt keine Rückabhängigkeit auf `PaneRookApp`.
+
+Sparkle ist als feste SwiftPM-Paketversion eingebunden und bleibt auf die App-Schicht begrenzt. Das App-Buildskript kopiert das dynamische Framework samt Hilfsprozessen in `Contents/Frameworks` und signiert die Bestandteile vor dem umgebenden App-Bundle. Der ausführbare Einstieg enthält den passenden Framework-Suchpfad.
 
 ## Zuständigkeiten in der App
 
@@ -20,6 +22,8 @@ Die Domain-Targets dürfen keine Oberfläche importieren. Es gibt keine Rückabh
 Die Host-Protokolle stehen beim jeweiligen Verbraucher. Gemeinsame Verträge für Präsentation, Fehler, Panelpaare und Aufgaben stehen in `SharedUI/FeatureHosting.swift`. Ein Feature bekommt nur seinen Host-Vertrag, keinen konkreten Commander. `PanelAccess` bietet fachliche Paneloperationen und lesbaren Zustand, ohne Tabelle oder Pfadfeld freizugeben. Nur `Panels` und `Shell` dürfen den konkreten Panelcontroller kennen.
 
 `Tasks/TaskCenter` erhält Fenster- und Fokus-Callbacks. `OperationRunner` verbindet native Dateioperationen mit der Queue und einer Aktualisierungsfunktion. Beide kennen den Commander nicht. Die Queue bleibt bewusst seriell: unabhängige Entwicklung von Features bedeutet nicht, potenziell kollidierende Dateioperationen gleichzeitig auszuführen.
+
+Der App-Start hält den Updater für die gesamte Laufzeit und verbindet ihn mit dem nativen App-Menü. Sparkle übernimmt Update-Dialoge, Zeitplanung, Download, Signaturprüfung und Installation; seine Einstellungen werden über seine API geändert und gespeichert. Bare Executables und Entwicklungsbundles ohne öffentlichen Update-Schlüssel starten keinen Updater. Der Release-Feed ist das `appcast.xml`-Asset des neuesten stabilen GitHub Releases. Die Paketierung signiert das ZIP und erzeugt den Feed aus den Versionsangaben des gebauten Bundles; Details stehen unter [Signierung und Releases](signing.md#sparkle-update-signierung).
 
 ## Neue Aktionen
 
