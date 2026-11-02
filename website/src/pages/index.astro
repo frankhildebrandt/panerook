@@ -28,7 +28,7 @@ const features = [
   },
   {
     number: '04', tag: 'REMOTE & VERBINDUNGEN', title: 'Deine Ziele. Immer griffbereit.',
-    description: 'Speichere wiederkehrende FTP-, SSH-, SFTP- und Nextcloud-Verbindungen im durchsuchbaren Verbindungsarchiv. Ein separater Remote-Browser verbindet sie mit deinem lokalen Panel.',
+    description: 'Speichere wiederkehrende FTP-, SSH-, SFTP- und Nextcloud-Verbindungen im durchsuchbaren Verbindungsarchiv. Öffne eine Verbindung direkt im ausgewählten Panel und übertrage Dateien zum gegenüberliegenden lokalen Panel.',
     details: ['Remote-Ordner durchsuchen, Dateien hoch- und herunterladen.', 'Verbindungen nach Name, Server, Benutzer oder Protokoll finden.', 'SSH-Schlüssel oder Agent nutzen; Nextcloud über HTTPS und App-Passwort verbinden.'],
     image: 'connections.png', width: 1700, height: 984, alt: 'Das durchsuchbare Verbindungsarchiv von PaneRook mit gespeicherten Demo-Verbindungen.',
     caption: 'Verbindungsdaten zentral verwalten; Passwörter werden nicht im Archiv gespeichert.', anchor: 'remote', link: 'Remote-Verbindungen einrichten',
@@ -52,10 +52,10 @@ const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopi
         <a class="button primary" href={release}>Für macOS herunterladen <span aria-hidden="true">↓</span></a>
         <a class="button secondary" href={documentation}>Installation & erste Schritte <span aria-hidden="true">→</span></a>
       </div>
-      <p class="requirements">Ab macOS 14 · Apple Silicon & Intel · Signiert & notarisiert</p>
+      <p class="requirements">Ab macOS 14 · Apple Silicon & Intel</p>
       <figure class="hero-screenshot">
-        <a href={`${base}/screenshots/panels.png`} aria-label="Screenshot der beiden Dateipanels in voller Größe öffnen">
-          <img src={`${base}/screenshots/panels.png`} width="2360" height="1480" alt="Die native PaneRook-App mit zwei Dateipanels und einer Leiste für die Funktionstasten." fetchpriority="high" />
+        <a href={`${base}/screenshots/releases/0.3.0/panels.png`} aria-label="Screenshot der beiden Dateipanels in voller Größe öffnen">
+          <img src={`${base}/screenshots/releases/0.3.0/panels.png`} width="4112" height="2466" alt="Die native PaneRook-App mit zwei Dateipanels und einer Leiste für die Funktionstasten." fetchpriority="high" />
         </a>
         <figcaption>PaneRook auf macOS · App-Screenshot mit Beispieldateien</figcaption>
       </figure>
@@ -100,8 +100,8 @@ const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopi
         <p class="eyebrow">VERSION {version}</p>
         <h2 id="installation-title">Bereit für deinen Mac.</h2>
         <p>Lade das Universal-DMG für Apple Silicon und Intel herunter, öffne es und ziehe PaneRook auf die Verknüpfung zum Programme-Ordner. Alternativ steht ein ZIP zum Entpacken bereit.</p>
-        <p class="install-note">App und DMG sind mit Apple Developer ID signiert und von Apple notarisiert. Zu beiden Downloads gibt es eine SHA-256-Prüfsumme. Von Version 0.1.1 bitte einmal manuell aktualisieren; danach sind Updates direkt in der App möglich.</p>
-        <div class="install-links"><a class="text-link" href={`${documentation}#installation`}>Installationsanleitung →</a><a class="text-link" href={`${base}/release-notes/`}>Was ist neu? Release Notes →</a></div>
+        <p class="install-note">Zu beiden Downloads gibt es eine SHA-256-Prüfsumme. Von Version 0.1.1 bitte einmal manuell aktualisieren; danach sind Updates direkt in der App möglich.</p>
+        <div class="install-links"><a class="text-link" href={`${documentation}#installation`}>Installationsanleitung →</a><a class="text-link" href={`${base}/release-notes/${version}/`}>Was ist neu? Release Notes →</a></div>
       </div>
       <div class="source-card">
         <span class="source-label">SELBER BAUEN</span><p>Swift + AppKit.<br />Direkt aus dem Repository.</p>

@@ -6,9 +6,9 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhän
 
 ## Download
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.2.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.2.0)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.3.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.3.0)
 
-Release **0.2.0** bringt Git-Werkzeuge mit Side-by-Side-Diffs, Repository- und Worktree-Favoriten sowie automatische Update-Prüfungen über Sparkle. Der mit **Apple Developer ID signierte und von Apple notarisierte Universal-Build** unterstützt **Apple Silicon und Intel**, ab **macOS 14**. DMG öffnen und `PaneRook.app` auf die Verknüpfung zum Programme-Ordner ziehen. Alternativ das ZIP entpacken und die App in den Programme-Ordner verschieben. App und DMG sind signiert und notarisiert; beide Downloads haben eine SHA-256-Prüfsumme.
+Release **0.3.0** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
 
 ## Starten
 
@@ -41,7 +41,7 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 ./scripts/package-release.sh
 ```
 
-Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.2.0`) muss mit `Resources/Info.plist` übereinstimmen.
+Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.3.0`) muss mit `Resources/Info.plist` übereinstimmen.
 
 Für das Paketieren müssen zusätzlich `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` gesetzt sein. Die einmalige Einrichtung steht unter [Update-Signierung](docs/signing.md#sparkle-update-signierung). Das Skript erstellt außerdem `appcast.xml` für GitHub Releases und prüft, dass Update-Signatur und eingebetteter öffentlicher Schlüssel zusammenpassen.
 
@@ -59,7 +59,7 @@ PANEROOK_NOTARY_KEYCHAIN="$signing_directory/signing.keychain-db" \
 ./scripts/package-release.sh
 ```
 
-Die Apple-Notarisierung ist über das lokale Profil `panerook-notary` und die GitHub-Secrets eingerichtet. Der Release-Workflow notarisiert App und DMG automatisch und heftet die Tickets an. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
+Mit konfigurierten Apple-Zugangsdaten kann der Release-Workflow App und DMG notarisieren und die Tickets anheften. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
 
 ```sh
 make test

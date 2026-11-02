@@ -69,7 +69,7 @@ const shortcuts = [
             <li>Öffne die DMG-Datei und ziehe <strong>PaneRook.app</strong> auf die Verknüpfung zum <strong>Programme-Ordner</strong>.</li>
             <li>Wirf das Disk-Image im Finder aus und starte PaneRook aus <strong>Programme</strong>.</li>
           </ol>
-          <p>Alternativ kannst du das ZIP herunterladen, entpacken und die App in den Programme-Ordner verschieben. App und DMG sind mit Apple Developer ID signiert und von Apple notarisiert. Für beide Downloads steht eine SHA-256-Prüfsumme bereit.</p>
+          <p>Alternativ kannst du das ZIP herunterladen, entpacken und die App in den Programme-Ordner verschieben. Für beide Downloads steht eine SHA-256-Prüfsumme bereit.</p>
           <div class="note"><p><strong>Ordnerzugriff erlauben.</strong> Wenn macOS beim Öffnen eines geschützten Ordners nach einer Freigabe fragt, erlaube den benötigten Zugriff. PaneRook arbeitet mit den Rechten deines angemeldeten Benutzers.</p></div>
           <p class="secondary-copy">Du möchtest selbst bauen? Voraussetzungen und Befehle stehen in der <a href={`${repository}#starten`}>Entwicklungsanleitung im Repository</a>.</p>
         </section>
@@ -149,13 +149,13 @@ const shortcuts = [
         <section id="remote" aria-labelledby="remote-title">
           <p class="section-number">08 / VERBINDEN</p>
           <h2 id="remote-title">Remote-Verbindungen einrichten</h2>
-          <p>PaneRook unterstützt <strong>FTP, SSH-Shell, SFTP und Nextcloud</strong>. Die Verbindung öffnet einen eigenen Remote-Browser, der an das auslösende lokale Panel gekoppelt ist.</p>
+          <p>PaneRook unterstützt <strong>FTP, SSH-Shell, SFTP und Nextcloud</strong>. Die Verbindung öffnet sich im ausgewählten Panel. Das gegenüberliegende lokale Panel dient als Ziel beziehungsweise Quelle für Transfers.</p>
           <ol class="steps">
             <li>Öffne <strong>Links/Rechts → Verbindungsarchiv …</strong> oder drücke <kbd>⌘K</kbd>.</li>
             <li>Wähle <strong>Neu</strong>, gib einen Namen, das Protokoll, Server, Port, Benutzer und gegebenenfalls Startpfad beziehungsweise SSH-Schlüsselpfad an.</li>
             <li>Speichere den Eintrag und verbinde dich mit <kbd>Enter</kbd> oder einem Doppelklick. FTP und Nextcloud fragen dann nach dem Passwort.</li>
           </ol>
-          <p>Im Remote-Browser lädt <kbd>F5</kbd> die Auswahl in den aktuellen Ordner des gekoppelten lokalen Panels. <strong>Hochladen</strong> sendet dessen lokale Auswahl in den Remote-Ordner. <kbd>F7</kbd> legt einen Remote-Ordner an, <kbd>F8</kbd> löscht nach Rückfrage auf dem Server.</p>
+          <p>Im Remote-Browser lädt <kbd>F5</kbd> die Auswahl in den aktuellen Ordner des gegenüberliegenden lokalen Panels. <strong>Hochladen</strong> sendet dessen lokale Auswahl in den Remote-Ordner. <kbd>F7</kbd> legt einen Remote-Ordner an, <kbd>F8</kbd> löscht nach Rückfrage auf dem Server.</p>
           <h3>SFTP und SSH</h3>
           <p>Diese Verbindungen verwenden einen SSH-Schlüssel oder Agent und einen bereits bestätigten Host in <code>~/.ssh/known_hosts</code>. Richte die Anmeldung und das Hostvertrauen vorab mit den macOS-SSH-Werkzeugen ein. Eine interaktive Passwortanmeldung ist nicht enthalten.</p>
           <h3>Nextcloud</h3>
@@ -168,7 +168,8 @@ const shortcuts = [
         <section id="einstellungen" aria-labelledby="einstellungen-title">
           <p class="section-number">09 / ANPASSEN</p>
           <h2 id="einstellungen-title">Deine Arbeitsumgebung einstellen</h2>
-          <p>Unter <strong>Optionen</strong> passt du Layout, Paneldarstellung, Zeilenhöhe, Symbole, Rückfragen, Hell/Dunkel, Codierung und Funktionstasten an. Panelpfade, Sortierung, Filter, Listenformat, Fensterposition und Panelbreite bleiben gespeichert.</p>
+          <p>Unter <strong>Optionen → Einstellungen …</strong> passt du Layout, Paneldarstellung, Zeilenhöhe, Symbole, Rückfragen, Farbschema und Codierung an. Unter <strong>Tastatur → Belegung bearbeiten</strong> kannst du Tastenkürzel für Aktionen ändern. Panelpfade, Sortierung, Filter, Listenformat, Fensterposition und Panelbreite bleiben gespeichert.</p>
+          <p><a href={`${base}/screenshots/releases/0.3.0/einstellungen.png`}><img src={`${base}/screenshots/releases/0.3.0/einstellungen.png`} width="2360" height="1600" alt="Einstellungen mit Auswahl von Farbschema und Themes" loading="lazy" style="max-width:100%;height:auto" /></a></p>
           <p>Das Benutzermenü (<kbd>F2</kbd>) und <strong>Befehl ausführen</strong> starten eigene Shell-Befehle im aktuellen Panelordner. Ausgabe, Fehler und Exitcode erscheinen in einem Ergebnisfenster. Über das Befehl-Menü kannst du Benutzermenü, App-Zuordnungen und Hervorhebungen bearbeiten. Eine interaktive Terminalsession ist nicht eingebaut.</p>
         </section>
 
@@ -176,7 +177,7 @@ const shortcuts = [
           <p class="section-number">10 / AKTUELL BLEIBEN</p>
           <h2 id="updates-title">PaneRook aktualisieren</h2>
           <p>Ab <strong>Version 0.2.0</strong> prüfst du mit <strong>PaneRook → Nach Updates suchen …</strong> direkt in der App auf neue Versionen. Standardmäßig läuft zusätzlich einmal täglich eine Prüfung im Hintergrund.</p>
-          <p>Unter <strong>PaneRook → Update-Einstellungen …</strong> steuerst du automatische Prüfungen sowie automatisches Herunterladen und Installieren. Die automatische Installation ist zunächst ausgeschaltet. Angeboten werden stabile Releases; die Update-Signatur wird vor dem Entpacken geprüft.</p>
+          <p>Unter <strong>PaneRook → Einstellungen … → Updates</strong> steuerst du automatische Prüfungen sowie automatisches Herunterladen und Installieren. Die automatische Installation ist zunächst ausgeschaltet. Angeboten werden stabile Releases; die Update-Signatur wird vor dem Entpacken geprüft.</p>
           <div class="note"><p><strong>Von Version 0.1.1 wechseln.</strong> Installiere 0.2.0 einmal manuell aus dem DMG oder ZIP. Danach sind Updates in der App möglich. Starte die installierte App aus dem Programme-Ordner, nicht aus dem geöffneten DMG.</p></div>
           <a class="intro-link" href={`${base}/release-notes/`}>Was sich geändert hat <span aria-hidden="true">→</span></a>
         </section>

@@ -1,0 +1,21 @@
+---
+import type { MarkdownInstance } from 'astro';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+export async function getStaticPaths() {
+  const documents = import.meta.glob<MarkdownInstance<Record<string, never>>>('../../../../docs/releases/*.md', { eager: true });
+  return Object.entries(documents).filter(([path]) => /\/\d+\.\d+\.\d+\.md$/.test(path)).map(([path, document]) => ({ params: { version: path.split('/').pop()!.replace(/\.md$/, '') }, props: { document } }));
+}
+const { version } = Astro.params;
+const html = await Astro.props.document.compiledContent();
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<SiteLayout title={`PaneRook ${version} · Release Notes`} description={`Neuerungen und Hinweise zu PaneRook ${version}`} page="releases">
+  <main class="wrap"><p><a href={`${base}/release-notes/`}>← Alle Versionen</a></p><h1>PaneRook {version}</h1><article class="notes" set:html={html} /></main>
+</SiteLayout>
+<style>
+main { padding-block: 64px 88px; max-width: 860px; }
+a, .notes :global(a) { color: #c5a5f4; }
+.notes { color: #d1c8dc; line-height: 1.8; overflow-wrap: anywhere; }
+.notes :global(img) { max-width: 100%; height: auto; }
+.notes :global(h2) { margin-top: 2em; color: #fff; }
+</style>

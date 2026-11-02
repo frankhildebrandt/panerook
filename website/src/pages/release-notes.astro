@@ -43,7 +43,7 @@ const notes = (await Promise.all(Object.entries(documents).map(async ([path, doc
         {notes.map(({ version, html }) => (
           <article id={`v${version.replaceAll('.', '-')}`} aria-labelledby={`title-${version}`}>
             <header class="release-header">
-              <h2 id={`title-${version}`}>Version {version}</h2>
+              <h2 id={`title-${version}`}><a href={`${base}/release-notes/${version}/`}>Version {version}</a></h2>
               {version === currentVersion && <span class="badge">Aktuelle Version</span>}
             </header>
             <div class="release-body" set:html={html} />
