@@ -2,7 +2,7 @@ import AppKit
 import PaneRookCore
 import PaneRookPanels
 
-/// A captured repository and file scope stay independent of the other pane's navigation.
+/// The other pane supplies the repository and selected file or directory.
 final class GitHistoryView: NSView {
     var onActivate: (() -> Void)?
     var onKey: ((NSEvent) -> Bool)?
@@ -23,6 +23,14 @@ final class GitHistoryView: NSView {
     private let queue = DispatchQueue(label: "app.panerook.git-history", qos: .userInitiated)
     private var directory: URL?
     private var selectedFile: URL?
+    private var selectionIsDirectory = false
+    private struct FollowContext: Equatable {
+        let directory: URL?
+        let selection: URL?
+        let isDirectory: Bool
+    }
+    private var followedContext: FollowContext?
+    private var pendingContentMode: Int?
     private var repository: GitRepository?
     private var path: String?
     private var entries: [GitHistoryEntry] = []
@@ -40,7 +48,8 @@ final class GitHistoryView: NSView {
         super.init(frame: frameRect)
         scope.addItem(withTitle: "Repository")
         scope.target = self; scope.action = #selector(scopeChanged)
-        scope.setAccessibilityLabel("Git-Verlauf: Repository oder Datei")
+        scope.setAccessibilityLabel("Git-Verlauf: Repository, Datei oder Verzeichnis")
+        scope.toolTip = "Folgt der Auswahl im anderen Panel"
         scope.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         scope.setContentHuggingPriority(.defaultLow, for: .horizontal)
         scope.cell?.lineBreakMode = .byTruncatingMiddle
@@ -145,14 +154,42 @@ final class GitHistoryView: NSView {
 
     func focus() { window?.makeFirstResponder(self) }
 
-    func open(directory: URL, selectedFile: URL?) {
+    func open(directory: URL, selectedFile: URL?, isDirectory: Bool = false) {
         stop()
         self.directory = directory; self.selectedFile = selectedFile
+        selectionIsDirectory = isDirectory
         repository = nil; path = nil; entries = []
         scope.removeAllItems(); scope.addItem(withTitle: "Repository")
         source.selectedSegment = 0; contentMode.selectedSegment = 0
         versions.removeAllItems(); details.stringValue = ""
         discover()
+    }
+
+    /// Repeated selection notifications must not reset a chosen historical version.
+    func follow(directory: URL?, selection: URL?, isDirectory: Bool) {
+        let context = FollowContext(directory: directory?.standardizedFileURL,
+                                    selection: selection?.standardizedFileURL, isDirectory: isDirectory)
+        guard context != followedContext else { return }
+        let selectedSource = source.selectedSegment
+        let selectedContent = pendingContentMode ?? contentMode.selectedSegment
+        if let directory {
+            open(directory: directory, selectedFile: selection, isDirectory: isDirectory)
+            source.selectedSegment = selectedSource
+            contentMode.selectedSegment = !isDirectory && selection != nil ? selectedContent : 0
+            pendingContentMode = contentMode.selectedSegment
+            updateControls()
+        } else {
+            stop()
+            self.directory = nil; selectedFile = nil; selectionIsDirectory = false
+            repository = nil; path = nil; entries = []
+            scope.removeAllItems(); scope.addItem(withTitle: "Auswahl im anderen Panel")
+            versions.removeAllItems(); details.stringValue = ""; details.toolTip = nil
+            let message = "Im anderen Panel einen lokalen Ordner, eine Datei oder ein Verzeichnis auswählen."
+            status.stringValue = "Folgt dem anderen Panel"
+            diff.showMessage(message)
+            updateControls()
+        }
+        followedContext = context
     }
 
     func refresh() {
@@ -164,6 +201,8 @@ final class GitHistoryView: NSView {
     func stop() {
         generation += 1; previewGeneration += 1
         loading = false
+        followedContext = nil
+        pendingContentMode = nil
     }
 
     private func discover() {
@@ -185,10 +224,14 @@ final class GitHistoryView: NSView {
                     self.path = selectedFile.flatMap { GitPanelPaths.relativePath(for: $0, in: repository.root) }
                     self.scope.removeAllItems(); self.scope.addItem(withTitle: "Repository · " + repository.root.lastPathComponent)
                     if let path = self.path {
-                        self.scope.addItem(withTitle: "Datei · " + path)
+                        self.scope.addItem(withTitle: (self.selectionIsDirectory ? "Verzeichnis · " : "Datei · ") + path)
                         self.scope.selectItem(at: 1)
                     }
-                    self.scope.toolTip = repository.root.path
+                    if let pending = self.pendingContentMode, self.path != nil, !self.selectionIsDirectory {
+                        self.contentMode.selectedSegment = pending
+                    }
+                    self.pendingContentMode = nil
+                    self.scope.toolTip = "Folgt der Auswahl im anderen Panel\n" + repository.root.path
                     self.loadHistory()
                 case .failure(let error):
                     self.status.stringValue = error.localizedDescription
@@ -208,6 +251,7 @@ final class GitHistoryView: NSView {
         guard let repository else { return }
         let selectedID = preserveSelection ? selectedEntry?.commit.id : nil
         let path = scopedPath
+        let isDirectory = path != nil && selectionIsDirectory
         generation += 1; previewGeneration += 1
         let request = generation
         loading = true; updateControls()
@@ -215,7 +259,7 @@ final class GitHistoryView: NSView {
         details.stringValue = ""
         diff.showMessage("Git-Verlauf wird geladen …")
         queue.async { [weak self] in
-            let result = Result { try repository.historyEntries(path: path, limit: 200) }
+            let result = Result { try repository.historyEntries(path: path, isDirectory: isDirectory, limit: 200) }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == request else { return }
                 self.loading = false
@@ -249,8 +293,8 @@ final class GitHistoryView: NSView {
         versions.isEnabled = hasRepository && history && !entries.isEmpty
         older.isEnabled = versions.isEnabled && versions.indexOfSelectedItem < entries.count - 1
         newer.isEnabled = versions.isEnabled && versions.indexOfSelectedItem > 0
-        contentMode.setEnabled(hasRepository && history && scopedPath != nil && selectedEntry != nil, forSegment: 1)
-        if !history || scopedPath == nil { contentMode.selectedSegment = 0 }
+        contentMode.setEnabled(hasRepository && history && scopedPath != nil && !selectionIsDirectory && selectedEntry != nil, forSegment: 1)
+        if !history || scopedPath == nil || selectionIsDirectory { contentMode.selectedSegment = 0 }
         contentMode.isEnabled = hasRepository && history && selectedEntry != nil
     }
 
@@ -279,13 +323,14 @@ final class GitHistoryView: NSView {
         let selectedSource = source.selectedSegment
         let entry = selectedEntry
         let path = scopedPath
-        let fileContent = contentMode.selectedSegment == 1 && selectedSource == 0 && path != nil
+        let isDirectory = path != nil && selectionIsDirectory
+        let fileContent = contentMode.selectedSegment == 1 && selectedSource == 0 && path != nil && !isDirectory
         let count = entries.count >= 200 ? "Neueste 200 Commits" : "\(entries.count) Commits"
         if selectedSource == 0 {
             guard let entry else {
                 details.stringValue = ""
                 status.stringValue = "Keine Versionen · " + (path ?? repository.root.lastPathComponent)
-                diff.showMessage(path == nil ? "Dieses Repository hat noch keine Commits." : "Für diese Datei gibt es noch keine Versionen.")
+                diff.showMessage(path == nil ? "Dieses Repository hat noch keine Commits." : "Für \(isDirectory ? "dieses Verzeichnis" : "diese Datei") gibt es noch keine Versionen.")
                 return
             }
             details.stringValue = "\(entry.commit.author) · \(Self.dateFormatter.string(from: entry.commit.date)) · \(entry.path ?? repository.root.lastPathComponent)"
@@ -308,7 +353,7 @@ final class GitHistoryView: NSView {
                     return GitDiffDocument(patch: try repository.historyDiff(entry))
                 }
                 let value = try repository.diff(path: path, staged: selectedSource == 2)
-                if value.isEmpty, selectedSource == 1, let path,
+                if value.isEmpty, selectedSource == 1, !isDirectory, let path,
                    try repository.snapshot().files.contains(where: { $0.path == path && $0.isUntracked }) {
                     return try Self.untrackedPreview(at: repository.root.appendingPathComponent(path), path: path)
                 }
@@ -319,7 +364,7 @@ final class GitHistoryView: NSView {
                 switch result {
                 case .success(let document):
                     self.diff.show(document)
-                    self.status.stringValue = selectedSource == 0 ? "Version \(self.versions.indexOfSelectedItem + 1) / \(self.entries.count) · \(count)" : "\(count) · Nur lesende Vorschau"
+                    self.status.stringValue = (selectedSource == 0 ? "Version \(self.versions.indexOfSelectedItem + 1) / \(self.entries.count) · \(count)" : "\(count) · Nur lesende Vorschau") + " · Anderes Panel"
                 case .failure(let error):
                     self.diff.showMessage(error.localizedDescription)
                     self.status.stringValue = error.localizedDescription

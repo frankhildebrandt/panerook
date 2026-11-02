@@ -109,6 +109,55 @@ final class GitHistoryTests: XCTestCase {
         XCTAssertEqual(try repository.historyFile(entries[1]), "preserved\n")
     }
 
+    func testDirectoryHistoryAndDiffExcludeSiblingDirectoriesAndFiles() throws {
+        let directory = ":(glob) selected [folder]"
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(directory + "/nested"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("sibling"), withIntermediateDirectories: false)
+        try write(directory + "/nested/file.txt", "selected initial\n")
+        try write("sibling/file.txt", "sibling initial\n")
+        try write(directory + " suffix.txt", "outside initial\n")
+        try commit("Initial")
+        try write("sibling/file.txt", "unrelated sibling change\n")
+        try commit("Sibling edit")
+        try write(directory + " suffix.txt", "unrelated prefix change\n")
+        try commit("Prefix edit")
+        try write(directory + "/nested/file.txt", "selected updated\n")
+        try write("sibling/file.txt", "another sibling change\n")
+        try commit("Mixed edit")
+
+        let repository = try GitRepository(directory: root)
+        let entries = try repository.historyEntries(path: directory, isDirectory: true)
+        XCTAssertEqual(entries.map(\.commit.subject), ["Mixed edit", "Initial"])
+        XCTAssertEqual(entries.map(\.path), [directory, directory])
+        XCTAssertTrue(entries.allSatisfy { $0.isDirectory && $0.originalPath == nil })
+        let patch = try repository.historyDiff(entries[0])
+        XCTAssertTrue(patch.contains("+selected updated"))
+        XCTAssertFalse(patch.contains("sibling/file.txt"))
+        XCTAssertFalse(patch.contains("sibling change"))
+        let initialPatch = try repository.historyDiff(entries[1])
+        XCTAssertTrue(initialPatch.contains("+selected initial"))
+        XCTAssertFalse(initialPatch.contains("outside initial"))
+        XCTAssertEqual(try repository.historyEntries(path: directory, isDirectory: true, limit: 1).count, 1)
+        XCTAssertThrowsError(try repository.historyFile(entries[0])) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Verzeichnisse"))
+        }
+    }
+
+    func testDirectoryHistoryDoesNotFollowFilesOutsideTheSelectedDirectory() throws {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("selected"), withIntermediateDirectories: false)
+        try write("outside.txt", "content\n")
+        try commit("Outside origin")
+        try git("mv", "outside.txt", "selected/file.txt")
+        try commit("Move into directory")
+        let repository = try GitRepository(directory: root)
+        let entries = try repository.historyEntries(path: "selected", isDirectory: true)
+        XCTAssertEqual(entries.map(\.commit.subject), ["Move into directory"])
+        XCTAssertEqual(entries.first?.path, "selected")
+        XCTAssertTrue(entries.first?.isDirectory == true)
+        XCTAssertTrue(try repository.historyDiff(entries[0]).contains("+content"))
+        XCTAssertEqual(try repository.historyEntries(path: "missing", isDirectory: true), [])
+    }
+
     func testMergeUsesFirstParentTimelineAndPatch() throws {
         try write("file.txt", "initial\n")
         try commit("Initial")
