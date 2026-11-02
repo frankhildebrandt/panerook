@@ -25,14 +25,21 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     let favoritesButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let summary = NSTextField(labelWithString: "")
     private let back = NSButton()
+    private let navigation = NSStackView()
     private let gitBar = NSStackView()
     private let gitButton = NSButton()
     private let gitFilterButton = NSPopUpButton()
     private let watchButton = NSButton()
-    private var gitBarHeight: NSLayoutConstraint?
+    private var contentTop: NSLayoutConstraint?
+    private var gitInlineWidth: NSLayoutConstraint?
+    private var gitInlineConstraints: [NSLayoutConstraint] = []
+    private var gitRowConstraints: [NSLayoutConstraint] = []
+    private var gitBarIsInline = false
     private var gitRequest = 0
     private let gitWorker = DispatchQueue(label: "PaneRook.panel.git", qos: .utility)
     private let gitWatches = GitWatchStore()
+    private let gitStatusCache: GitStatusCache
+    private var cachedGitHeader: GitHeaderStatus?
     private var watchObserver: NSObjectProtocol?
     private let surface = PaneSurface()
     private let listing = NSScrollView()
@@ -82,9 +89,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var sortKey: String { get { state.sortKey } set { state.sortKey = newValue } }
     var sortAscending: Bool { get { state.sortAscending } set { state.sortAscending = newValue } }
 
-    init(label: String, directory: URL) {
+    init(label: String, directory: URL, gitStatusCache: GitStatusCache = .shared) {
         self.label = label
         self.state = PanelState(directory: directory)
+        self.gitStatusCache = gitStatusCache
+        self.cachedGitHeader = gitStatusCache.header(for: directory)
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
@@ -101,8 +110,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         NSLayoutConstraint.activate([
             surface.topAnchor.constraint(equalTo: view.topAnchor),
             surface.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            surface.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            surface.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4)
+            surface.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            surface.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         back.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Zurück")
         AppStyle.configureButton(back)
@@ -186,7 +195,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         favoritesButton.setAccessibilityLabel("\(label): Favoriten")
         favoritesButton.toolTip = "Favoriten · ⌥↓"
         favoritesButton.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        let navigation = NSStackView(views: [back, up, pathField, favoritesButton])
+        for child in [back, up, pathField, favoritesButton] { navigation.addArrangedSubview(child) }
         navigation.orientation = .horizontal
         navigation.alignment = .centerY
         navigation.spacing = 6
@@ -201,14 +210,27 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             child.translatesAutoresizingMaskIntoConstraints = false
             surface.addSubview(child)
         }
+        let contentTop = content.topAnchor.constraint(equalTo: navigation.bottomAnchor)
+        self.contentTop = contentTop
+        let gitInlineWidth = gitBar.widthAnchor.constraint(equalToConstant: 0)
+        self.gitInlineWidth = gitInlineWidth
+        gitInlineConstraints = [
+            navigation.trailingAnchor.constraint(equalTo: gitBar.leadingAnchor, constant: -6),
+            gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -12),
+            gitBar.centerYAnchor.constraint(equalTo: navigation.centerYAnchor),
+            gitInlineWidth
+        ]
+        gitRowConstraints = [
+            navigation.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            gitBar.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 10),
+            gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -10),
+            gitBar.centerYAnchor.constraint(equalTo: navigation.bottomAnchor, constant: 16)
+        ]
+        NSLayoutConstraint.activate(gitRowConstraints)
         NSLayoutConstraint.activate([
             navigation.topAnchor.constraint(equalTo: surface.topAnchor),
             navigation.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
-            navigation.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
-            gitBar.topAnchor.constraint(equalTo: navigation.bottomAnchor),
-            gitBar.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 10),
-            gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -10),
-            content.topAnchor.constraint(equalTo: gitBar.bottomAnchor),
+            contentTop,
             content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 1),
             content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -1),
             content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10),
@@ -219,6 +241,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         ])
         updateNavigation()
         navigate(to: directory, recordHistory: false)
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updateGitBarLayout()
     }
 
     var selectedEntries: [FileEntry] {
@@ -368,14 +395,20 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitRequest += 1
         summary.stringValue = "Ordner wird gelesen …"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try FileSystem.list(url, showHidden: hidden) }
+            let result = Result {
+                let files = try FileSystem.list(url, showHidden: hidden)
+                let root = ArchiveFileSystem.location(for: url) == nil ? GitWorktreeLocation.root(containing: url) : nil
+                return (files: files, gitRoot: root)
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == request else { return }
                 switch result {
-                case .success(let files):
-                    guard self.state.completeNavigation(request, to: url, files: files,
+                case .success(let listing):
+                    guard self.state.completeNavigation(request, to: url, files: listing.files,
                         recordHistory: recordHistory, preserveDirectorySizes: preserveDirectorySizes) else { return }
                     self.gitRepository = nil
+                    self.restoreGitStatus(in: listing.gitRoot)
+                    self.applyCachedGitStatuses(request: request)
                     if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
                     self.pathField.stringValue = url.path
                     self.table.reloadData()
@@ -398,6 +431,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     guard self.state.failNavigation(request) else { return }
                     self.pathField.stringValue = self.directory.path
                     self.updateSummary()
+                    self.refreshGitStatus()
                     self.onError?(error)
                     self.loadGitStatuses(request: request)
                     self.loadGitRepository(request: request)
@@ -431,17 +465,44 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let reader = GitStatusReader()
         gitStatusReader = reader
         let folders = allEntries.filter { $0.isDirectory && !$0.isParent }
+        let cachedFolders = Set(folders.filter { state.gitStatuses[$0.url] != nil }.map(\.url))
         gitStatusQueue.async { [weak self] in
             for folder in folders {
                 guard !reader.isCancelled else { return }
-                guard let status = reader.status(for: folder.url) else { continue }
+                let status = reader.status(for: folder.url)
+                guard status != nil || cachedFolders.contains(folder.url) else { continue }
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.state.applyGitStatus(status, for: folder.url, request: request),
-                          let row = self.entries.firstIndex(where: { $0.url == folder.url }) else { return }
+                    guard let self, !reader.isCancelled else { return }
+                    let previous = self.state.gitStatuses[folder.url]
+                    guard self.state.applyGitStatus(status, for: folder.url, request: request) else { return }
+                    self.gitStatusCache.store(status, for: folder.url)
+                    guard previous != status, let row = self.entries.firstIndex(where: { $0.url == folder.url }) else { return }
                     self.table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
                 }
             }
         }
+    }
+
+    private func applyCachedGitStatuses(request: Int) {
+        for folder in allEntries where folder.isDirectory && !folder.isParent {
+            if let status = gitStatusCache.status(for: folder.url) {
+                state.applyGitStatus(status, for: folder.url, request: request)
+            }
+        }
+    }
+
+    private func restoreGitStatus(in root: URL?) {
+        guard !panelized, !isArchiveDirectory else { return }
+        // Resolve repository boundaries on the listing worker, then reuse its
+        // entire worktree snapshot even for a directory never visited before.
+        let header = root.flatMap { gitStatusCache.header(for: $0) }
+        cachedGitHeader = header.flatMap { $0.root.standardizedFileURL.path == root?.path ? $0 : nil }
+        let remembered = root.flatMap { gitStatusCache.snapshot(for: $0) }
+        let previous = state.gitSnapshot
+        state.gitSnapshot = remembered.flatMap { $0.root.standardizedFileURL.path == root?.path ? $0 : nil }
+            ?? previous.flatMap { $0.root.standardizedFileURL.path == root?.path ? $0 : nil }
+        state.watchedPaths = state.gitSnapshot.map { gitWatches.paths(in: $0.root) } ?? []
+        state.filterAndSort()
     }
 
     func canApplyTaskResult(in url: URL) -> Bool {
@@ -478,6 +539,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         } catch { onError?(error) }
     }
     func controlTextDidBeginEditing(_ obj: Notification) { onActivate?() }
+    func controlTextDidChange(_ obj: Notification) { updateGitBarLayout() }
     @objc private func openFromTable() { onActivate?(); onOpenSelection?() }
     @objc func openSelection() {
         guard !loading, let entry = selectedEntries.first else { return }
@@ -614,8 +676,6 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitBar.orientation = .horizontal
         gitBar.alignment = .centerY
         gitBar.spacing = 6
-        gitBarHeight = gitBar.heightAnchor.constraint(equalToConstant: 0)
-        gitBarHeight?.isActive = true
         gitButton.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)
         gitButton.imagePosition = .imageLeading
         gitButton.lineBreakMode = .byTruncatingMiddle
@@ -649,22 +709,24 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let request = gitRequest
         let url = directory
         guard !isArchiveDirectory, !panelized else {
+            cachedGitHeader = nil
             state.gitSnapshot = nil; updateGitBar(); return
         }
+        updateGitBar()
         gitWorker.async { [weak self] in
             let result = Result { try GitRepository.discover(in: url)?.snapshot() }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.gitRequest == request, self.directory == url, !self.panelized else { return }
+                self.cachedGitHeader = nil
                 switch result {
                 case .success(let snapshot):
+                    self.gitStatusCache.storeSnapshot(snapshot, for: url)
+                    self.gitStatusCache.store(snapshot.map { GitHeaderStatus(snapshot: $0) }, for: url)
                     self.state.gitSnapshot = snapshot
                     self.state.watchedPaths = snapshot.map { self.gitWatches.paths(in: $0.root) } ?? []
-                    self.gitButton.toolTip = snapshot.map {
-                        "\($0.root.path)\n\($0.branch) · \($0.files.filter(\.isChanged).count) geändert · \($0.stashes.count) Stashes"
-                            + ($0.operation.map { " · " + $0 } ?? "")
-                            + "\nGit öffnen: Branches, Status, Diffs und Versionen"
-                    }
                 case .failure(let error):
+                    self.gitStatusCache.storeSnapshot(nil, for: url)
+                    self.gitStatusCache.store(nil as GitHeaderStatus?, for: url)
                     self.state.gitSnapshot = nil
                     self.gitButton.toolTip = error.localizedDescription
                 }
@@ -676,24 +738,52 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     private func updateGitBar() {
         guard isViewLoaded else { return }
+        defer { updateGitBarLayout() }
         let brief = isBriefListing
         let snapshot = state.gitSnapshot
-        let visible = snapshot != nil && !panelized && !isArchiveDirectory && mode == .listing
+        let header = snapshot.map { GitHeaderStatus(snapshot: $0) } ?? cachedGitHeader
+        let visible = header != nil && !panelized && !isArchiveDirectory && mode == .listing
         gitBar.isHidden = !visible
-        gitBarHeight?.constant = visible ? 32 : 0
         table.tableColumn(withIdentifier: .init("git"))?.isHidden = snapshot == nil || brief
-        guard let snapshot else { return }
-        let changed = snapshot.files.filter(\.isChanged).count
-        let divergence = (snapshot.ahead > 0 ? " ↑\(snapshot.ahead)" : "")
-            + (snapshot.behind > 0 ? " ↓\(snapshot.behind)" : "")
-        gitButton.title = "\(snapshot.branch) · \(changed == 0 ? "sauber" : "\(changed) geändert")\(divergence)"
-        gitButton.contentTintColor = snapshot.operation != nil ? .systemRed : nil
+        gitFilterButton.isEnabled = snapshot != nil && !loading
+        watchButton.isEnabled = snapshot != nil && !selectedFiles.isEmpty && !loading
+        guard let header else { return }
+        gitButton.title = header.title
+        gitButton.toolTip = header.toolTip + (snapshot == nil ? "\nZuletzt bekannter Status · wird aktualisiert …" : "")
+        gitButton.contentTintColor = header.operation != nil ? .systemRed : nil
         gitFilterButton.selectItem(at: GitFileFilter.allCases.firstIndex(of: state.gitFilter) ?? 0)
-        watchButton.isEnabled = !selectedFiles.isEmpty && !loading
+        guard let snapshot else { return }
         let watched = selectedEntries.filter { !$0.isParent }.allSatisfy {
             GitFileFilter.watched.matches($0, snapshot: snapshot, watchedPaths: state.watchedPaths)
         } && !selectedFiles.isEmpty
         watchButton.image = NSImage(systemSymbolName: watched ? "star.fill" : "star", accessibilityDescription: "Watched umschalten")
+    }
+
+    private func updateGitBarLayout() {
+        guard let contentTop, let gitInlineWidth else { return }
+        // Measure the desired control sizes, not their compressed frames, so the
+        // decision stays stable when switching between one and two rows.
+        let gitWidth = ceil(gitButton.intrinsicContentSize.width)
+            + gitFilterButton.fittingSize.width + watchButton.fittingSize.width + 2 * gitBar.spacing
+        // A scrollable text field's intrinsic width does not include its full text.
+        let pathTextWidth = (pathField.stringValue as NSString).size(withAttributes: [
+            .font: pathField.font ?? NSFont.systemFont(ofSize: 12)
+        ]).width
+        let pathWidth = max(180, ceil(pathTextWidth) + 16)
+        let navigationWidth = navigation.arrangedSubviews.reduce(CGFloat(0)) {
+            $0 + ($1 === pathField ? pathWidth : $1.fittingSize.width)
+        } + CGFloat(navigation.arrangedSubviews.count - 1) * navigation.spacing
+            + navigation.edgeInsets.left + 12
+        let inline = !gitBar.isHidden && surface.bounds.width >= navigationWidth + 6 + gitWidth
+        if gitInlineWidth.constant != gitWidth { gitInlineWidth.constant = gitWidth }
+        if inline != gitBarIsInline {
+            NSLayoutConstraint.deactivate(gitBarIsInline ? gitInlineConstraints : gitRowConstraints)
+            gitBarIsInline = inline
+            navigation.edgeInsets.right = inline ? 0 : 12
+            NSLayoutConstraint.activate(inline ? gitInlineConstraints : gitRowConstraints)
+        }
+        let rowHeight: CGFloat = gitBar.isHidden || inline ? 0 : 32
+        if contentTop.constant != rowHeight { contentTop.constant = rowHeight }
     }
 
     private func reloadGitWatches() {
@@ -705,8 +795,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     @objc private func gitFilterChanged() {
         guard GitFileFilter.allCases.indices.contains(gitFilterButton.indexOfSelectedItem) else { return }
+        let filter = GitFileFilter.allCases[gitFilterButton.indexOfSelectedItem]
         onActivate?()
-        setGitFilter(GitFileFilter.allCases[gitFilterButton.indexOfSelectedItem])
+        setGitFilter(filter)
     }
     @objc private func openGit() { onActivate?(); onOpenGit?() }
     @objc private func toggleWatched() {

@@ -15,7 +15,7 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
     private let search = NSSearchField()
     private let historyPath = NSTextField()
     private let table = NSTableView()
-    private let diff = NSTextView()
+    private let diff = GitDiffView()
     private let diffMode = NSSegmentedControl(labels: ["Arbeitskopie", "Staged"], trackingMode: .selectOne, target: nil, action: nil)
     private let details = NSTextField(labelWithString: "")
     private let status = NSTextField(labelWithString: "")
@@ -61,6 +61,7 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         guard let window else { return }
         let background = AppStyle.background(); window.contentView = background
         let root = NSStackView(); root.orientation = .vertical; root.alignment = .leading; root.spacing = 9
+        root.distribution = .fill
         root.translatesAutoresizingMaskIntoConstraints = false; background.addSubview(root)
         NSLayoutConstraint.activate([
             root.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 14),
@@ -110,18 +111,11 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         }
         let listScroll = NSScrollView(); listScroll.hasVerticalScroller = true; listScroll.documentView = table
         listScroll.borderType = .bezelBorder
-        let diffScroll = NSScrollView(); diffScroll.hasVerticalScroller = true; diffScroll.hasHorizontalScroller = true
-        diff.isEditable = false; diff.isRichText = false; diff.isSelectable = true
-        diff.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        diff.textContainerInset = NSSize(width: 10, height: 10); diff.autoresizingMask = [.width]
-        diff.isVerticallyResizable = true; diff.textContainer?.widthTracksTextView = true
-        diff.setAccessibilityLabel("Git-Diff und Versionsvorschau")
-        diffScroll.documentView = diff; diffScroll.borderType = .bezelBorder
         let split = NSSplitView(); split.isVertical = false; split.dividerStyle = .thin
-        split.addArrangedSubview(listScroll); split.addArrangedSubview(diffScroll)
+        split.addArrangedSubview(listScroll); split.addArrangedSubview(diff)
         root.addArrangedSubview(split); split.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         listScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-        diffScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
+        diff.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
         split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -136,7 +130,10 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor; historyActions.addArrangedSubview(hint)
         stashActions.spacing = 8
         for (title, action) in [("Stash …", #selector(saveStash)), ("Anwenden", #selector(applyStash)), ("Pop …", #selector(popStash)), ("Löschen …", #selector(dropStash))] { stashActions.addArrangedSubview(button(title, action)) }
-        for toolbar in [fileActions, historyActions, stashActions] { root.addArrangedSubview(toolbar) }
+        for toolbar in [fileActions, historyActions, stashActions] {
+            toolbar.setHuggingPriority(.required, for: .vertical)
+            root.addArrangedSubview(toolbar)
+        }
         historyActions.isHidden = true; stashActions.isHidden = true
         spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor; status.lineBreakMode = .byTruncatingMiddle
@@ -146,7 +143,9 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
     }
 
     private func row(_ views: [NSView]) -> NSStackView {
-        let stack = NSStackView(views: views); stack.spacing = 8; stack.alignment = .centerY; return stack
+        let stack = NSStackView(views: views); stack.spacing = 8; stack.alignment = .centerY
+        stack.setHuggingPriority(.required, for: .vertical)
+        return stack
     }
     private func button(_ title: String, _ action: Selector) -> NSButton {
         let control = NSButton(title: title, target: self, action: action)
@@ -313,43 +312,44 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
         let isUntracked = path.flatMap { statusByPath[$0] }?.isUntracked == true
         let staged = diffMode.selectedSegment == 1
         if selectedMode == 0 && path == nil || selectedMode == 1 && commit == nil || selectedMode == 2 && stash == nil {
-            diff.string = "Keine Auswahl."; return
+            diff.showMessage("Keine Auswahl."); return
         }
-        diff.string = "Vorschau wird gelesen …"
+        diff.showMessage("Vorschau wird gelesen …")
         queue.async { [weak self, repository] in
-            let result = Result { () -> String in
-                if selectedMode == 1 { return try repository.diff(revision: commit!.id) }
-                if selectedMode == 2 { return try repository.diff(revision: stash!.objectID) }
+            let result = Result { () -> GitDiffDocument in
+                if selectedMode == 1 { return GitDiffDocument(patch: try repository.diff(revision: commit!.id)) }
+                if selectedMode == 2 { return GitDiffDocument(patch: try repository.diff(revision: stash!.objectID)) }
                 if selectedMode == 0 && isUntracked && !staged, let path {
-                    return try Self.untrackedPreview(at: repository.root.appendingPathComponent(path))
+                    return try Self.untrackedPreview(at: repository.root.appendingPathComponent(path), path: path)
                 }
                 let value = try repository.diff(path: path, staged: staged)
-                return value.isEmpty ? "Keine \(staged ? "vorgemerkten" : "nicht vorgemerkten") Änderungen für \(path!)." : value
+                return value.isEmpty
+                    ? .message("Keine \(staged ? "vorgemerkten" : "nicht vorgemerkten") Änderungen für \(path!).")
+                    : GitDiffDocument(patch: value)
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.previewGeneration == generation else { return }
                 switch result {
-                case .success(let value): self.diff.string = value
-                case .failure(let error): self.diff.string = error.localizedDescription
+                case .success(let value): self.diff.show(value)
+                case .failure(let error): self.diff.showMessage(error.localizedDescription)
                 }
             }
         }
     }
 
-    private static func untrackedPreview(at url: URL) throws -> String {
+    private static func untrackedPreview(at url: URL, path: String) throws -> GitDiffDocument {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular else {
-            return "Unversionierter Eintrag. Für die Vorschau bitte eine reguläre Datei auswählen."
+            return .message("Unversionierter Eintrag. Für die Vorschau bitte eine reguläre Datei auswählen.")
         }
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         let limit = 1024 * 1024
         let data = try handle.read(upToCount: limit + 1) ?? Data()
         guard !data.contains(0), let value = String(data: data.prefix(limit), encoding: .utf8) else {
-            return "Unversionierte Binärdatei oder Datei mit anderer Textcodierung."
+            return .message("Unversionierte Binärdatei oder Datei mit anderer Textcodierung.")
         }
-        return "Unversionierte Datei · \(url.lastPathComponent)\n\n" + value
-            + (data.count > limit ? "\n\n[Vorschau nach 1 MiB gekürzt]" : "")
+        return .addedFile(name: path, content: value, truncated: data.count > limit)
     }
 
     private func perform<Value>(_ title: String, work: @escaping () throws -> Value, completion: @escaping (Value) -> Void) {
@@ -387,8 +387,8 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
             self.onDidChange?()
             self.reload()
             switch result {
-            case .success(let output): if !output.isEmpty { self.diff.string = output }
-            case .failure(let error): self.diff.string = error.localizedDescription; self.showError(error)
+            case .success(let output): if !output.isEmpty { self.diff.showMessage(output) }
+            case .failure(let error): self.diff.showMessage(error.localizedDescription); self.showError(error)
             }
         }
     }
@@ -468,7 +468,7 @@ final class GitWorkspace: NSWindowController, NSWindowDelegate, NSTableViewDataS
     }
     private func loadHistoricFile(commit: GitCommit, path: String) {
         perform("Dateiversion wird gelesen …", work: { [repository] in try repository.show(revision: commit.id, path: path) }) { [weak self] value in
-            self?.diff.string = value
+            self?.diff.showMessage(value)
             self?.status.stringValue = "\(path) · \(commit.shortID) · Vorschau"
         }
     }

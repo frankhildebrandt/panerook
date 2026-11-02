@@ -90,6 +90,9 @@ final class PanelStateTests: XCTestCase {
         XCTAssertFalse(state.applyGitStatus(status, for: fileURL, request: first))
         XCTAssertFalse(state.applyGitStatus(status, for: directory.deletingLastPathComponent(), request: first))
         XCTAssertTrue(state.applyGitStatus(status, for: repositoryURL, request: first))
+        XCTAssertTrue(state.applyGitStatus(nil, for: repositoryURL, request: first))
+        XCTAssertNil(state.gitStatuses[repositoryURL])
+        XCTAssertTrue(state.applyGitStatus(status, for: repositoryURL, request: first))
         state.filterPattern = "*.png"
         state.sortAscending = false
         state.filterAndSort()
