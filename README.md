@@ -2,7 +2,7 @@
 
 # PaneRook
 
-Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, ohne zusätzliche Paketabhängigkeiten oder eingebettetes Terminal.
+Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, mit Sparkle für App-Updates, ohne eingebettetes Terminal.
 
 ## Download
 
@@ -22,6 +22,8 @@ open build/PaneRook.app
 Für einen optimierten Build: `./scripts/build-app.sh release`.
 Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es ohne weitere Konfiguration lokal ad hoc.
 
+SwiftPM lädt die festgelegte Sparkle-Version **2.10.0** beim ersten Build. Das Buildskript bettet das Framework und seine Helfer in das App-Bundle ein und signiert sie. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` bleiben Update-Funktionen im Entwicklungsbuild deaktiviert; das gilt auch beim Start des bloßen SwiftPM-Executables.
+
 Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsummen:
 
 ```sh
@@ -29,6 +31,8 @@ Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsumm
 ```
 
 Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.1.1`) muss mit `Resources/Info.plist` übereinstimmen.
+
+Für das Paketieren müssen zusätzlich `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` gesetzt sein. Die einmalige Einrichtung steht unter [Update-Signierung](docs/signing.md#sparkle-update-signierung). Das Skript erstellt außerdem `appcast.xml` für GitHub Releases und prüft, dass Update-Signatur und eingebetteter öffentlicher Schlüssel zusammenpassen.
 
 Für Release-Builds ist ein **Developer ID Application**-Zertifikat für **Frank Hildebrandt (4R24354Z88)** eingerichtet. Der zugehörige private Schlüssel und der eigene Schlüsselbund liegen verschlüsselt außerhalb des Repositorys unter `~/Library/Application Support/PaneRook/Signing/DeveloperID/`. Für einen lokalen Build mit dieser Identität:
 
@@ -48,6 +52,7 @@ Die Apple-Notarisierung ist über das lokale Profil `panerook-notary` und die Gi
 
 ```sh
 swift test
+swift scripts/test-appcast.swift
 ```
 
 In einer Umgebung, die verschachtelte Build-Sandboxen verhindert:
@@ -70,6 +75,14 @@ npm run build
 `astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
 
 Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Release 0.1.1 ist die erste signierte und notarisierte Ausgabe mit DMG und ZIP.
+
+## App-Updates
+
+**PaneRook → Nach Updates suchen …** prüft manuell auf eine neuere Version. Standardmäßig prüft die App außerdem einmal täglich im Hintergrund. Unter **PaneRook → Update-Einstellungen …** lassen sich die automatischen Prüfungen und das automatische Herunterladen und Installieren einstellen. Automatische Installation ist zunächst ausgeschaltet; Sparkle speichert die gewählte Einstellung für spätere Starts.
+
+Der Feed liegt als `appcast.xml` beim [neuesten stabilen GitHub Release](https://github.com/frankhildebrandt/panerook/releases/latest). Downloads laufen über HTTPS; Sparkle prüft die Ed25519-Signatur des Update-ZIPs vor dem Entpacken. Vorabversionen werden über diesen Feed nicht angeboten. Die App sollte im Programme-Ordner liegen, nicht im geöffneten DMG.
+
+Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` einzurichten. Jede neue Ausgabe braucht eine höhere `CFBundleVersion` sowie eine passende `CFBundleShortVersionString` in `Resources/Info.plist`. Bestehende Installationen von **0.1.1** müssen die erste Ausgabe mit Updater einmal manuell installieren; anschließend sind Updates in der App möglich.
 
 ## Funktionsstand
 

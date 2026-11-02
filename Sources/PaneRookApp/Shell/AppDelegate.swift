@@ -4,6 +4,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var commander: CommanderController!
     private var menus: CommanderMenus!
+    private var updater: AppUpdater!
     private var dialogKeys: Any?
 
     public func applicationWillFinishLaunching(_ notification: Notification) {
@@ -36,7 +37,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         window.toolbar = commander.makeToolbar()
         if !window.setFrameUsingName("PaneRook.MainWindow") { window.center() }
         window.setFrameAutosaveName("PaneRook.MainWindow")
-        menus = CommanderMenus(commander: commander)
+        updater = AppUpdater(presentationWindow: { [weak self] in self?.window })
+        menus = CommanderMenus(commander: commander, updater: updater)
         menus.install()
         dialogKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])
@@ -50,6 +52,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         commander.activate(commander.left)
         NSApp.activate(ignoringOtherApps: true)
+        updater.start()
     }
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard commander.tasks.hasActiveTasks else { return .terminateNow }

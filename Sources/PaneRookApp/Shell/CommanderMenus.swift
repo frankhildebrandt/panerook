@@ -4,13 +4,15 @@ import AppKit
 /// MC 4.8.33's menu order, backed by native AppKit menus and real app capabilities.
 final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private unowned let commander: CommanderController
+    private let updater: AppUpdater?
     private var allMenus: [NSMenu] = []
     private var trackingMenus = Set<ObjectIdentifier>()
     private var popup: NSMenu!
     private var popupIsTracking = false
     private var keyMonitor: Any?
-    init(commander: CommanderController) {
+    init(commander: CommanderController, updater: AppUpdater? = nil) {
         self.commander = commander
+        self.updater = updater
         super.init()
     }
     deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
@@ -19,6 +21,11 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         let main = NSMenu()
         let app = NSMenu(title: "PaneRook")
         native(app, "Über PaneRook", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
+        if let updater {
+            native(app, "Nach Updates suchen …", #selector(AppUpdater.checkForUpdates(_:)), target: updater)
+            native(app, "Update-Einstellungen …", #selector(AppUpdater.showSettings(_:)), target: updater)
+            for item in app.items.suffix(2) { item.toolTip = updater.unavailableReason }
+        }
         app.addItem(.separator())
         native(app, "PaneRook ausblenden", #selector(NSApplication.hide(_:)), key: "h", target: NSApp)
         app.addItem(.separator())

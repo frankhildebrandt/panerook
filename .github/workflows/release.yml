@@ -21,6 +21,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Test
         run: swift test
+      - name: Test update metadata and signature verification
+        run: swift scripts/test-appcast.swift
       - name: Import private signing identity
         env:
           CERTIFICATE_BASE64: ${{ secrets.PANEROOK_CERTIFICATE_BASE64 }}
@@ -97,6 +99,8 @@ jobs:
       - name: Package signed universal ZIP and DMG
         env:
           PANEROOK_SIGNING_TIMESTAMP: ${{ vars.PANEROOK_SIGNING_TIMESTAMP || 'none' }}
+          PANEROOK_SPARKLE_PUBLIC_KEY: ${{ secrets.PANEROOK_SPARKLE_PUBLIC_KEY }}
+          PANEROOK_SPARKLE_PRIVATE_KEY: ${{ secrets.PANEROOK_SPARKLE_PRIVATE_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -140,10 +144,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           notes="docs/releases/${version}.md"
-          if [[ -f "$notes" ]]; then
-            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "PaneRook $version" --notes-file "$notes"
-          else
-            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "PaneRook $version" --generate-notes
+          release_options=(--verify-tag --title "PaneRook $version")
+          version_without_metadata="${version%%+*}"
+          if [[ "$version_without_metadata" == *-* ]]; then
+            # The stable updater uses /releases/latest/download/appcast.xml.
+            release_options+=(--prerelease --latest=false)
           fi
+          if [[ -f "$notes" ]]; then
+            release_options+=(--notes-file "$notes")
+          else
+            release_options+=(--generate-notes)
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* "${release_options[@]}"
