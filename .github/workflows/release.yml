@@ -48,8 +48,11 @@ jobs:
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
+          # codesign also searches this list when resolving the signing chain.
+          security list-keychains -d user -s "$keychain"
           security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security find-identity -p codesigning "$keychain"
           rm -f "$certificate"
           echo "PANEROOK_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
           echo "PANEROOK_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
