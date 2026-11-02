@@ -23,9 +23,12 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         native(app, "Über PaneRook", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
         if let updater {
             native(app, "Nach Updates suchen …", #selector(AppUpdater.checkForUpdates(_:)), target: updater)
-            native(app, "Update-Einstellungen …", #selector(AppUpdater.showSettings(_:)), target: updater)
-            for item in app.items.suffix(2) { item.toolTip = updater.unavailableReason }
+            app.items.last?.toolTip = updater.unavailableReason
         }
+        app.addItem(.separator())
+        let settings = NSMenuItem(title: "Einstellungen …", action: #selector(showSettings(_:)), keyEquivalent: ",")
+        settings.target = self
+        app.addItem(settings)
         app.addItem(.separator())
         native(app, "PaneRook ausblenden", #selector(NSApplication.hide(_:)), key: "h", target: NSApp)
         app.addItem(.separator())
@@ -114,11 +117,13 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         item.keyEquivalent = binding.characters
         item.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: binding.modifiers)
     }
+    @objc private func showSettings(_ sender: Any?) { commander.preferences.showSettings() }
     @objc private func performCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? AppCommand, command.enabled() else { return }
         command.perform()
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(showSettings(_:)) { return commander.canUseMenus }
         guard let command = menuItem.representedObject as? AppCommand else { return false }
         updateKey(menuItem)
         menuItem.state = command.checked() ? .on : .off

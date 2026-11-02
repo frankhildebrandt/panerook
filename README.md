@@ -90,7 +90,7 @@ Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runn
 
 ## App-Updates
 
-**PaneRook → Nach Updates suchen …** prüft manuell auf eine neuere Version. Standardmäßig prüft die App außerdem einmal täglich im Hintergrund. Unter **PaneRook → Update-Einstellungen …** lassen sich die automatischen Prüfungen und das automatische Herunterladen und Installieren einstellen. Automatische Installation ist zunächst ausgeschaltet; Sparkle speichert die gewählte Einstellung für spätere Starts.
+**PaneRook → Nach Updates suchen …** prüft manuell auf eine neuere Version. Standardmäßig prüft die App außerdem einmal täglich im Hintergrund. Unter **PaneRook → Einstellungen … → Updates** lassen sich die automatischen Prüfungen und das automatische Herunterladen und Installieren einstellen. Automatische Installation ist zunächst ausgeschaltet; Sparkle speichert die gewählte Einstellung für spätere Starts.
 
 Der Feed liegt als `appcast.xml` beim [neuesten stabilen GitHub Release](https://github.com/frankhildebrandt/panerook/releases/latest). Downloads laufen über HTTPS; Sparkle prüft die Ed25519-Signatur des Update-ZIPs vor dem Entpacken. Vorabversionen werden über diesen Feed nicht angeboten. Die App sollte im Programme-Ordner liegen, nicht im geöffneten DMG.
 
@@ -156,7 +156,7 @@ Lokale Kopien zeigen übertragene Bytes für die aktuelle Datei und die gesamte 
 | Ctrl-O | Panels ein-/ausblenden; bei ausgeblendeten Panels einen Shell-Befehl eingeben |
 | Ctrl-D | Verzeichnis-Hotlist |
 
-Dies ist die Standardbelegung. **Optionen → Tasten lernen** ändert die Funktionsaktionen; Esc und Ctrl-G bleiben zum Abbrechen reserviert. Auf Apple-Tastaturen brauchen die Funktionstasten je nach Systemeinstellung zusätzlich **fn**.
+Dies ist die Standardbelegung. **Einstellungen → Tastatur** ändert die Funktionsaktionen; Esc und Ctrl-G bleiben zum Abbrechen reserviert. Auf Apple-Tastaturen brauchen die Funktionstasten je nach Systemeinstellung zusätzlich **fn**.
 
 ## Dateiarchive
 
@@ -197,6 +197,14 @@ Ein Klick auf die Branchanzeige oder **Befehl → Git → Repository, Status und
 
 **Befehl → Git → Repository im aktuellen Ordner anlegen …** initialisiert ein Repository. Git-Aufrufe laufen im Hintergrund mit `/usr/bin/git`; sie verwenden die vorhandene Git-Konfiguration, Identität, Remotes und Zugangsdaten. Interaktive Passwort- und SSH-Abfragen werden nicht geöffnet. Fehler und Konflikte werden angezeigt und die Ansichten anschließend aktualisiert. Branch- und Versionswechsel verwenden keinen erzwungenen Checkout. Rebase, interaktives Staging einzelner Hunks, Submodule-Verwaltung und das Bearbeiten der Remote-Konfiguration haben noch keine eigene Oberfläche.
 
+## Einstellungen und Themes
+
+**PaneRook → Einstellungen …** (⌘,) und **Optionen → Einstellungen …** öffnen denselben SettingsDialog. Die Seitenleiste mit Suche bündelt Allgemein, Aussehen, Layout, Panels, Nachfragen, Codierung, Tastatur, Verbindungen und Updates. Änderungen werden sofort angewendet und dauerhaft gespeichert; Esc, F10 oder Ctrl-G schließen den Dialog.
+
+Unter **Aussehen** stehen die Farbschemata **System**, **Hell** und **Dunkel** sowie sechs Themes zur Wahl: **PaneRook**, **Rose**, **Grove**, **Ocean**, **Ember** und **Iris**. Vorschaubilder zeigen beide Helligkeitsvarianten. Das Theme färbt Panelhintergründe, Auswahl, aktive Rahmen und Akzente. „System“ folgt dem macOS-Erscheinungsbild. Vorhandene Einstellungen und die bisherigen Hell-/Dunkel-Werte bleiben erhalten.
+
+**Tastatur** zeigt die aktuelle Belegung von F1–F10; ein Klick auf die Kombination startet die Eingabe einer neuen Belegung. Bereits belegte Kombinationen werden abgewiesen. **Verbindungen** bündelt das Remote-Zeitlimit und versteckte Remote-Dateien, **Updates** die Sparkle-Einstellungen.
+
 ## Befehle und Konfiguration
 
 Das Benutzermenü und **Befehl ausführen** starten ausdrücklich gewählte Befehle mit `/bin/zsh -l -c` im aktuellen Panelordner. Ausgabe, Fehler und Exitcode erscheinen in einem eigenen Fenster; laufende Befehle lassen sich abbrechen. Es ist keine interaktive Terminalsession. **Anordnen** übernimmt vorhandene Dateipfade aus der Standardausgabe, einen Pfad pro Zeile, ins auslösende Panel.
@@ -218,7 +226,7 @@ Die drei Bearbeiten-Einträge im Befehl-Menü legen bei Bedarf JSON-Dateien unte
 | `extensions.json` | `pattern` und `application` für Dateimuster und App-Pfad |
 | `highlight.json` | `pattern` und `color` (`blue`, `green`, `orange`, `red`, `purple`, `gray`) |
 
-App-Zuordnungen führen beim Öffnen keine Shell-Befehle aus. Die Befehlschronik lässt sich leeren und unter **Optionen → Konfiguration** abschalten. Layout, Darstellung und Panelzustand werden über die nativen Einstellungen verwaltet; **Einstellungen speichern** sichert zusätzlich den aktuellen Panelzustand.
+App-Zuordnungen führen beim Öffnen keine Shell-Befehle aus. Die Befehlschronik lässt sich leeren und unter **Einstellungen → Allgemein** abschalten. Layout, Darstellung und Panelzustand werden über die nativen Einstellungen verwaltet; **Einstellungen speichern** sichert zusätzlich den aktuellen Panelzustand.
 
 ## Remote-Verbindungen
 

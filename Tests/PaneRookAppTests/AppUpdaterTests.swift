@@ -47,12 +47,26 @@ final class AppUpdaterTests: XCTestCase {
         let menus = CommanderMenus(commander: commander, updater: updater)
         menus.install()
         let appMenu = try XCTUnwrap(NSApp.mainMenu?.items.first?.submenu)
-        for action in [#selector(AppUpdater.checkForUpdates(_:)), #selector(AppUpdater.showSettings(_:))] {
-            let item = try XCTUnwrap(appMenu.items.first { $0.action == action })
-            XCTAssertTrue(item.target === updater)
-            XCTAssertFalse(updater.validateMenuItem(item))
-            XCTAssertNotNil(item.toolTip)
+        let item = try XCTUnwrap(appMenu.items.first { $0.action == #selector(AppUpdater.checkForUpdates(_:)) })
+        XCTAssertTrue(item.target === updater)
+        XCTAssertFalse(updater.validateMenuItem(item))
+        XCTAssertNotNil(item.toolTip)
+    }
+
+    func testDevelopmentSettingsExplainUnavailabilityAndDisableUpdatePreferences() throws {
+        _ = NSApplication.shared
+        let updater = AppUpdater(bundle: Bundle(for: Self.self), presentationWindow: { nil })
+        let settings = try XCTUnwrap(updater.makeSettingsView() as? NSStackView)
+        func descendants(_ view: NSView) -> [NSView] {
+            view.subviews.flatMap { [$0] + descendants($0) }
         }
+        let controls = descendants(settings)
+        let checks = try XCTUnwrap(controls.first { $0.identifier?.rawValue == "updates.automaticChecks" } as? SettingsToggle)
+        let downloads = try XCTUnwrap(controls.first { $0.identifier?.rawValue == "updates.automaticDownloads" } as? SettingsToggle)
+        let reason = try XCTUnwrap(controls.first { $0.identifier?.rawValue == "updates.unavailableReason" } as? NSTextField)
+        XCTAssertFalse(checks.isEnabled)
+        XCTAssertFalse(downloads.isEnabled)
+        XCTAssertEqual(reason.stringValue, updater.unavailableReason)
     }
 
     func testEnablingChecksAndDownloadsTogetherPersistsAcrossUpdaterInstances() throws {
