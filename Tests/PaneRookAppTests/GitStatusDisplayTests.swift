@@ -54,7 +54,8 @@ final class GitStatusDisplayTests: XCTestCase {
         wait(for: [loaded], timeout: 10)
         XCTAssertNil(badge(named: "ordinary"))
         XCTAssertNil(badge(named: ".."))
-        XCTAssertEqual(pane.table.tableColumns.count, 3)
+        let gitColumn = try XCTUnwrap(pane.table.tableColumn(withIdentifier: .init("git")))
+        XCTAssertTrue(gitColumn.isHidden)
 
         let repositoryRow = try XCTUnwrap(pane.entries.firstIndex { $0.name == repositoryName })
         let narrowCell = try XCTUnwrap(pane.tableView(pane.table, viewFor: column, row: repositoryRow) as? NSTableCellView)
@@ -77,5 +78,27 @@ final class GitStatusDisplayTests: XCTestCase {
         XCTAssertTrue(pane.isBriefListing)
         XCTAssertTrue(badge(named: repositoryName)?.toolTip?.contains("1 unversionierte") == true)
         XCTAssertEqual(pane.selectedEntries.map(\.name), [repositoryName])
+
+        // Parent badges, repository discovery and the in-repository Git column
+        // must coexist as navigation moves between the two views.
+        var visited: GitRepositoryInfo?
+        pane.onRepositoryVisited = { visited = $0 }
+        pane.setBriefListing(false)
+        pane.navigate(to: repository)
+        let entered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            pane.directory == repository && pane.gitRepository != nil
+                && visited != nil && !gitColumn.isHidden
+        }, object: nil)
+        wait(for: [entered], timeout: 10)
+        let fileRow = try XCTUnwrap(pane.entries.firstIndex { $0.name == "new.txt" })
+        let statusCell = try XCTUnwrap(pane.tableView(pane.table, viewFor: gitColumn, row: fileRow) as? NSTableCellView)
+        XCTAssertEqual(statusCell.textField?.stringValue, "??")
+
+        pane.navigate(to: parent)
+        let returned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            badge(named: repositoryName)?.stringValue == "● main" && gitColumn.isHidden
+        }, object: nil)
+        wait(for: [returned], timeout: 10)
+        XCTAssertNil(pane.gitRepository)
     }
 }

@@ -8,6 +8,9 @@ public enum PanelMode { case listing, quickView, info, tree, network }
 public struct PanelState {
     public var mode: PanelMode = .listing
     public var filterPattern = ""
+    public var gitFilter: GitFileFilter = .all
+    public var gitSnapshot: GitSnapshot?
+    public var watchedPaths: Set<String> = []
     public var textEncoding: String.Encoding = .utf8
     public private(set) var directory: URL
     public private(set) var history: [URL] = []
@@ -49,6 +52,10 @@ public struct PanelState {
     ) -> Bool {
         guard request == generation else { return false }
         loading = false
+        if directory != url {
+            gitSnapshot = nil
+            watchedPaths = []
+        }
         if recordHistory && directory != url { history.append(directory) }
         directory = url
         panelized = false
@@ -85,6 +92,9 @@ public struct PanelState {
     }
     public mutating func filterAndSort() {
         entries = LocalInspection.filter(allEntries, pattern: filterPattern)
+        if !panelized, !isArchiveDirectory, let snapshot = gitSnapshot {
+            entries = gitFilter.filter(entries, snapshot: snapshot, watchedPaths: watchedPaths)
+        }
         sort()
     }
     public mutating func sort() {

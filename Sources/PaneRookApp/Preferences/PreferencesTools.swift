@@ -1,4 +1,5 @@
 import AppKit
+import PaneRookPanels
 
 private final class KeyCapture: NSTextField {
     var binding: AppKeyBinding?
@@ -145,6 +146,7 @@ final class PreferencesTools {
             defaults.set(pane.sortAscending, forKey: key + "Ascending")
             defaults.set(pane.isBriefListing, forKey: key + "Brief")
             defaults.set(pane.filterPattern, forKey: key + "Filter")
+            defaults.set(pane.gitFilter.rawValue, forKey: key + "GitFilter")
             defaults.set(Int(pane.textEncoding.rawValue), forKey: key + "Encoding")
         }
     }
@@ -154,6 +156,7 @@ final class PreferencesTools {
             pane.setSort(key: defaults.string(forKey: key + "Sort") ?? "name", ascending: bool(key + "Ascending"))
             pane.setBriefListing(defaults.bool(forKey: key + "Brief"))
             pane.setFilter(defaults.string(forKey: key + "Filter") ?? "")
+            pane.setGitFilter(GitFileFilter(rawValue: defaults.string(forKey: key + "GitFilter") ?? "") ?? .all)
             if let raw = defaults.object(forKey: key + "Encoding") as? UInt { pane.textEncoding = String.Encoding(rawValue: raw) }
         }
     }

@@ -89,6 +89,7 @@ Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY
 - Zwei native Dateilisten mit Systemicons, Größe, Datum, Sortierung und vollständigem oder kompaktem Listenformat. Pfade verstehen absolute und relative Angaben sowie `~`; Verlauf, Hotlist und Finder-Anbindung ergänzen die Navigation.
 - Git-Repository-Ordner zeigen bereits im übergeordneten Verzeichnis ihren Branch und Status neben dem Namen: **✓** sauber, **●** Änderungen oder unversionierte Einträge, **!** Konflikte. **↑/↓** geben lokale Commit-Abstände zum bekannten Upstream an. Ein Tooltip schlüsselt vorgemerkte und übrige Änderungen auf. Die Anzeige funktioniert auch im kompakten Listenformat und für Worktrees; sie wird im Hintergrund beim Laden und Aktualisieren (**⌘R**) der Ordnerliste ermittelt, ohne Netzwerkzugriff.
 - Pro Panel: Dateiliste, Schnellansicht, Info oder ein beim Aufklappen nachgeladener Verzeichnisbaum. Schnellansicht und Info folgen der Auswahl des anderen Panels. Dateimasken filtern Dateien; Ordner bleiben zum Navigieren sichtbar. Gruppen lassen sich per Maske markieren, abwählen oder umkehren.
+- Git-Repositories mit Branch-/Statusanzeige in beiden Panels, Statusfiltern und gespeicherten Watched-Markierungen. Ein eigenes Git-Fenster bietet Diffs, Staging, Commits, Branch- und Versionswechsel, Stashes, Tags und Remote-Abgleich.
 - ZIP-, TAR- und tar.gz-/TGZ-Archive als virtuelle Ordner direkt in den Hauptpanels: Unterordner öffnen, Dateien hinein- und herauskopieren, verschieben/umbenennen, Ordner anlegen und Einträge löschen.
 - Rekursives Kopieren/Verschieben mit Datei-/Gesamtfortschritt und Abbruch, neue Ordner, Papierkorb, harte und symbolische Links einschließlich relativer Links und Linkzielbearbeitung. Chmod und Chown arbeiten mit den Benutzerrechten von macOS; Chmod unterstützt gemischte Mehrfachauswahlen und Sonderbits.
 - Rekursive Datei- und Textsuche mit Übernahme der Treffer ins Panel, byteweise Datei- und Verzeichnisvergleiche sowie berechnete Ordnergrößen. Diese Werkzeuge laufen in abbrechbaren Ergebnisfenstern.
@@ -161,6 +162,24 @@ Archivaktionen und das Vorbereiten einer Vorschau laufen ebenfalls in der Aufgab
 **F3 / Leertaste** und das Öffnen einer enthaltenen Datei stellen nur die ausgewählten Inhalte als temporäre Kopien bereit. Änderungen in einer externen App werden nicht automatisch ins Archiv zurückgeschrieben; **F4** ist innerhalb von Archiven deaktiviert. Zum Bearbeiten zuerst in einen lokalen Ordner kopieren. Verschlüsselte Archive, das direkte Öffnen verschachtelter Archive sowie Archivfunktionen für Rechte, Eigentümer, Links, Sparse-Dateien, Shell-Befehle und lokale Such-/Vergleichswerkzeuge sind nicht unterstützt. Enthaltene Archive können zunächst herauskopiert und anschließend geöffnet werden. Remote-Transfers verwenden weiterhin lokale Ordner als Zwischenstation.
 
 Archive mit Links oder Spezialdateien lassen sich auflisten, aber nicht ändern; beim Herauskopieren werden nur reguläre Dateien und Ordner unterstützt. Unsichere oder mehrdeutige Eintragspfade werden abgewiesen. Die Verarbeitung ist auf 100.000 Einträge, 16 GiB je Datei und 64 GiB je Schreib- oder Entpackvorgang begrenzt. Dateirechte einschließlich Ausführbarkeit bleiben beim Transfer erhalten; Sonderbits werden nicht übernommen.
+
+## Git und Versionen
+
+In einem lokalen Git-Arbeitsverzeichnis erscheint unter dem Pfad eine Git-Zeile mit **Branch**, Anzahl geänderter Dateien und **Ahead/Behind** zum konfigurierten Upstream. Die Git-Spalte zeigt den Status von Index und Arbeitskopie, bei Ordnern einen zusammengefassten Status. **⌘R** aktualisiert Dateiliste und Git-Status. Die Anzeige unterstützt auch Unterordner, verknüpfte Worktrees, neue Repositories ohne Commit und einen losgelösten HEAD.
+
+Der Filter daneben kombiniert die bestehende Dateimaske mit **Changed**, **Staged**, **Untracked**, **Konflikte**, **Stashed**, **Watched**, **Tracked** oder **Ignoriert**. Eltern und Ordner mit passenden Nachfahren bleiben zur Navigation sichtbar. Die Auswahl des Git-Filters wird pro Panel gespeichert; außerhalb eines Repositorys und in Suchergebnissen greift sie nicht. Versteckte Dateien richten sich weiterhin nach der Einstellung für versteckte Dateien. Gelöschte Dateien sind im Git-Fenster sichtbar, da sie in der normalen Dateiliste fehlen.
+
+Der **Stern** markiert ausgewählte Dateien oder Ordner als **Watched**. Das sind lokale, dauerhaft gespeicherte PaneRook-Markierungen pro Repository; die Markierung eines Ordners gilt auch für seine Nachfahren. **Tracked** bezeichnet dagegen die von Git versionierten Dateien. **Stashed** umfasst die Pfade aus allen vorhandenen Stashes einschließlich dort gesicherter unversionierter Dateien; Dateien, die aktuell nur im Stash existieren, erscheinen im Git-Fenster.
+
+Ein Klick auf die Branchanzeige oder **Befehl → Git → Repository, Status und Versionen …** (**⌘⇧G**) öffnet das Git-Fenster. Es enthält:
+
+- **Dateien:** Status- und Pfadfilter, Diffs von Arbeitskopie und Index, Stage/Unstage der Auswahl, Commit-Nachricht und Watched-Markierungen.
+- **Verlauf:** bis zu 200 Commits mit Patch-Vorschau, optionaler Dateiverlauf und Anzeige des Dateiinhalts einer Version. **Version auschecken** wechselt nach Rückfrage zum gewählten Commit; **Neuer Branch** ermöglicht die Weiterarbeit auf dieser Version.
+- **Branches und Tags:** lokale und Remote-Branches wechseln, neue Branches und Tags anlegen, Tags auschecken, einen Branch mergen und bereits integrierte lokale Branches löschen.
+- **Stashes:** Änderungen einschließlich unversionierter Dateien sichern, Vorschau, Anwenden, Pop und Löschen nach Rückfrage.
+- **Remote:** Fetch, Pull ausschließlich als Fast-Forward und Push an den konfigurierten Remote.
+
+**Befehl → Git → Repository im aktuellen Ordner anlegen …** initialisiert ein Repository. Git-Aufrufe laufen im Hintergrund mit `/usr/bin/git`; sie verwenden die vorhandene Git-Konfiguration, Identität, Remotes und Zugangsdaten. Interaktive Passwort- und SSH-Abfragen werden nicht geöffnet. Fehler und Konflikte werden angezeigt und die Ansichten anschließend aktualisiert. Branch- und Versionswechsel verwenden keinen erzwungenen Checkout. Rebase, interaktives Staging einzelner Hunks, Submodule-Verwaltung und das Bearbeiten der Remote-Konfiguration haben noch keine eigene Oberfläche.
 
 ## Befehle und Konfiguration
 

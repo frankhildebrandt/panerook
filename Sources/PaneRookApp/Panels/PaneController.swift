@@ -25,6 +25,15 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     let favoritesButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let summary = NSTextField(labelWithString: "")
     private let back = NSButton()
+    private let gitBar = NSStackView()
+    private let gitButton = NSButton()
+    private let gitFilterButton = NSPopUpButton()
+    private let watchButton = NSButton()
+    private var gitBarHeight: NSLayoutConstraint?
+    private var gitRequest = 0
+    private let gitWorker = DispatchQueue(label: "PaneRook.panel.git", qos: .utility)
+    private let gitWatches = GitWatchStore()
+    private var watchObserver: NSObjectProtocol?
     private let surface = PaneSurface()
     private let listing = NSScrollView()
     private let content = NSView()
@@ -47,6 +56,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var summaryHeight: NSLayoutConstraint?
     var mode: PanelMode { get { state.mode } set { state.mode = newValue } }
     var filterPattern: String { get { state.filterPattern } set { state.filterPattern = newValue } }
+    var gitFilter: GitFileFilter { state.gitFilter }
     var textEncoding: String.Encoding {
         get { state.textEncoding }
         set { state.textEncoding = newValue; if mode == .quickView { showInspection(of: inspectionURL) } }
@@ -61,6 +71,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var onOpenSelection: (() -> Void)?
     var onDirectoryChanged: (() -> Void)?
     var onRepositoryVisited: ((GitRepositoryInfo) -> Void)?
+    var onOpenGit: (() -> Void)?
     var onSelectionChanged: ((URL?) -> Void)?
     var showHidden: Bool { get { state.showHidden } set { state.showHidden = newValue } }
     var isActive = false { didSet { updateNavigation() } }
@@ -77,7 +88,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
-    deinit { gitStatusReader?.cancel(); repositoryReader?.cancel() }
+    deinit {
+        gitStatusReader?.cancel()
+        repositoryReader?.cancel()
+        if let watchObserver { NotificationCenter.default.removeObserver(watchObserver) }
+    }
 
     override func loadView() {
         view = NSView()
@@ -126,17 +141,19 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.didFocus = { [weak self] in self?.onActivate?() }
         table.handleKey = { [weak self] event in self?.onKey?(event) ?? false }
         table.setAccessibilityLabel("\(label): Dateiliste")
-        for (id, title, width) in [("name", "Name", 270.0), ("size", "Größe", 85.0), ("modified", "Geändert", 132.0)] {
+        for (id, title, width) in [("name", "Name", 270.0), ("git", "Git", 66.0), ("size", "Größe", 85.0), ("modified", "Geändert", 132.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title
             column.width = width
             column.minWidth = id == "name" ? 140 : width
             column.resizingMask = id == "name" ? [.autoresizingMask, .userResizingMask] : [.userResizingMask]
-            column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true)
+            if id != "git" { column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true) }
+            column.isHidden = id == "git"
             table.addTableColumn(column)
         }
         listing.documentView = table
         listing.hasVerticalScroller = true
+        listing.hasHorizontalScroller = true
         listing.autohidesScrollers = true
         listing.borderType = .noBorder
         for child in [listing, inspection, tree, network] {
@@ -179,7 +196,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         up.widthAnchor.constraint(equalToConstant: 24).isActive = true
         pathField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         pathField.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
-        for child in [navigation, content, summary] {
+        configureGitBar()
+        for child in [navigation, gitBar, content, summary] {
             child.translatesAutoresizingMaskIntoConstraints = false
             surface.addSubview(child)
         }
@@ -187,7 +205,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             navigation.topAnchor.constraint(equalTo: surface.topAnchor),
             navigation.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
             navigation.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
-            content.topAnchor.constraint(equalTo: navigation.bottomAnchor),
+            gitBar.topAnchor.constraint(equalTo: navigation.bottomAnchor),
+            gitBar.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 10),
+            gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -10),
+            content.topAnchor.constraint(equalTo: gitBar.bottomAnchor),
             content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 1),
             content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -1),
             content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10),
@@ -247,11 +268,16 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         filterPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isViewLoaded else { return }
         let selected = Set(selectedFiles)
-        entries = LocalInspection.filter(allEntries, pattern: filterPattern)
-        applySort(); table.reloadData()
+        state.filterAndSort(); table.reloadData()
         let indexes = IndexSet(entries.indices.filter { selected.contains(entries[$0].url) })
         table.selectRowIndexes(indexes.isEmpty && !entries.isEmpty ? IndexSet(integer: 0) : indexes, byExtendingSelection: false)
         updateSummary()
+    }
+
+    func setGitFilter(_ filter: GitFileFilter) {
+        state.gitFilter = filter
+        setFilter(filterPattern)
+        updateGitBar()
     }
 
     func panelize(_ urls: [URL]) {
@@ -262,6 +288,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         var seen = Set<URL>()
         let files = urls.filter { $0.isFileURL && seen.insert($0.standardizedFileURL).inserted }.compactMap { try? LocalInspection.entry(at: $0) }
         state.showResults(files)
+        gitRequest += 1
+        state.gitSnapshot = nil
+        updateGitBar()
         setMode(.listing); setFilter(filterPattern)
         pathField.stringValue = directory.path
     }
@@ -301,7 +330,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         _ = view
         guard isBriefListing != brief else { return }
         for column in table.tableColumns.dropFirst() {
-            column.isHidden = brief
+            column.isHidden = brief || (column.identifier.rawValue == "git" && state.gitSnapshot == nil)
         }
         // The existing first-column-only autoresizing keeps metadata column widths intact.
         table.sizeToFit()
@@ -336,6 +365,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         let request = state.beginNavigation()
+        gitRequest += 1
         summary.stringValue = "Ordner wird gelesen …"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try FileSystem.list(url, showHidden: hidden) }
@@ -358,6 +388,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     if select != nil, let row = indexes.first { self.table.scrollRowToVisible(row) }
                     self.updateSummary()
                     self.updateNavigation()
+                    self.refreshGitStatus()
                     if self.mode == .tree { self.tree.setRoot(url, showHidden: self.showHidden) }
                     self.onDirectoryChanged?()
                     self.onSelectionChanged?(self.selectedFiles.first)
@@ -461,7 +492,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
-    func tableViewSelectionDidChange(_ notification: Notification) { updateSummary(); onSelectionChanged?(selectedFiles.first) }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateSummary(); updateGitBar(); onSelectionChanged?(selectedFiles.first)
+    }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = table.sortDescriptors.first else { return }
         let selected = Set(selectedFiles)
@@ -525,6 +558,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 cell.toolTip = GitStatusPresentation(status: status).detail
                 text.setAccessibilityLabel(text.stringValue + ", " + GitStatusPresentation(status: status).detail)
             }
+        } else if id.rawValue == "git" {
+            text.stringValue = state.gitSnapshot.flatMap {
+                GitPanelPaths.statusLabel(for: entry, snapshot: $0, watchedPaths: state.watchedPaths)
+            } ?? ""
+            text.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+            text.textColor = text.stringValue.trimmingCharacters(in: CharacterSet(charactersIn: "★ ")) == "!"
+                || text.stringValue.contains("U") ? .systemRed : .secondaryLabelColor
+            cell.toolTip = "Git: Index / Arbeitsverzeichnis · ?? Untracked · !! Ignoriert · ★ Watched"
         } else if id.rawValue == "size" {
             let bytes = entry.isDirectory ? directorySizes[entry.url] : entry.size
             text.stringValue = entry.isParent ? "" : bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
@@ -549,6 +590,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         pathField.textColor = isActive ? .labelColor : .secondaryLabelColor
         surface.isActive = isActive
         back.isEnabled = mode == .network || !history.isEmpty
+        updateGitBar()
     }
     private func updateSummary() {
         guard !loading else { return }
@@ -565,5 +607,117 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             + (filterPattern.isEmpty ? "" : "  ·  \(filterPattern)")
             + (panelized ? "  ·  Suchergebnisse" : "")
             + (isArchiveDirectory ? "  ·  Archiv" : "")
+            + (state.gitSnapshot != nil && state.gitFilter != .all ? "  ·  \(state.gitFilter.title)" : "")
     }
+
+    private func configureGitBar() {
+        gitBar.orientation = .horizontal
+        gitBar.alignment = .centerY
+        gitBar.spacing = 6
+        gitBarHeight = gitBar.heightAnchor.constraint(equalToConstant: 0)
+        gitBarHeight?.isActive = true
+        gitButton.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)
+        gitButton.imagePosition = .imageLeading
+        gitButton.lineBreakMode = .byTruncatingMiddle
+        gitButton.target = self; gitButton.action = #selector(openGit)
+        gitButton.setAccessibilityLabel("\(label): Git-Branch und Repository-Status")
+        gitButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        gitButton.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        for filter in GitFileFilter.allCases { gitFilterButton.addItem(withTitle: filter.title) }
+        gitFilterButton.target = self; gitFilterButton.action = #selector(gitFilterChanged)
+        gitFilterButton.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        gitFilterButton.setAccessibilityLabel("\(label): Git-Filter")
+        gitFilterButton.toolTip = "Dateiliste nach Git-Status filtern; Ordner mit passenden Einträgen bleiben sichtbar."
+        watchButton.image = NSImage(systemSymbolName: "star", accessibilityDescription: "Watched umschalten")
+        watchButton.target = self; watchButton.action = #selector(toggleWatched)
+        watchButton.toolTip = "Ausgewählte Dateien oder Ordner als Watched markieren oder entfernen"
+        watchButton.setAccessibilityLabel("\(label): Watched umschalten")
+        for button in [gitButton, gitFilterButton, watchButton] {
+            AppStyle.configureButton(button); button.controlSize = .small
+            gitBar.addArrangedSubview(button)
+        }
+        watchButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        gitBar.isHidden = true
+        watchObserver = NotificationCenter.default.addObserver(
+            forName: .paneRookGitWatchesChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.reloadGitWatches() }
+    }
+
+    /// Git runs separately from directory listing, and only the current navigation may publish results.
+    private func refreshGitStatus() {
+        gitRequest += 1
+        let request = gitRequest
+        let url = directory
+        guard !isArchiveDirectory, !panelized else {
+            state.gitSnapshot = nil; updateGitBar(); return
+        }
+        gitWorker.async { [weak self] in
+            let result = Result { try GitRepository.discover(in: url)?.snapshot() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.gitRequest == request, self.directory == url, !self.panelized else { return }
+                switch result {
+                case .success(let snapshot):
+                    self.state.gitSnapshot = snapshot
+                    self.state.watchedPaths = snapshot.map { self.gitWatches.paths(in: $0.root) } ?? []
+                    self.gitButton.toolTip = snapshot.map {
+                        "\($0.root.path)\n\($0.branch) · \($0.files.filter(\.isChanged).count) geändert · \($0.stashes.count) Stashes"
+                            + ($0.operation.map { " · " + $0 } ?? "")
+                            + "\nGit öffnen: Branches, Status, Diffs und Versionen"
+                    }
+                case .failure(let error):
+                    self.state.gitSnapshot = nil
+                    self.gitButton.toolTip = error.localizedDescription
+                }
+                self.setFilter(self.filterPattern)
+                self.updateGitBar()
+            }
+        }
+    }
+
+    private func updateGitBar() {
+        guard isViewLoaded else { return }
+        let brief = isBriefListing
+        let snapshot = state.gitSnapshot
+        let visible = snapshot != nil && !panelized && !isArchiveDirectory && mode == .listing
+        gitBar.isHidden = !visible
+        gitBarHeight?.constant = visible ? 32 : 0
+        table.tableColumn(withIdentifier: .init("git"))?.isHidden = snapshot == nil || brief
+        guard let snapshot else { return }
+        let changed = snapshot.files.filter(\.isChanged).count
+        let divergence = (snapshot.ahead > 0 ? " ↑\(snapshot.ahead)" : "")
+            + (snapshot.behind > 0 ? " ↓\(snapshot.behind)" : "")
+        gitButton.title = "\(snapshot.branch) · \(changed == 0 ? "sauber" : "\(changed) geändert")\(divergence)"
+        gitButton.contentTintColor = snapshot.operation != nil ? .systemRed : nil
+        gitFilterButton.selectItem(at: GitFileFilter.allCases.firstIndex(of: state.gitFilter) ?? 0)
+        watchButton.isEnabled = !selectedFiles.isEmpty && !loading
+        let watched = selectedEntries.filter { !$0.isParent }.allSatisfy {
+            GitFileFilter.watched.matches($0, snapshot: snapshot, watchedPaths: state.watchedPaths)
+        } && !selectedFiles.isEmpty
+        watchButton.image = NSImage(systemSymbolName: watched ? "star.fill" : "star", accessibilityDescription: "Watched umschalten")
+    }
+
+    private func reloadGitWatches() {
+        guard let snapshot = state.gitSnapshot else { return }
+        state.watchedPaths = gitWatches.paths(in: snapshot.root)
+        setFilter(filterPattern)
+        updateGitBar()
+    }
+
+    @objc private func gitFilterChanged() {
+        guard GitFileFilter.allCases.indices.contains(gitFilterButton.indexOfSelectedItem) else { return }
+        onActivate?()
+        setGitFilter(GitFileFilter.allCases[gitFilterButton.indexOfSelectedItem])
+    }
+    @objc private func openGit() { onActivate?(); onOpenGit?() }
+    @objc private func toggleWatched() {
+        guard let snapshot = state.gitSnapshot else { return }
+        let paths = selectedFiles.compactMap { GitPanelPaths.relativePath(for: $0, in: snapshot.root) }
+        guard !paths.isEmpty else { return }
+        gitWatches.toggle(paths: paths, in: snapshot.root)
+        NotificationCenter.default.post(name: .paneRookGitWatchesChanged, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let paneRookGitWatchesChanged = Notification.Name("PaneRookGitWatchesChanged")
 }
