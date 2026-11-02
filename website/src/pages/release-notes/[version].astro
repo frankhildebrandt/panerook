@@ -10,7 +10,7 @@ const html = await Astro.props.document.compiledContent();
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 <SiteLayout title={`PaneRook ${version} · Release Notes`} description={`Neuerungen und Hinweise zu PaneRook ${version}`} page="releases">
-  <main class="wrap"><p><a href={`${base}/release-notes/`}>← Alle Versionen</a></p><h1>PaneRook {version}</h1><article class="notes" set:html={html} /></main>
+  <main id="inhalt" class="wrap"><p><a href={`${base}/release-notes/`}>← Alle Versionen</a></p><h1>PaneRook {version}</h1><article class="notes" set:html={html} /></main>
 </SiteLayout>
 <style>
 main { padding-block: 64px 88px; max-width: 860px; }

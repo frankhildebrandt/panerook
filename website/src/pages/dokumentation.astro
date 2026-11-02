@@ -99,7 +99,7 @@ const shortcuts = [
               <tbody>{shortcuts.map(([key, action]) => <tr><th scope="row"><kbd>{key}</kbd></th><td>{action}</td></tr>)}</tbody>
             </table>
           </div>
-          <p class="secondary-copy">Die Tabelle zeigt die Standardbelegung. Unter <strong>Optionen → Tasten lernen …</strong> kannst du die Funktionsaktionen anpassen. <kbd>Esc</kbd> und <kbd>Ctrl-G</kbd> bleiben zum Abbrechen reserviert.</p>
+          <p class="secondary-copy">Die Tabelle zeigt die Standardbelegung. Unter <strong>Einstellungen → Tastatur → Belegung bearbeiten …</strong> kannst du Aktionen suchen, belegen und zurücksetzen. Konflikte in gleichzeitig aktiven Bereichen verhindern das Speichern. <kbd>Esc</kbd> und <kbd>Ctrl-G</kbd> bleiben zum Abbrechen reserviert.</p>
         </section>
 
         <section id="dateiaktionen" aria-labelledby="dateiaktionen-title">
@@ -113,28 +113,13 @@ const shortcuts = [
         </section>
 
         <section id="archive" aria-labelledby="archive-title">
-          <p class="section-number">05 / ARCHIVE</p>
           <h2 id="archive-title">Archive wie Ordner nutzen</h2>
-          <p>Öffne <strong>ZIP, TAR, tar.gz oder TGZ</strong> mit <kbd>Enter</kbd> oder einem Doppelklick direkt im Panel. Unterordner, Filter und Sortierung funktionieren wie gewohnt. Am Archivanfang führt <strong>..</strong> zurück zum Ordner der Archivdatei.</p>
-          <ul>
-            <li><strong>Entpacken:</strong> Öffne das Archiv in einem Panel und den Zielordner im anderen. Wähle Inhalte im Archiv aus und kopiere sie mit <kbd>F5</kbd> heraus.</li>
-            <li><strong>Hinzufügen:</strong> Öffne das Archiv im Zielpanel und kopiere die lokale Auswahl mit <kbd>F5</kbd> hinein. Auch Transfers zwischen Archiven sind möglich.</li>
-            <li><strong>Organisieren:</strong> <kbd>F6</kbd> verschiebt oder benennt um, <kbd>F7</kbd> erstellt einen Ordner. <kbd>F8</kbd> löscht Archiveinträge nach Rückfrage endgültig.</li>
-          </ul>
-          <p>Änderungen schreiben das Archiv neu und brauchen freien Speicher für eine temporäre Archivdatei und die zwischengespeicherte Auswahl. Das Original wird erst nach erfolgreichem Schreiben ersetzt.</p>
-          <div class="note"><p><strong>Zum Bearbeiten zuerst herauskopieren.</strong> Vorschau und Öffnen stellen temporäre Kopien bereit. Änderungen in einer anderen App werden nicht ins Archiv zurückgeschrieben; <kbd>F4</kbd> ist dort deaktiviert. Verschlüsselte und direkt verschachtelte Archive werden nicht unterstützt. Archive mit Links oder Spezialdateien lassen sich auflisten, aber nicht ändern.</p></div>
+          <p>Archive im Panel öffnen, Inhalte kopieren und bearbeiten. <a href={`${base}/dokumentation/archive/`}>Zur Anleitung →</a></p>
         </section>
 
         <section id="git" aria-labelledby="git-title">
-          <p class="section-number">06 / VERSIONEN</p>
           <h2 id="git-title">Git und Worktrees im Blick</h2>
-          <p>Öffne ein lokales Git-Arbeitsverzeichnis. PaneRook zeigt den Branch, geänderte Dateien und den bekannten Abstand zum Upstream. Die Git-Spalte zeigt den Status von Arbeitskopie und Index; <kbd>⌘R</kbd> aktualisiert die Anzeige.</p>
-          <p>Mit dem Git-Filter grenzt du die Liste etwa auf <strong>Changed</strong>, <strong>Staged</strong>, <strong>Untracked</strong> oder <strong>Konflikte</strong> ein. Der Stern markiert Dateien oder Ordner lokal als <strong>Watched</strong>. Diese PaneRook-Markierung ist unabhängig davon, ob Git eine Datei versioniert (<strong>Tracked</strong>).</p>
-          <h3>Diff, Commit und Branchwechsel</h3>
-          <p>Klicke auf die Branchanzeige oder drücke <kbd>⌘⇧G</kbd>, um das Git-Fenster zu öffnen. Unter <strong>Dateien</strong> kannst du Änderungen prüfen, die Auswahl stagen oder unstagen und einen Commit erstellen. Die Vorschau schaltet zwischen <strong>Unified Diff</strong> und <strong>Side-by-Side Diff</strong> um.</p>
-          <p>Die weiteren Bereiche bieten Verlauf, Branches und Tags, Stashes sowie Fetch, Fast-Forward-Pull und Push. PaneRook verwendet deine bestehende Git-Konfiguration und Zugangsdaten; interaktive Passwort- und SSH-Abfragen werden nicht geöffnet.</p>
-          <h3>Repositories schnell wieder öffnen</h3>
-          <p>Besuchte Repositories erscheinen automatisch unter <strong>Git-Repositories</strong> im Favoritenmenü (<kbd>⌥↓</kbd>). Verknüpfte Worktrees sind zusammengefasst und können dort direkt im jeweiligen Panel geöffnet werden. <strong>Aus Liste entfernen</strong> entfernt nur den gespeicherten Favoriten, keine Dateien.</p>
+          <p>Repository-Status, Diffs, Commits und Worktrees verwalten. <a href={`${base}/dokumentation/git/`}>Zur Anleitung →</a></p>
         </section>
 
         <section id="suche-aufgaben" aria-labelledby="suche-aufgaben-title">
@@ -147,22 +132,8 @@ const shortcuts = [
         </section>
 
         <section id="remote" aria-labelledby="remote-title">
-          <p class="section-number">08 / VERBINDEN</p>
           <h2 id="remote-title">Remote-Verbindungen einrichten</h2>
-          <p>PaneRook unterstützt <strong>FTP, SSH-Shell, SFTP und Nextcloud</strong>. Die Verbindung öffnet sich im ausgewählten Panel. Das gegenüberliegende lokale Panel dient als Ziel beziehungsweise Quelle für Transfers.</p>
-          <ol class="steps">
-            <li>Öffne <strong>Links/Rechts → Verbindungsarchiv …</strong> oder drücke <kbd>⌘K</kbd>.</li>
-            <li>Wähle <strong>Neu</strong>, gib einen Namen, das Protokoll, Server, Port, Benutzer und gegebenenfalls Startpfad beziehungsweise SSH-Schlüsselpfad an.</li>
-            <li>Speichere den Eintrag und verbinde dich mit <kbd>Enter</kbd> oder einem Doppelklick. FTP und Nextcloud fragen dann nach dem Passwort.</li>
-          </ol>
-          <p>Im Remote-Browser lädt <kbd>F5</kbd> die Auswahl in den aktuellen Ordner des gegenüberliegenden lokalen Panels. <strong>Hochladen</strong> sendet dessen lokale Auswahl in den Remote-Ordner. <kbd>F7</kbd> legt einen Remote-Ordner an, <kbd>F8</kbd> löscht nach Rückfrage auf dem Server.</p>
-          <h3>SFTP und SSH</h3>
-          <p>Diese Verbindungen verwenden einen SSH-Schlüssel oder Agent und einen bereits bestätigten Host in <code>~/.ssh/known_hosts</code>. Richte die Anmeldung und das Hostvertrauen vorab mit den macOS-SSH-Werkzeugen ein. Eine interaktive Passwortanmeldung ist nicht enthalten.</p>
-          <h3>Nextcloud</h3>
-          <p>Trage die HTTPS-Adresse deiner Nextcloud ein, zum Beispiel <code>https://cloud.example.org</code>, dazu den Benutzernamen und ein <strong>App-Passwort</strong> aus den persönlichen Nextcloud-Einstellungen unter <strong>Sicherheit</strong>. Der Startpfad <code>/</code> öffnet deine Dateien, <code>/Dokumente</code> den entsprechenden Ordner. Den WebDAV-Pfad ergänzt PaneRook selbst.</p>
-          <div class="note"><p><strong>Vor dem Transfer beachten.</strong> Passwörter werden nicht im Verbindungsarchiv gespeichert. FTP überträgt Zugangsdaten und Dateien unverschlüsselt. Remote-Transfers unterstützen reguläre Dateien und Ordner, keine Links. Bei Fehlern oder Abbruch können bereits angelegte Serverdateien zurückbleiben. FTP/SSH/SFTP verwenden keinen Papierkorb; bei Nextcloud hängt eine Wiederherstellung vom Server ab.</p></div>
-          <h3>Netzwerkfreigaben</h3>
-          <p><strong>Netzwerk</strong> im Favoritenmenü zeigt über Bonjour angekündigte SMB-/AFP-Server und bereits gemountete Freigaben. Über <strong>Mit Server verbinden …</strong> kannst du eine <code>smb://</code>- oder <code>afp://</code>-Adresse eingeben. macOS übernimmt Anmeldung und Freigabeauswahl, anschließend öffnet PaneRook den Mountpunkt im Panel.</p>
+          <p>FTP, SSH, SFTP und Nextcloud im Panel verwenden. <a href={`${base}/dokumentation/remote/`}>Zur Anleitung →</a></p>
         </section>
 
         <section id="einstellungen" aria-labelledby="einstellungen-title">

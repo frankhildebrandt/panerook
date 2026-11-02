@@ -1,0 +1,89 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<SiteLayout title="Remote-Verbindungen einrichten · PaneRook" description="Remote-Verbindungen einrichten" page="documentation">
+  <main id="inhalt" class="wrap documentation">
+    <p><a href={`${base}/dokumentation/`}>← Dokumentation</a></p>
+    <div class="article-body">
+        <section id="remote" aria-labelledby="remote-title">
+          <p class="section-number">08 / VERBINDEN</p>
+          <h2 id="remote-title">Remote-Verbindungen einrichten</h2>
+          <p>PaneRook unterstützt <strong>FTP, SSH-Shell, SFTP und Nextcloud</strong>. Die Verbindung öffnet sich im ausgewählten Panel. Das gegenüberliegende lokale Panel dient als Ziel beziehungsweise Quelle für Transfers.</p>
+          <ol class="steps">
+            <li>Öffne <strong>Links/Rechts → Verbindungsarchiv …</strong> oder drücke <kbd>⌘K</kbd>.</li>
+            <li>Wähle <strong>Neu</strong>, gib einen Namen, das Protokoll, Server, Port, Benutzer und gegebenenfalls Startpfad beziehungsweise SSH-Schlüsselpfad an.</li>
+            <li>Speichere den Eintrag und verbinde dich mit <kbd>Enter</kbd> oder einem Doppelklick. FTP und Nextcloud fragen dann nach dem Passwort.</li>
+          </ol>
+          <p>Im Remote-Browser lädt <kbd>F5</kbd> die Auswahl in den aktuellen Ordner des gegenüberliegenden lokalen Panels. <strong>Hochladen</strong> sendet dessen lokale Auswahl in den Remote-Ordner. <kbd>F7</kbd> legt einen Remote-Ordner an, <kbd>F8</kbd> löscht nach Rückfrage auf dem Server.</p>
+          <p><a href={`${base}/screenshots/releases/0.3.0/remote.png`}><img src={`${base}/screenshots/releases/0.3.0/remote.png`} width="4112" height="2466" alt="Lokaler Ordner neben einem verbundenen FTP-Panel mit Demo-Dateien" loading="lazy" style="max-width:100%;height:auto" /></a></p>
+          <h3>SFTP und SSH</h3>
+          <p>Diese Verbindungen verwenden einen SSH-Schlüssel oder Agent und einen bereits bestätigten Host in <code>~/.ssh/known_hosts</code>. Richte die Anmeldung und das Hostvertrauen vorab mit den macOS-SSH-Werkzeugen ein. Eine interaktive Passwortanmeldung ist nicht enthalten.</p>
+          <h3>Nextcloud</h3>
+          <p>Trage die HTTPS-Adresse deiner Nextcloud ein, zum Beispiel <code>https://cloud.example.org</code>, dazu den Benutzernamen und ein <strong>App-Passwort</strong> aus den persönlichen Nextcloud-Einstellungen unter <strong>Sicherheit</strong>. Der Startpfad <code>/</code> öffnet deine Dateien, <code>/Dokumente</code> den entsprechenden Ordner. Den WebDAV-Pfad ergänzt PaneRook selbst.</p>
+          <div class="note"><p><strong>Vor dem Transfer beachten.</strong> Passwörter werden nicht im Verbindungsarchiv gespeichert. FTP überträgt Zugangsdaten und Dateien unverschlüsselt. Remote-Transfers unterstützen reguläre Dateien und Ordner, keine Links. Bei Fehlern oder Abbruch können bereits angelegte Serverdateien zurückbleiben. FTP/SSH/SFTP verwenden keinen Papierkorb; bei Nextcloud hängt eine Wiederherstellung vom Server ab.</p></div>
+          <h3>Netzwerkfreigaben</h3>
+          <p><strong>Netzwerk</strong> im Favoritenmenü zeigt über Bonjour angekündigte SMB-/AFP-Server und bereits gemountete Freigaben. Über <strong>Mit Server verbinden …</strong> kannst du eine <code>smb://</code>- oder <code>afp://</code>-Adresse eingeben. macOS übernimmt Anmeldung und Freigabeauswahl, anschließend öffnet PaneRook den Mountpunkt im Panel.</p>
+        </section>
+    </div>
+    <p><a href={`${base}/dokumentation/`}>Zur Themenübersicht</a> · <a href={`${base}/dokumentation/git/`}>Git &amp; Worktrees</a> · <a href={`${base}/dokumentation/archive/`}>Archive</a> · <a href={`${base}/dokumentation/remote/`}>Remote</a></p>
+  </main>
+</SiteLayout>
+<style>
+  .documentation { padding-block: 62px 90px; }
+  .page-intro { max-width: 760px; padding-bottom: 52px; }
+  .eyebrow, .section-number { color: #b9a0ed; font-size: 11px; font-weight: 650; letter-spacing: 1.8px; }
+  h1 { margin: 22px 0; font-size: clamp(36px, 5.4vw, 58px); font-weight: 600; letter-spacing: -2.3px; line-height: 1.12; }
+  .intro-copy { max-width: 640px; font-size: 17px; color: #bcb4c8; }
+  .intro-link { display: inline-block; margin-top: 6px; color: #c8a9f6; font-size: 13px; }
+  .intro-link span { padding-left: 8px; }
+  .documentation-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 68px; align-items: start; border-top: 1px solid #3d3348; padding-top: 42px; }
+  .contents { position: sticky; top: 30px; }
+  .contents p { margin-bottom: 16px; color: #a99bb8; font-size: 10px; font-weight: 650; letter-spacing: 1.5px; }
+  .contents ol { list-style: none; margin: 0; padding: 0; }
+  .contents li { margin: 0; }
+  .contents a { display: block; padding: 8px 0; color: #b9aec7; font-size: 13px; line-height: 1.4; }
+  .contents a:hover { color: #e5d5ff; }
+  .article-body { min-width: 0; max-width: 760px; }
+  section { scroll-margin-top: 28px; padding-block: 0 45px; margin-bottom: 40px; border-bottom: 1px solid #362d3f; }
+  section:last-child { border: 0; padding-bottom: 0; margin-bottom: 0; }
+  .section-number { font-size: 10px; margin-bottom: 12px; }
+  h2 { font-size: clamp(25px, 3vw, 32px); font-weight: 600; line-height: 1.2; letter-spacing: -1px; margin-bottom: 22px; }
+  h3 { font-size: 18px; font-weight: 550; line-height: 1.4; margin: 28px 0 12px; letter-spacing: -.3px; }
+  .article-body p, .article-body li { font-size: 14px; color: #bfb5cd; line-height: 1.85; }
+  .article-body p { margin-bottom: 18px; }
+  .article-body strong { color: #eee5f7; font-weight: 550; }
+  .article-body p a, .article-body li a { color: #c9a8f7; text-decoration: underline; text-decoration-color: #745293; text-underline-offset: 3px; }
+  ul, .steps { margin: 16px 0 24px; padding-left: 24px; }
+  li { margin-bottom: 11px; padding-left: 4px; }
+  li::marker { color: #b292da; }
+  kbd { padding: 2px 5px; border: 1px solid #51445f; border-radius: 4px; background: #251e2e; color: #e5d1ff; font: inherit; font-size: .88em; white-space: normal; }
+  code { padding: 2px 4px; border-radius: 3px; background: #251e2e; color: #d7bcef; font-size: .9em; overflow-wrap: anywhere; }
+  .note { margin: 24px 0; border-left: 2px solid #a97cde; padding: 16px 20px; background: #211b2a; border-radius: 0 7px 7px 0; }
+  .note p { margin: 0; font-size: 13px; line-height: 1.8; }
+  .article-body .secondary-copy { color: #a79aB6; font-size: 13px; }
+  .table-scroll { overflow-x: auto; margin: 24px 0; border: 1px solid #44374f; border-radius: 8px; }
+  .table-scroll:focus-visible { outline: 3px solid #c8b0ff; outline-offset: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+  th, td { padding: 13px 16px; line-height: 1.55; border-bottom: 1px solid #362d40; }
+  thead th { color: #dfd0ee; background: #251e2f; font-weight: 550; }
+  tbody th { width: 38%; font-weight: 400; }
+  tbody td { color: #bfb5cd; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  @media (max-width: 900px) { .documentation-layout { grid-template-columns: 175px minmax(0, 1fr); gap: 34px; } }
+  @media (max-width: 680px) {
+    .documentation { padding-block: 36px 54px; }
+    .page-intro { padding-bottom: 34px; }
+    h1 { font-size: 37px; letter-spacing: -1.6px; }
+    .intro-copy { font-size: 15px; }
+    .documentation-layout { grid-template-columns: 1fr; gap: 38px; padding-top: 28px; }
+    .contents { position: static; }
+    .contents ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+    .contents a { font-size: 12px; }
+    section { padding-bottom: 30px; margin-bottom: 30px; }
+    .article-body p, .article-body li { font-size: 13px; }
+    .note { padding: 14px 16px; }
+    th, td { padding: 11px 10px; font-size: 12px; }
+    tbody th { width: 40%; }
+  }
+</style>

@@ -80,6 +80,7 @@ const notes = (await Promise.all(Object.entries(documents).map(async ([path, doc
   .badge { border: 1px solid #684e80; border-radius: 20px; padding: 5px 10px; font-size: 10px; color: #cdb2f5; background: #2e223d; }
   .release-body { color: #bcb2c9; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
   .release-body :global(h3) { margin-block: 30px 12px; font-size: 19px; font-weight: 600; letter-spacing: -.3px; color: #eee6f7; }
+  .release-body :global(img) { max-width: 100%; height: auto; }
   .release-body :global(p) { margin-bottom: 16px; }
   .release-body :global(ul) { padding-left: 22px; }
   .release-body :global(li) { margin-bottom: 10px; }
