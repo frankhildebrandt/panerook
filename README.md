@@ -6,9 +6,9 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhän
 
 ## Download
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Release 0.3.0](https://github.com/frankhildebrandt/panerook/releases/tag/v0.3.0)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller Release](https://github.com/frankhildebrandt/panerook/releases/latest)
 
-Release **0.3.0** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
+Die vorbereitete Version **0.3.0** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
 
 ## Starten
 
