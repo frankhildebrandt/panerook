@@ -5,7 +5,18 @@ import PaneRookCore
 
 
 
-final class FileTable: NSTableView {
+final class FileTable: NSTableView, NSMenuItemValidation {
+    var copyFiles: (() -> Void)?
+    var pasteFiles: (() -> Void)?
+    var canCopyFiles: (() -> Bool)?
+    var canPasteFiles: (() -> Bool)?
+    @objc func copy(_ sender: Any?) { copyFiles?() }
+    @objc func paste(_ sender: Any?) { pasteFiles?() }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(copy(_:)) { return canCopyFiles?() == true }
+        if item.action == #selector(paste(_:)) { return canPasteFiles?() == true }
+        return true
+    }
     var handleKey: ((NSEvent) -> Bool)?
     var didFocus: (() -> Void)?
     override func becomeFirstResponder() -> Bool {
@@ -42,6 +53,7 @@ final class ThemedFileRow: NSTableRowView {
 
 final class PaneController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, PanelAccess {
     let table = FileTable()
+    weak var fileExchange: NativeFileExchange?
     let pathField = NSTextField()
     let favoritesButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let availableSpace = NSTextField(labelWithString: "")
@@ -186,6 +198,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
         table.delegate = self
         table.dataSource = self
+        configureFileExchange()
         table.rowHeight = 29
         table.intercellSpacing = NSSize(width: 8, height: 1)
         table.usesAlternatingRowBackgroundColors = false
@@ -330,6 +343,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         return table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil }
     }
     var selectedFiles: [URL] { selectedEntries.filter { !$0.isParent }.map(\.url) }
+    var canExportNativeFiles: Bool {
+        isViewLoaded && remoteContent == nil && mode == .listing && !loading && !isArchiveDirectory
+    }
+    var fileExchangeDirectory: URL? { canExportNativeFiles && !panelized ? directory : nil }
+    var hasFileListKeyboardFocus: Bool {
+        canExportNativeFiles && view.window?.firstResponder === table
+    }
     private var listingSelection: [URL] {
         table.selectedRowIndexes.compactMap { entries.indices.contains($0) && !entries[$0].isParent ? entries[$0].url : nil }
     }

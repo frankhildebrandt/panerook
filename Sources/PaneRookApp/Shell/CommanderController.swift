@@ -25,6 +25,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var operations = OperationRunner(tasks: tasks, refresh: { [weak self] in self?.refreshAfterTask() })
     lazy var preview = PreviewTools(owner: self)
     lazy var fileOperations = FileOperations(owner: self)
+    lazy var fileExchange = NativeFileExchange(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
     lazy var preferences = PreferencesTools(owner: self)
     lazy var localTools = LocalTools(owner: self)
@@ -94,6 +95,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         let split = NSSplitViewController()
         splitController = split
         for pane in [left, right] {
+            pane.installFileExchange(fileExchange)
             favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
             pane.showHidden = hiddenButton.state == .on
             pane.onActivate = { [weak self, weak pane] in

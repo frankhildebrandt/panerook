@@ -64,13 +64,19 @@ final class FileOperations {
         let sources = owner.activePane.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
         let destination = rename ? owner.activePane.directory : owner.otherPane.directory
+        confirmTransfer(sources: sources, sourceDirectory: owner.activePane.directory,
+            destination: destination, kind: kind, focusPane: owner.activePane, window: window)
+    }
+
+    /// Every entry point captures its inputs before presenting the shared transfer dialog.
+    func confirmTransfer(sources: [URL], sourceDirectory: URL, destination: URL, kind: TransferKind,
+                         focusPane: any PanelAccess, window: NSWindow) {
         let verb = kind == .copy ? "Kopieren" : "Verschieben"
-        let sourcePane = owner.activePane
-        let dialog = TransferDialog(sources: sources, sourceDirectory: sourcePane.directory,
+        let dialog = TransferDialog(sources: sources, sourceDirectory: sourceDirectory,
             destinationDirectory: destination, kind: kind) { [weak self] plan in
             guard let self else { return }
             self.transferDialog = nil
-            self.owner.activate(sourcePane)
+            self.owner.activate(focusPane)
             guard let plan else { return }
             let token = TransferCancellation()
             self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),

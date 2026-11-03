@@ -7,6 +7,7 @@
 - Pro Panel: Dateiliste, Schnellansicht, Info, ein beim Aufklappen nachgeladener Verzeichnisbaum oder ein eingebettetes Ghostty-Terminal. Schnellansicht und Info folgen der Auswahl des anderen Panels. Dateimasken filtern Dateien; Ordner bleiben zum Navigieren sichtbar. Gruppen lassen sich per Maske markieren, abwählen oder umkehren.
 - Git-Repositories mit Branch-/Statusanzeige in beiden Panels, Statusfiltern und gespeicherten Watched-Markierungen. Ein eigenes Git-Fenster bietet Diffs, Staging, Commits, Branch- und Versionswechsel, Stashes, Tags und Remote-Abgleich.
 - ZIP-, TAR- und tar.gz-/TGZ-Archive als virtuelle Ordner direkt in den Hauptpanels: Unterordner öffnen, Dateien hinein- und herauskopieren, verschieben/umbenennen, Ordner anlegen und Einträge löschen.
+- Nativer Dateiaustausch lokaler Dateien per Drag & Drop und Datei-Zwischenablage, auch mit Finder, Desktop und anderen Apps.
 - Rekursives Kopieren/Verschieben mit Datei-/Gesamtfortschritt und Abbruch, neue Ordner, Papierkorb, harte und symbolische Links einschließlich relativer Links und Linkzielbearbeitung. Chmod und Chown arbeiten mit den Benutzerrechten von macOS; Chmod unterstützt gemischte Mehrfachauswahlen und Sonderbits.
 - Rekursive Datei- und Textsuche mit Übernahme der Treffer ins Panel, byteweise Datei- und Verzeichnisvergleiche sowie berechnete Ordnergrößen. Diese Werkzeuge laufen in abbrechbaren Ergebnisfenstern.
 - Quick Look, eingebaute Textvorschau mit wählbarer Codierung, Bearbeiten über TextEdit und Öffnen mit der Standard-App oder einer konfigurierten App-Zuordnung.
@@ -46,6 +47,8 @@ Lokale Kopien zeigen übertragene Bytes für die aktuelle Datei und die gesamte 
 | Leertaste / F3 / ⌘Y | Quick Look |
 | F4 | In TextEdit bearbeiten |
 | F5 / F6 | Ins andere Panel kopieren / verschieben |
+| ⌘C / ⌘V | Lokale Dateiauswahl kopieren / im fokussierten Panelordner einsetzen |
+| ⌘⌥V | Dateien aus der Zwischenablage in den fokussierten Panelordner verschieben |
 | F7 / ⌘⇧N | Neuer Ordner |
 | ⌘⌥N | Sparse-Datei erstellen |
 | F8 / ⌘⌫ | Lokal in den Papierkorb legen; Archiveinträge nach Rückfrage löschen |
@@ -75,6 +78,16 @@ Das gegenüberliegende Dateipanel bleibt unabhängig navigierbar. **F5 Kopieren*
 **⌘⌥Tab** wechselt den Fokus zum anderen Panel. Tab, Pfeiltasten, Esc, Funktionstasten und Ctrl-Kombinationen wie Ctrl-C, Ctrl-D und Ctrl-O gehen im Terminal an die Shell, auch wenn sie sonst PaneRook-Aktionen auslösen. **⌘C/⌘V** kopieren beziehungsweise fügen Terminaltext ein; **⌘A** markiert den Terminalinhalt. Der Panelwechsel lässt sich unter **Einstellungen → Tastatur** umbelegen.
 
 **Dateiliste** oder **Links/Rechts → Dateiliste** kehrt zur bisherigen Dateiliste und Auswahl zurück. Beim erneuten Öffnen erscheint dieselbe Terminalsitzung mit ihrem Verlauf und aktuellen Verzeichnis. **⌘L** öffnet die Pfadeingabe in der Dateiliste. Aktualisieren und abgeschlossene Dateioperationen starten die Shell nicht neu. `exit` beendet die Shell und zeigt wieder die Dateiliste; das Schließen des Fensters oder Ersetzen des Panels durch eine Remote-Verbindung beendet die Sitzung ebenfalls. Terminalsitzungen werden nach einem App-Neustart nicht wiederhergestellt. In einem Archiv oder einem Remote-Panel ist der Terminalmodus nicht verfügbar.
+
+## Drag & Drop und Datei-Zwischenablage
+
+In einer geladenen lokalen **Dateiliste** kopiert **⌘C** die ausgewählten Dateien als native Datei-URLs in die macOS-Zwischenablage. **⌘V** kopiert sie in den Ordner der jetzt fokussierten Dateiliste; **⌘⌥V** verschiebt sie dorthin. Das funktioniert auch mit im Finder kopierten Dateien. Mehrfachauswahl, Unicode, Leerzeichen, Zeilenumbrüche und Sonderzeichen in Namen bleiben erhalten. Auswahl- und Panelwechsel nach dem Kopieren ändern die erfassten Quellen nicht. Im Menü **Datei** stehen dieselben Dateiaktionen; die bisherigen **Bearbeiten → Kopieren/Einsetzen** und ihre gespeicherten Belegungen verwenden weiter die native Responder Chain. In Pfad-, Such- und anderen Textfeldern sowie im Ghostty-Terminal bleiben **⌘C/⌘V** Textaktionen. Ausschneiden von Dateien mit ⌘X ist nicht vorgesehen.
+
+Dateien lassen sich zwischen den Panels sowie aus Finder, Desktop und Apps mit echten Datei-URLs in eine lokale Dateiliste ziehen. Eine hervorgehobene **Ordnerzeile** ist das Ziel; zwischen Zeilen oder auf freier Listenfläche gilt der **Panelordner**. Reguläre Dateien sind keine Drop-Ziele. Innerhalb desselben Volumes ist Verschieben die Vorgabe, über Volume-Grenzen Kopieren, sofern die Quell-App die Operation anbietet. **⌥** erzwingt Kopieren, **⌘** Verschieben. macOS zeigt die angebotene Operation am Mauszeiger und hebt das Ziel hervor. **⌘⌥** für Link-Erstellung wird nicht angeboten. Selbst-Drops, Ordner in eigene Unterordner (auch über symbolische Links), fehlende Ziele, doppelte Zielnamen und vorhandene Zieldateien werden abgewiesen.
+
+Einfügen und angenommene Drops öffnen den bestehenden **Kopieren/Verschieben-Dialog**. Erst die Bestätigung reiht den Auftrag in dieselbe serielle Aufgaben-Queue wie F5/F6 ein. Quellen und Ziel sind vorher erfasst; spätere Navigation oder eine neue Zwischenablage ersetzen sie nicht. Quellmaske, Konfliktprüfung ohne Überschreiben, Fortschritt, Abbruch und Fehleranzeige gelten unverändert. Ein abgebrochener Dialog verändert keine Dateien. Die Zwischenablage bleibt erhalten; nach einem Verschieben verweisen ihre Datei-URLs auf die bisherigen, nun fehlenden Quellen. Erneutes Einfügen meldet den Fehler.
+
+**Grenzen:** Aus PaneRook zu Finder, Desktop und anderen Apps gezogene Dateien werden als Kopien angeboten; die Ziel-App führt den externen Empfang aus. Verschieben aus PaneRook in einen solchen Ordner geht über dessen Öffnen im zweiten Panel und F6 oder über ⌘C/⌘⌥V im Finder. Remote- und Archivinhalte werden weder als scheinbar lokale URLs noch als temporäre Vorschaukopien angeboten. Sie lassen sich zuerst mit **F5** in einen lokalen Ordner kopieren; die eigentliche lokale Archivdatei kann wie jede andere Datei gezogen werden. Datei-Versprechen anderer Apps, reine Pfadtexte und gemischte Zwischenablagen aus Dateien und anderen Objekten werden nicht angenommen. Ziele in Remote-/Archivansichten und im Verzeichnisbaum sind nicht unterstützt. Suchergebnislisten können lokale Treffer exportieren und Drops auf konkrete Ordnerzeilen annehmen, haben aber kein Hintergrundziel zum Einfügen. Während einer Navigation sind die alten Listenzeilen für den Austausch gesperrt.
 
 ## Dateiarchive
 
