@@ -15,6 +15,10 @@ extension FileOperations {
             enabled: { self.canRenameSelection }
         ) { self.renameSelection() }
         registry.add(
+            .file, "Mehrfachumbenennen …", id: "files.batchRename", order: 136, group: 0,
+            enabled: { self.canBatchRenameSelection }
+        ) { self.batchRenameSelection() }
+        registry.add(
             .file, "Neues Verzeichnis erstellen …", id: "mkdir", order: 140, group: 0, function: 7,
             dockTitle: { "Neuer Ordner" }, enabled: { self.canMakeDirectory }
         ) { self.makeDirectory() }

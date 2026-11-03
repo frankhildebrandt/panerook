@@ -15,6 +15,7 @@ final class FileOperations {
     unowned let owner: any FileOperationsHost
     private var transferDialog: TransferDialog?
     private var sparseFileDialog: SparseFileDialog?
+    var batchRenameDialog: BatchRenameDialog?
     init(owner: any FileOperationsHost) { self.owner = owner }
     var canCopySelection: Bool {
         guard owner.canUseMenus else { return false }
@@ -45,11 +46,12 @@ final class FileOperations {
     var canRenameSelection: Bool {
         guard owner.canUseMenus else { return false }
         if let remote = owner.activePane.remoteContent { return remote.canRename }
-        return owner.canUseSelection && owner.activePane.selectedFiles.count == 1
+        return owner.canUseSelection && (owner.activePane.selectedFiles.count == 1 || canBatchRenameSelection)
     }
     func renameSelection() {
         guard canRenameSelection else { return }
         if let remote = owner.activePane.remoteContent { remote.renameSelection(); return }
+        if owner.activePane.selectedFiles.count > 1 { batchRenameSelection(); return }
         transfer(.move, rename: true)
     }
     func moveSelection() {

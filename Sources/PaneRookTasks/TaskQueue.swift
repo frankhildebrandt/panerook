@@ -101,7 +101,10 @@ public final class BackgroundTaskQueue: @unchecked Sendable {
             lock.lock()
             if job.state == .cancelling {
                 job.state = .cancelled
-                result = .failure(BackgroundTaskError.cancelled)
+                // Recovery may itself fail. Keep the worker's precise error and
+                // recovery paths instead of hiding them behind a generic cancel.
+                if case .failure(let error) = result { job.error = error.localizedDescription }
+                else { result = .failure(BackgroundTaskError.cancelled) }
             } else {
                 switch result {
                 case .success: job.state = .completed
