@@ -135,7 +135,7 @@ public struct TransferPlan: Sendable {
         }
     }
 
-    private init(sources: [URL], outputs: [URL], kind: TransferKind) throws {
+    init(sources: [URL], outputs: [URL], kind: TransferKind) throws {
         let fm = FileManager.default
         var destinations = Set<String>()
         var items: [Item] = []

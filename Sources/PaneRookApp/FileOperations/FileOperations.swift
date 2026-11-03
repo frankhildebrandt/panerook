@@ -13,6 +13,9 @@ protocol FileOperationsHost: PanelPresenting, TaskProviding {
 
 final class FileOperations {
     unowned let owner: any FileOperationsHost
+    let journal = FileOperationJournal()
+    lazy var fileUndoManager = FileOperationUndoManager(operations: self)
+    var isRestoringFiles = false
     private var transferDialog: TransferDialog?
     private var sparseFileDialog: SparseFileDialog?
     init(owner: any FileOperationsHost) { self.owner = owner }
@@ -75,7 +78,15 @@ final class FileOperations {
             let token = TransferCancellation()
             self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
                 cancellation: { token.cancel() }, work: { report in
-                    try plan.execute(cancellation: token, progress: report)
+                    let isLocalMove = kind == .move && plan.items.allSatisfy { item in
+                        (ArchiveFileSystem.location(for: item.source)?.memberPath.isEmpty ?? true)
+                            && (ArchiveFileSystem.location(for: item.destination)?.memberPath.isEmpty ?? true)
+                    }
+                    if isLocalMove {
+                        try self.journal.move(plan, title: rename ? "Umbenennen" : "Verschieben", cancellation: token, progress: report)
+                    } else {
+                        try plan.execute(cancellation: token, progress: report)
+                    }
                 }, completion: { [weak self] _ in self?.owner.refreshAfterTask() })
         }
         transferDialog = dialog
@@ -99,11 +110,16 @@ final class FileOperations {
         alert.beginSheetModal(for: owner.presentationWindow!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             let name = input.stringValue
-            self?.owner.operations.runArchiveOperation("Ordner anlegen …", detail: directory.path, completion: {
+            guard let self else { return }
+            self.owner.operations.runArchiveOperation("Ordner anlegen …", detail: directory.path, completion: {
                 guard pane.canApplyTaskResult(in: directory) else { return }
                 pane.refresh(select: directory.appendingPathComponent(name))
             }) { token, report in
-                try FileActions.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                if ArchiveFileSystem.location(for: directory) == nil {
+                    try self.journal.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                } else {
+                    try FileActions.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                }
             }
         }
     }
@@ -153,23 +169,19 @@ final class FileOperations {
             return
         }
         if UserDefaults.standard.object(forKey: "confirmTrash") as? Bool == false {
-            owner.operations.runItemOperation("In den Papierkorb legen", sources: sources) {
-                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
-            }
+            trashLocalFiles(sources)
             return
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "\(sources.count) Einträge in den Papierkorb legen?"
-        alert.informativeText = sources.prefix(5).map(\.lastPathComponent).joined(separator: "\n") + "\n\nDu kannst sie im Finder aus dem Papierkorb zurückholen."
+        alert.informativeText = sources.prefix(5).map(\.lastPathComponent).joined(separator: "\n") + "\n\nDu kannst diese Aktion über Bearbeiten → Rückgängig widerrufen, solange die Einträge unverändert im Papierkorb liegen. Auch die Wiederherstellung im Finder bleibt möglich."
         alert.addButton(withTitle: "In den Papierkorb")
         alert.addButton(withTitle: "Abbrechen")
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: owner.presentationWindow!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.owner.operations.runItemOperation("In den Papierkorb legen", sources: sources) {
-                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
-            }
+            self?.trashLocalFiles(sources)
         }
     }
 }
