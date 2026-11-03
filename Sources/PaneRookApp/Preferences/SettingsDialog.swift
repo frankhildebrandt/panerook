@@ -129,11 +129,7 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         sidebar.spacing = 2
         sidebar.edgeInsets = NSEdgeInsets(top: 12, left: 8, bottom: 16, right: 8)
         add(sidebar, to: side)
-        search.cell = SettingsSearchFieldCell(textCell: "")
         search.placeholderString = "Suchen"
-        search.isBordered = false
-        search.drawsBackground = false
-        search.focusRingType = .none
         search.font = .systemFont(ofSize: 13)
         search.delegate = self
         search.sendsSearchStringImmediately = true

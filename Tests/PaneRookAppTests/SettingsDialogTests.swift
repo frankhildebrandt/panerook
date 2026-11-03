@@ -8,20 +8,50 @@ final class SettingsDialogTests: XCTestCase {
         view.subviews.flatMap { [$0] + descendants($0) }
     }
 
-    func testBorderlessSearchKeepsTextClearOfItsMagnifyingGlass() throws {
-        let cell = SettingsSearchFieldCell(textCell: "")
-        cell.isBordered = false
-        let bounds = NSRect(x: 0, y: 0, width: 208, height: 28)
-        XCTAssertGreaterThan(cell.searchTextRect(forBounds: bounds).minX, cell.searchButtonRect(forBounds: bounds).maxX)
-        XCTAssertGreaterThan(cell.searchTextRect(forBounds: bounds).width, 100)
-    }
-
     func testSearchFindsSettingLabelsAcrossCategories() {
         XCTAssertEqual(SettingsSection.allCases.filter { $0.matches("Zeilenhöhe") }, [.panels])
         XCTAssertEqual(SettingsSection.allCases.filter { $0.matches("Theme dunkel") }, [.appearance])
         XCTAssertEqual(SettingsSection.allCases.filter { $0.matches("F5") }, [.keyboard])
         XCTAssertEqual(SettingsSection.allCases.filter { $0.matches("VFS Timeout") }, [.connections])
         XCTAssertEqual(SettingsSection.allCases.filter { $0.matches("unbekannter Suchbegriff") }, [])
+    }
+
+    func testSearchAcceptsTypingAndClearsTheFilterWithItsCancelButton() throws {
+        _ = NSApplication.shared
+        let suite = "PaneRook-SettingsSearch-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let commander = CommanderController()
+        let preferences = PreferencesTools(owner: commander, defaults: defaults)
+        let dialog = SettingsDialog(preferences: preferences, section: .general, defaults: defaults,
+                                    updaterView: { NSView() }, onClose: {})
+        let window = try XCTUnwrap(dialog.window)
+        let root = try XCTUnwrap(window.contentView)
+        root.superview?.layoutSubtreeIfNeeded()
+        root.layoutSubtreeIfNeeded()
+        let search = try XCTUnwrap(descendants(root).compactMap { $0 as? NSSearchField }.first)
+        XCTAssertTrue(search.isEditable)
+        XCTAssertTrue(search.isSelectable)
+        XCTAssertTrue(window.makeFirstResponder(search))
+        let editor = try XCTUnwrap(search.currentEditor() as? NSTextView)
+        editor.insertText("Zeilenhöhe", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(search.stringValue, "Zeilenhöhe")
+        XCTAssertEqual(dialog.selectedSection, .panels)
+        XCTAssertTrue(window.firstResponder === editor)
+        let navigation = descendants(root).compactMap { $0 as? SettingsNavigationButton }
+        XCTAssertEqual(navigation.filter { !$0.isHidden }.map(\.title), ["Panels"])
+
+        editor.insertText("unbekannter Suchbegriff", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+        XCTAssertTrue(navigation.allSatisfy(\.isHidden))
+        XCTAssertTrue(descendants(root).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Keine Einstellungen gefunden" })
+
+        let cell = try XCTUnwrap(search.cell as? NSSearchFieldCell)
+        let cancel = try XCTUnwrap(cell.cancelButtonCell)
+        cancel.performClick(search)
+        XCTAssertEqual(search.stringValue, "")
+        XCTAssertTrue(navigation.allSatisfy { !$0.isHidden })
+        XCTAssertEqual(dialog.selectedSection, .panels)
+        XCTAssertFalse(descendants(root).compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Keine Einstellungen gefunden" })
     }
 
     func testEverySettingsPageFitsTheResizableDialogAndSearchNavigates() throws {
