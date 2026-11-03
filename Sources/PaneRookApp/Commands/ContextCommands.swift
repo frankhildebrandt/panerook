@@ -76,6 +76,8 @@ enum ContextCommands {
         add(.tasks, "tasks.cancel", "Ausgewählte Aufgabe abbrechen")
         add(.tasks, "tasks.clear", "Beendete Aufgaben entfernen")
         add(.tasks, "tasks.background", "Aufgabe in den Hintergrund / Fortschritt schließen", .character("b", modifiers: .option))
+        add(.tasks, "tasks.resume", "Transfer wiederholen / fortsetzen")
+        add(.tasks, "tasks.discardTransfer", "Offenen Transferauftrag verwerfen")
         add(.tasks, "tasks.reveal", "Aufgabenergebnis anzeigen")
         add(.results, "results.reveal", "Ausgewählten Treffer im Panel zeigen", .physical(36, characters: "\r"))
         add(.results, "results.panelize", "Treffer ins Panel übernehmen")
