@@ -249,7 +249,7 @@ final class CommandPaletteTests: XCTestCase {
         palette.search.stringValue = "Testaktion"; palette.reload()
         enabled = false
         palette.executeSelection()
-        XCTAssertEqual(runs, 0); XCTAssertTrue(palette.results.isEmpty)
+        XCTAssertEqual(runs, 0); XCTAssertFalse(tools.isPresented)
         tools.dismiss()
         let sheet = NSPanel(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
         window.beginSheet(sheet)
@@ -284,5 +284,55 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertTrue((window.firstResponder as? NSTextView)?.delegate === path)
         XCTAssertEqual(path.stringValue, "/ursprung/ordner")
         XCTAssertEqual((window.firstResponder as? NSTextView)?.selectedRange(), NSRange(location: 2, length: 3))
+    }
+
+    @MainActor func testPalettePreservesFileUndoAndClipboardPoliciesFromOriginalListFocus() throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("PaletteExchange-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("auswahl.txt")
+        try Data("Inhalt".utf8).write(to: file)
+        let pasteboard = try XCTUnwrap(NSPasteboard.withUniqueName())
+        defer { pasteboard.releaseGlobally() }
+        let commander = CommanderController()
+        commander.fileExchange = NativeFileExchange(owner: commander, pasteboard: pasteboard)
+        commander.commandRegistry = commander.makeCommandRegistry(defaults: defaults())
+        let window = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
+                               styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentViewController = commander
+        window.setContentSize(NSSize(width: 1100, height: 700))
+        defer { commander.commandPalette.dismiss(); window.close() }
+        commander.left.navigate(to: root)
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            commander.left.entries.contains { $0.name == "auswahl.txt" }
+        }, object: nil)], timeout: 5)
+        let row = try XCTUnwrap(commander.left.entries.firstIndex { $0.name == "auswahl.txt" })
+        commander.left.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        commander.activate(commander.left)
+        try commander.fileOperations.journal.createDirectory(named: "undo-test", in: root)
+        XCTAssertTrue(commander.fileOperations.canUndoFiles)
+        XCTAssertTrue(commander.fileExchange.canCopy(from: commander.left))
+
+        commander.commandPalette.show()
+        let palette = try XCTUnwrap(commander.commandPalette.controller)
+        XCTAssertNotNil(palette.search.currentEditor())
+        XCTAssertFalse(commander.fileOperations.canUndoFiles, "Typing in the search field must never perform file undo")
+        XCTAssertTrue(palette.results.contains { $0.id == "command:files.undo" && $0.title.contains("undo-test") })
+        palette.search.stringValue = "files.clipboard.copy"; palette.reload()
+        XCTAssertEqual(palette.results.first?.id, "command:files.clipboard.copy")
+        palette.executeSelection()
+        XCTAssertFalse(commander.commandPalette.isPresented)
+        XCTAssertEqual(try NativeFileURLs.read(from: pasteboard).map(\.standardizedFileURL.path), [file.standardizedFileURL.path])
+
+        commander.commandPalette.show()
+        let undoPalette = try XCTUnwrap(commander.commandPalette.controller)
+        undoPalette.search.stringValue = "files.undo"; undoPalette.reload()
+        XCTAssertEqual(undoPalette.results.first?.id, "command:files.undo")
+        undoPalette.executeSelection()
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !commander.fileOperations.isRestoringFiles
+        }, object: nil)], timeout: 5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("undo-test").path))
     }
 }

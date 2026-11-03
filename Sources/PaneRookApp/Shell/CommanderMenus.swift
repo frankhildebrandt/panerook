@@ -152,6 +152,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let command = menuItem.representedObject as? AppCommand else { return false }
         updateKey(menuItem)
+        menuItem.title = command.menuTitle?() ?? command.title
         menuItem.state = command.checked() ? .on : .off
         return command.enabled()
     }

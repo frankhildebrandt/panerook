@@ -45,10 +45,16 @@ extension CommandPaletteTools {
                 return registry.customizableCommands.filter {
                     $0.id != "commands.palette" && scopes.contains($0.scope)
                 }.map { command in
-                    CommandPaletteEntry(id: "command:" + command.id, title: command.title,
+                    // Capture before the search field takes focus. Policies such as
+                    // file undo and clipboard exchange require the original responder.
+                    // After dismissal, use that same live policy before dispatching.
+                    let enabledAtOrigin = command.enabled()
+                    return CommandPaletteEntry(id: "command:" + command.id, title: command.menuTitle?() ?? command.title,
                         detail: "Aktion · " + command.categoryTitle, keywords: command.id,
                         shortcut: bindings[command.id]?.label ?? "",
-                        enabled: { available() && command.enabled() }, run: { command.perform() })
+                        enabled: { [weak self] in
+                            available() && (self?.isPresented == true ? enabledAtOrigin : command.enabled())
+                        }, run: { command.perform() })
                 }
             },
             ClosureCommandPaletteSource(title: "Favoriten") { [favorites] in

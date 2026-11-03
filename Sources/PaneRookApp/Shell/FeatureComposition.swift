@@ -2,7 +2,7 @@ import AppKit
 import PaneRookRemote
 
 extension CommanderController: InspectionHost, RemoteHost, MetadataHost, WorkflowHost, PreferencesHost, FavoritesHost,
-    FileOperationsHost, PreviewHost, GitHost, CommandPaletteHost
+    FileOperationsHost, PreviewHost, GitHost, NativeFileExchangeHost, CommandPaletteHost
 {
     var presentationWindow: NSWindow? { view.window }
     var activePane: any PanelAccess { active }
@@ -41,6 +41,7 @@ extension CommanderController {
         registerCommands(in: registry)
         registerHelpCommands(in: registry)
         fileOperations.registerCommands(in: registry)
+        fileExchange.registerCommands(in: registry)
         preview.registerCommands(in: registry)
         metadata.registerCommands(in: registry)
         workflow.registerCommands(in: registry)

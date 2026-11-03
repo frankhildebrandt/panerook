@@ -134,6 +134,13 @@ final class TerminalKeyboardTests: XCTestCase {
             XCTAssertEqual(commander.active.mode, .terminal)
             XCTAssertFalse(commander.panelsHidden)
         }
+        for (code, text, flags) in [(UInt16(8), "c", NSEvent.ModifierFlags.command),
+                                    (UInt16(9), "v", NSEvent.ModifierFlags.command),
+                                    (UInt16(9), "v", NSEvent.ModifierFlags([.command, .option]))] {
+            XCTAssertFalse(try commander.handleGlobalKey(terminalEvent(code, text, flags)),
+                           "Command clipboard keys stay with the terminal responder")
+            XCTAssertFalse(commander.commandRegistry["files.clipboard.move"]?.enabled() ?? true)
+        }
         XCTAssertEqual(terminal.recorder.received, shellKeys.map { $0.0 })
         XCTAssertTrue(try commander.handleGlobalKey(terminalEvent(48, "\t", [.command, .option])))
         XCTAssertTrue(commander.active === commander.left)

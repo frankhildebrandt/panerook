@@ -27,6 +27,8 @@ const shortcuts = [
   ['Leertaste / F3 / ⌘Y', 'Quick Look anzeigen'],
   ['F4', 'Datei in TextEdit bearbeiten'],
   ['F5 / F6', 'Ins andere Panel kopieren / verschieben'],
+  ['⌘C / ⌘V', 'Lokale Dateien kopieren / im fokussierten Panel einsetzen'],
+  ['⌘⌥V', 'Dateien aus der Zwischenablage hierher verschieben'],
   ['F7 / ⌘⇧N', 'Einen Ordner anlegen'],
   ['F8 / ⌘⌫', 'In den Papierkorb legen; Archiveinträge endgültig löschen'],
   ['F9', 'Die Menüs im Fenster öffnen'],
@@ -111,6 +113,10 @@ const shortcuts = [
           <p><kbd>F5</kbd> kopiert die Auswahl, <kbd>F6</kbd> verschiebt sie. Der Dialog schlägt das andere Panel als Ziel vor. Du kannst den Zielpfad ändern und bei einem einzelnen Eintrag einen neuen Namen vergeben. Relative Ziele beziehen sich auf den Quellordner. Eine Quellmaske mit <code>*</code>, <code>?</code> oder Zeichenklassen grenzt die Auswahl ein.</p>
           <p><kbd>F7</kbd> legt einen neuen Ordner an. Mit <kbd>F8</kbd> oder <kbd>⌘⌫</kbd> legst du lokale Dateien in den macOS-Papierkorb. Im Menü <strong>Datei</strong> findest du außerdem Aktionen für Links, Zugriffsrechte, Eigentümer und Sparse-Dateien.</p>
           <div class="note"><p><strong>Zielnamen prüfen.</strong> PaneRook überschreibt keine bestehenden Ziele und führt Ordner nicht automatisch zusammen. Für Dateiaktionen gibt es kein Undo. Lokal gelöschte Dateien kannst du über den Finder aus dem Papierkorb zurückholen.</p></div>
+          <h3>Dateien ziehen und einsetzen</h3>
+          <p>In lokalen Dateilisten kopiert <kbd>⌘C</kbd> die Auswahl in die Datei-Zwischenablage. <kbd>⌘V</kbd> kopiert sie in den fokussierten Panelordner, <kbd>⌘⌥V</kbd> verschiebt sie. Das funktioniert auch mit im Finder kopierten Dateien. In Textfeldern und im Ghostty-Terminal bleiben die Kürzel Textaktionen.</p>
+          <p>Ziehe lokale Dateien zwischen den Panels oder aus Finder und Desktop auf einen Ordner oder die freie Listenfläche. Auf demselben Volume wird Verschieben angeboten, über Volume-Grenzen Kopieren. <kbd>⌥</kbd> wählt Kopieren, <kbd>⌘</kbd> Verschieben, sofern die Quell-App dies erlaubt. Einfügen und Drops öffnen den bestehenden Transferdialog und laufen nach Bestätigung über die Aufgaben-Queue; ungültige Ziele und Selbst-Drops werden abgewiesen.</p>
+          <p class="secondary-copy">Aus PaneRook zu anderen Apps gezogene Dateien werden als Kopien angeboten. Remote- und Archivinhalte zuerst mit <kbd>F5</kbd> lokal kopieren; virtuelle Pfade und Datei-Versprechen werden nicht ausgetauscht. Der Hintergrund einer Suchergebnisliste ist kein Einfügeziel. Namenskonflikte überschreiben keine Dateien.</p>
           <h3>Vorschau und Bearbeiten</h3>
           <p><kbd>Leertaste</kbd>, <kbd>F3</kbd> oder <kbd>⌘Y</kbd> öffnet Quick Look. <kbd>F4</kbd> öffnet eine lokale Datei in TextEdit. <kbd>Enter</kbd> verwendet die Standard-App oder deine konfigurierte App-Zuordnung. Für Text gibt es zusätzlich eine eingebaute Vorschau mit wählbarer Codierung.</p>
         </section>
@@ -164,7 +170,7 @@ const shortcuts = [
             <li><strong>Große Dateien:</strong> Textsuche und eingebaute Textvorschau lesen höchstens 1 MiB pro Datei. Datei- und Verzeichnisvergleiche prüfen reguläre Dateien bis 1 GiB pro Datei. Grenzen und nicht lesbare Einträge werden im Ergebnis gemeldet.</li>
             <li><strong>Archive:</strong> Die Verarbeitung ist auf 100.000 Einträge, 16 GiB je Datei und 64 GiB je Schreib- oder Entpackvorgang begrenzt. Für gelöschte Archiveinträge gibt es keinen Papierkorb.</li>
             <li><strong>Git:</strong> Rebase, interaktives Staging einzelner Hunks, Submodule-Verwaltung und die Bearbeitung der Remote-Konfiguration haben noch keine eigene Oberfläche.</li>
-            <li><strong>Arbeitsweise:</strong> Tabs, Drag &amp; Drop, ein interner Editor sowie Überschreiben, Zusammenführen und Wiederaufnahme in erweiterten Kopierdialogen sind noch nicht umgesetzt.</li>
+            <li><strong>Arbeitsweise:</strong> Tabs, ein interner Editor sowie Überschreiben, Zusammenführen und Wiederaufnahme in erweiterten Kopierdialogen sind noch nicht umgesetzt.</li>
           </ul>
           <p>Du hast einen Fehler gefunden oder eine Frage? Im <a href={`${repository}/issues`}>GitHub-Issuebereich</a> kannst du das Verhalten beschreiben und Verbesserungen vorschlagen.</p>
         </section>
