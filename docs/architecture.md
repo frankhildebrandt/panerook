@@ -13,6 +13,8 @@ PaneRook ist ein modularer Monolith. SwiftPM erzwingt die Grenzen der fachlichen
 
 Die Domain-Targets dürfen keine Oberfläche importieren. Es gibt keine Rückabhängigkeit auf `PaneRookApp`.
 
+Ghostty ist über `libghostty-spm` 1.5.2 mit festem Binär-Checksum eingebunden (Engine 1.3.1). `Terminal/GhosttyTerminalController` kapselt die native AppKit-Terminalansicht, Shell-Lebensdauer und OSC-7-Verzeichniswechsel hinter `TerminalPanelContent`. Der Panelcontroller behält seinen Dateilistenzustand und meldet im Terminalmodus das aktuelle Shell-Verzeichnis über `PanelAccess.directory`; vorhandene lokale und Remote-Transfers erfassen dadurch dasselbe Ziel wie bei Dateipanels. Shell-Integration und Terminfo liegen als SwiftPM-Ressourcenbundle in `Contents/Resources`. Nicht-Command-Tasten umgehen im Terminal die Hauptfensteraktionen und AppKit-Menükürzel; ein eigener, belegbarer Panelwechsel erhält Tab für die Shell.
+
 Sparkle ist als feste SwiftPM-Paketversion eingebunden und bleibt auf die App-Schicht begrenzt. Das App-Buildskript kopiert das dynamische Framework samt Hilfsprozessen in `Contents/Frameworks` und signiert die Bestandteile vor dem umgebenden App-Bundle. Der ausführbare Einstieg enthält den passenden Framework-Suchpfad.
 
 ## Zuständigkeiten in der App
@@ -72,3 +74,5 @@ Reine Verschiebungen und breite Umbenennungen früh integrieren, bevor mehrere F
 `swift test` führt Domain-Tests, Remote-Vertragstests, Panelzustands-, Befehls- und App-Zusammenstellungstests aus. `ArchitectureBoundaryTests` verhindert Rückgriffe von Features auf konkrete Shell-/Panelcontroller sowie UI-Imports in Domain-Targets. Eigene Testtargets für Tasks, Remote und Panels prüfen die Bereiche getrennt von der App.
 
 `./scripts/build-app.sh` erstellt das vollständige App-Bundle. In eingeschränkten Build-Umgebungen gelten die in der README dokumentierten Cache- und Sandboxoptionen. Die automatischen AppKit-Tests bauen Ansicht und Menüs ohne sichtbares Fenster auf; interaktive Fokusabläufe und echte Remote-Server benötigen weiterhin manuelle Prüfung.
+
+Die optionalen nativen Ghostty-Laufzeittests starten eine echte Shell und werden mit `PANEROOK_TEST_GHOSTTY=1 swift test --filter GhosttyRuntimeTests` aktiviert. Die normalen Terminal-Paneltests verwenden einen injizierten Ersatz und prüfen unter anderem tatsächlich ausgeführte Transfers mit erfasstem Shell-Ziel.

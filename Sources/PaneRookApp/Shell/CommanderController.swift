@@ -38,7 +38,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     var menuIsTracking: (() -> Bool)?
     var onKeyBindingsChanged: (() -> Void)?
     var canUseMenus: Bool { view.window?.attachedSheet == nil && view.window?.isKeyWindow == true }
-    var canUseSelection: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && !active.selectedFiles.isEmpty }
+    var canUseSelection: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && active.mode != .terminal && !active.selectedFiles.isEmpty }
     var canUseLocalDirectory: Bool { canUseMenus && !panelsHidden && active.remoteContent == nil && active.mode != .network && active.mode != .gitHistory }
     var canUseNativeDirectory: Bool { canUseLocalDirectory && !active.isArchiveDirectory }
     var canUseNativeSelection: Bool {
@@ -306,7 +306,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     @objc func goUp() { active.goUp() }
     @objc func goHome() { active.navigate(to: FileManager.default.homeDirectoryForCurrentUser) }
     @objc func focusPath() {
-        if active.mode == .gitHistory { active.setMode(.listing) }
+        if active.mode == .gitHistory || active.mode == .terminal { active.setMode(.listing) }
         if let remote = active.remoteContent { remote.focusPath(); return }
         view.window?.makeFirstResponder(active.pathField)
         active.pathField.selectText(nil)
@@ -353,6 +353,17 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     /// Called before AppKit's key-equivalent pass, so physical custom keys work on any layout.
     func handleGlobalKey(_ event: NSEvent) -> Bool {
         guard canHandleMainKeys, event.window === view.window else { return false }
+        if !panelsHidden, active.hasTerminalKeyboardFocus {
+            if commandRegistry.bindings["panels.switch.terminal"]?.matches(event) == true {
+                return commandRegistry["panels.switch.terminal"]?.perform() == true
+            }
+            // Send shell keys before AppKit tries menu equivalents: Ctrl-O,
+            // function keys and remapped Ctrl/Option shortcuts belong to Ghostty.
+            if !event.modifierFlags.contains(.command) {
+                view.window?.firstResponder?.keyDown(with: event)
+                return true
+            }
+        }
         if !panelsHidden, let remote = active.remoteContent as? RemoteBrowser, remote.handleContextKey(event) { return true }
         if panelsHidden, let action = commandRegistry.matching(event, scope: .console) {
             action.perform(); return true

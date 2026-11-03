@@ -77,6 +77,8 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
     /// Physical remappings also work in field editors and auxiliary windows.
     private func handleTextEditingKey(_ event: NSEvent) -> Bool {
+        if event.window === commander.view.window, commander.active.hasTerminalKeyboardFocus,
+           !event.modifierFlags.contains(.command) { return false }
         guard let window = event.window, window.isKeyWindow,
               let command = commander.commandRegistry.matching(event, scope: .textEditing),
               let binding = commander.commandRegistry.bindings[command.id] else { return false }

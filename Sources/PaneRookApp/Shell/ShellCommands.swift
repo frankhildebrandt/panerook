@@ -16,21 +16,21 @@ extension CommanderController {
             .file, "Gruppe auswählen …", id: "selection.selectGroup", order: 180, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.mode != .terminal
             }
         ) { [weak self] in self?.selectGroup(select: true) }
         registry.add(
             .file, "Gruppe abwählen …", id: "selection.deselectGroup", order: 190, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.mode != .terminal
             }
         ) { [weak self] in self?.selectGroup(select: false) }
         registry.add(
             .file, "Auswahl umkehren", id: "selection.invert", order: 200, group: 1,
             enabled: { [weak self] in
                 guard let self else { return false }
-                return self.canUseMenus
+                return self.canUseMenus && self.active.mode != .terminal
             }
         ) { [weak self] in self?.active.invertSelection() }
         registry.add(
@@ -177,6 +177,9 @@ extension CommanderController {
 
     private func registerKeyboardCommands(in registry: CommandRegistry) {
         let panelAvailable: () -> Bool = { [weak self] in self?.canUseMenus == true && self?.panelsHidden == false }
+        registry.add(.command, "Panel wechseln (auch im Terminal)", id: "panels.switch.terminal", order: 299, group: 4,
+            binding: .physical(48, characters: "\t", modifiers: [.command, .option]), enabled: panelAvailable
+        ) { [weak self] in guard let self else { return }; self.activate(self.other) }
         let actions: [(String, String, AppKeyBinding?, () -> Void)] = [
             ("panels.switch", "Panel wechseln", .physical(48, characters: "\t"), { [weak self] in guard let self else { return }; self.activate(self.other) }),
             ("panels.switch.reverse", "Panel wechseln (rückwärts)", .physical(48, characters: "\t", modifiers: .shift), { [weak self] in guard let self else { return }; self.activate(self.other) }),

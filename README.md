@@ -2,7 +2,7 @@
 
 # PaneRook
 
-Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, mit Sparkle für App-Updates, ohne eingebettetes Terminal.
+Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, mit Sparkle für App-Updates und eingebettetem Ghostty-Terminal.
 
 ## Download
 
@@ -33,7 +33,7 @@ Die Build-Targets verwenden `scripts/build-app.sh`.
 
 Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es ohne weitere Konfiguration lokal ad hoc.
 
-SwiftPM lädt die festgelegte Sparkle-Version **2.10.0** beim ersten Build. Das Buildskript bettet das Framework und seine Helfer in das App-Bundle ein und signiert sie. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` bleiben Update-Funktionen im Entwicklungsbuild deaktiviert; das gilt auch beim Start des bloßen SwiftPM-Executables.
+SwiftPM lädt die festgelegte Sparkle-Version **2.10.0** sowie **libghostty-spm 1.5.2** (Ghostty **1.3.1**, MIT) beim ersten Build. Ghostty wird statisch verlinkt; das Buildskript legt Shell-Integration, Terminfo und Lizenztexte ins App-Bundle. Das Buildskript bettet außerdem das Sparkle-Framework und seine Helfer in das App-Bundle ein und signiert sie. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` bleiben Update-Funktionen im Entwicklungsbuild deaktiviert; das gilt auch beim Start des bloßen SwiftPM-Executables.
 
 Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsummen:
 
@@ -98,9 +98,11 @@ Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY
 
 ## Funktionen und Bedienung
 
-PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Verbindungen und Hintergrundaufgaben. Die [Nutzerdokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/) erklärt Einstieg und Bedienung; ausführliche zusätzliche Hinweise stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
+PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Verbindungen, einem Ghostty-Terminal und Hintergrundaufgaben. Die [Nutzerdokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/) erklärt Einstieg und Bedienung; ausführliche zusätzliche Hinweise stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
 
 Über **Links/Rechts → Git-Diff und Verlauf** oder **⌘⌥G** wird ein Panel zum Git-Viewer. Der Viewer folgt dem Ordner und der ausgewählten Datei oder dem Verzeichnis im anderen Panel. Commit-Auswahl und Älter/Neuer navigieren durch die zugehörigen Versionen, mit Diff, damaligem Dateiinhalt und aktuellen Arbeitskopie-/Staged-Änderungen. **Dateiliste** kehrt zur bisherigen Auswahl zurück.
+
+**Links/Rechts → Ghostty-Terminal** öffnet eine interaktive Shell im bisherigen Panelordner. Das andere Panel verwendet das aktuelle Terminalverzeichnis als Ziel für **F5 Kopieren** und **F6 Verschieben**. Verzeichniswechsel mit `cd` aktualisieren dieses Ziel; der beim Öffnen des Transferdialogs angezeigte Pfad bleibt für den Auftrag fest. **⌘⌥Tab** wechselt zwischen den Panels, während Tab und Ctrl-Tasten im Terminal der Shell gehören. **Dateiliste** blendet die bisherige Dateiliste wieder ein; das Terminal bleibt für den erneuten Aufruf erhalten. Ghostty ist eingebettet und muss nicht separat installiert werden.
 
 ## Architektur
 
@@ -124,7 +126,7 @@ Kopier- und Verschiebeaktionen fragen nach und überschreiben keine bestehenden 
 
 Inhaltssuche und die eigene Textvorschau lesen höchstens 1 MiB pro Datei. Die Suche endet bei 10.000 Treffern oder 250.000 geprüften Einträgen. Datei- und Verzeichnisvergleiche vergleichen reguläre Dateien bis 1 GiB pro Datei; der Verzeichnisvergleich ist auf 100.000 Einträge je Seite begrenzt. Ordnergrößen werden bis 1.000.000 Einträge berechnet. Symbolische Links werden bei diesen rekursiven Werkzeugen nicht verfolgt. Begrenzungen und nicht lesbare Einträge werden im Ergebnis gemeldet. Shell-Ausgaben werden zur Anzeige auf 4 MiB je Ausgabestrom begrenzt.
 
-Noch offen: interaktives Terminal/PTY, interner Editor, Tabs, Drag & Drop, automatische Dateisystembeobachtung und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Wiederaufnahme. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
+Noch offen: interner Editor, Tabs, Drag & Drop, automatische Dateisystembeobachtung und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Wiederaufnahme. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
 
 ## Lizenz
 

@@ -6,6 +6,7 @@ extension CommanderController {
         for (index, pair) in [
             ("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree), ("Netzwerk", .network),
             ("Git-Diff und Verlauf", .gitHistory),
+            ("Ghostty-Terminal", .terminal),
         ].enumerated() {
             let (title, mode) = pair
             registry.add(
@@ -14,6 +15,7 @@ extension CommanderController {
                     guard let self else { return false }
                     return self.canUseMenus && (pane.remoteContent == nil || mode == .listing)
                         && (mode != .tree || pane.remoteContent != nil || !pane.isArchiveDirectory)
+                        && (mode != .terminal || !pane.isArchiveDirectory)
                 }, checked: { pane.remoteContent != nil ? mode == .listing : pane.mode == mode }
             ) { [weak self] in
                 guard let self else { return }
