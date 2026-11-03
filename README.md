@@ -106,6 +106,8 @@ PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Ver
 
 **Links/Rechts → Ghostty-Terminal** öffnet eine interaktive Shell im bisherigen Panelordner. Das andere Panel verwendet das aktuelle Terminalverzeichnis als Ziel für **F5 Kopieren** und **F6 Verschieben**. Verzeichniswechsel mit `cd` aktualisieren dieses Ziel; der beim Öffnen des Transferdialogs angezeigte Pfad bleibt für den Auftrag fest. **⌘⌥Tab** wechselt zwischen den Panels, während Tab und Ctrl-Tasten im Terminal der Shell gehören. **Dateiliste** blendet die bisherige Dateiliste wieder ein; das Terminal bleibt für den erneuten Aufruf erhalten. Ghostty ist eingebettet und muss nicht separat installiert werden.
 
+**Befehl → Ordner synchronisieren …** gleicht zwei lokale Ordner in einer gewählten Richtung ab: mit Änderungsvorschau, auswählbaren Aktionen, Ausschlussmustern und gespeicherten Profilen. Zusätzliche Zieleinträge bleiben standardmäßig erhalten; endgültige Löschungen benötigen eine aktivierte Option und eine sichtbare Ausführungsbestätigung. Details und Grenzen stehen unter [Ordner synchronisieren](docs/bedienungsreferenz.md#ordner-synchronisieren).
+
 Lokale Dateien lassen sich per Drag & Drop zwischen Dateilisten und aus Finder oder Desktop übernehmen. **⌘C/⌘V** kopieren Dateien, **⌘⌥V** verschiebt sie in den fokussierten Panelordner. Eingehende Drops und Einfügen verwenden den bestehenden Transferdialog und die Aufgaben-Queue. Ausgehende Drops an andere Apps bieten Kopieren an; Remote-/Archivinhalte müssen zuerst mit F5 lokal kopiert werden. Textfelder und Ghostty behalten ihre Text-Zwischenablage. Details stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#drag--drop-und-datei-zwischenablage).
 
 ## Architektur
