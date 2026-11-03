@@ -190,12 +190,3 @@ private final class SettingsNavigationCell: NSButtonCell {
         return [.contentArea, .trackableArea]
     }
 }
-
-/// Preserve the native search/cancel controls without a separate, unthemed bezel.
-final class SettingsSearchFieldCell: NSSearchFieldCell {
-    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
-        let text = super.searchTextRect(forBounds: rect)
-        let leading = searchButtonRect(forBounds: rect).maxX + 6
-        return NSRect(x: leading, y: text.minY, width: max(0, text.maxX - leading), height: text.height)
-    }
-}
