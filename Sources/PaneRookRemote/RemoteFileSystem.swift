@@ -4,7 +4,7 @@ import Foundation
 public final class RemoteFileSystem: @unchecked Sendable {
     public typealias Runner = (RemoteInvocation, RemoteCancellation) throws -> Data
     public let connection: RemoteConnection
-    private let transport: any RemoteTransport
+    let transport: any RemoteTransport
     public init(connection: RemoteConnection, runner: @escaping Runner = RemoteFileSystem.run) {
         self.connection = connection
         self.transport = RemoteProviderRegistry.makeTransport(connection: connection, runner: runner)

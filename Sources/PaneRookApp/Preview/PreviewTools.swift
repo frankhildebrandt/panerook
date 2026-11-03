@@ -13,6 +13,7 @@ protocol PreviewHost: PanelPresenting, ErrorPresenting, TaskProviding {
 final class PreviewTools: NSObject, QLPreviewPanelDataSource {
     unowned let owner: any PreviewHost
     private var previewURLs: [URL] = []
+    lazy var remoteEdits = RemoteEditTools(owner: owner)
     init(owner: any PreviewHost) { self.owner = owner }
     func openSelection() {
         if let remote = owner.activePane.remoteContent { remote.openSelection(); return }
@@ -96,6 +97,10 @@ final class PreviewTools: NSObject, QLPreviewPanelDataSource {
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! { previewURLs[index] as NSURL }
 
     func editSelection() {
+        if let remote = owner.activePane.remoteContent {
+            remoteEdits.edit(remote.remoteEditRequests)
+            return
+        }
         guard owner.canUseNativeSelection else {
             if owner.activePane.isArchiveDirectory {
                 owner.showError(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Zum Bearbeiten die Datei zuerst in einen lokalen Ordner kopieren."]),
@@ -106,9 +111,6 @@ final class PreviewTools: NSObject, QLPreviewPanelDataSource {
         let files = owner.activePane.selectedEntries.filter { !$0.isParent && !$0.isDirectory }.map(\.url)
         guard !files.isEmpty else { NSSound.beep(); return }
         owner.recordFiles(files)
-        let app = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
-        NSWorkspace.shared.open(files, withApplicationAt: app, configuration: .init()) { [weak self] _, error in
-            if let error { DispatchQueue.main.async { self?.owner.showError(error) } }
-        }
+        remoteEdits.openEditor(files)
     }
 }

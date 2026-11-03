@@ -28,12 +28,18 @@ extension RemoteFileSystem {
         let collectedOutput = RemoteDataBox(), collectedErrors = RemoteDataBox()
         if fileOutput == nil {
             group.enter(); DispatchQueue.global().async {
-                Self.collect(output.fileHandleForReading, into: collectedOutput, limit: 16 * 1024 * 1024, stopOnOverflow: process)
+                Self.collect(output.fileHandleForReading, into: collectedOutput, limit: 16 * 1024 * 1024, stopOnOverflow: process,
+                             input: invocation.closeInputAfterOutput == nil ? nil : input.fileHandleForWriting,
+                             closeInputWhen: invocation.closeInputAfterOutput)
                 group.leave()
             }
         }
         group.enter(); DispatchQueue.global().async { Self.collect(errors.fileHandleForReading, into: collectedErrors, limit: 8192); group.leave() }
-        if let bytes = invocation.input { try input.fileHandleForWriting.write(contentsOf: bytes); try input.fileHandleForWriting.close() }
+        if let bytes = invocation.input {
+            try input.fileHandleForWriting.write(contentsOf: bytes)
+            if invocation.closeInputAfterOutput == nil { try input.fileHandleForWriting.close() }
+        }
+        defer { try? input.fileHandleForWriting.close() }
         process.waitUntilExit(); group.wait()
         try token.check()
         guard !collectedOutput.overflow else { throw RemoteError.process("Die Serverantwort überschreitet 16 MB. Bitte ein kleineres Unterverzeichnis öffnen.") }
@@ -44,10 +50,17 @@ extension RemoteFileSystem {
         return collectedOutput.data
     }
 
-    private static func collect(_ handle: FileHandle, into box: RemoteDataBox, limit: Int, stopOnOverflow process: Process? = nil) {
-        while let chunk = try? handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+    private static func collect(_ handle: FileHandle, into box: RemoteDataBox, limit: Int, stopOnOverflow process: Process? = nil,
+                                input: FileHandle? = nil, closeInputWhen: ((Data) -> Bool)? = nil) {
+        var inputClosed = false
+        while true {
+            let chunk = closeInputWhen == nil ? (try? handle.read(upToCount: 64 * 1024)) ?? Data() : handle.availableData
+            if chunk.isEmpty { break }
             let available = max(0, limit - box.data.count)
             box.data.append(chunk.prefix(available))
+            if !inputClosed, closeInputWhen?(box.data) == true {
+                try? input?.close(); inputClosed = true
+            }
             if chunk.count > available {
                 box.overflow = true
                 if process?.isRunning == true { process?.terminate() }

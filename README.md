@@ -104,6 +104,8 @@ PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Ver
 
 **Links/Rechts → Ghostty-Terminal** öffnet eine interaktive Shell im bisherigen Panelordner. Das andere Panel verwendet das aktuelle Terminalverzeichnis als Ziel für **F5 Kopieren** und **F6 Verschieben**. Verzeichniswechsel mit `cd` aktualisieren dieses Ziel; der beim Öffnen des Transferdialogs angezeigte Pfad bleibt für den Auftrag fest. **⌘⌥Tab** wechselt zwischen den Panels, während Tab und Ctrl-Tasten im Terminal der Shell gehören. **Dateiliste** blendet die bisherige Dateiliste wieder ein; das Terminal bleibt für den erneuten Aufruf erhalten. Ghostty ist eingebettet und muss nicht separat installiert werden.
 
+**F4** bearbeitet lokale Dateien und verwaltete Remote-Arbeitskopien im wählbaren Editor. **Datei → Remote-Arbeitskopien …** zeigt Änderungen und lädt sie auf Wunsch mit Versionsprüfung und erhaltener Serversicherung zurück (SFTP, SSH und Nextcloud). Details und die FTP-Grenze stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#remote-dateien-bearbeiten).
+
 ## Architektur
 
 - `Sources/PaneRook/`: ausführbarer Einstieg.

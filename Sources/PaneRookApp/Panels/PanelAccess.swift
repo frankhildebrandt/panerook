@@ -1,6 +1,13 @@
 import AppKit
 import PaneRookCore
 import PaneRookPanels
+import PaneRookRemote
+
+/// Captured endpoint and path remain valid when the panel navigates or disconnects.
+struct RemoteEditRequest {
+    let fileSystem: RemoteFileSystem
+    let path: String
+}
 
 /// A connection occupies one panel while its local directory is retained for disconnecting.
 protocol RemotePanelContent: AnyObject {
@@ -14,6 +21,7 @@ protocol RemotePanelContent: AnyObject {
     var canMove: Bool { get }
     var canRename: Bool { get }
     var canPreview: Bool { get }
+    var remoteEditRequests: [RemoteEditRequest] { get }
     var showHidden: Bool { get set }
     var sortKey: String { get }
     var sortAscending: Bool { get }
@@ -48,6 +56,7 @@ extension RemotePanelContent {
     var canMove: Bool { false }
     var canRename: Bool { false }
     var canPreview: Bool { false }
+    var remoteEditRequests: [RemoteEditRequest] { [] }
     var showHidden: Bool { get { false } set {} }
     var sortKey: String { "name" }
     var sortAscending: Bool { true }

@@ -3,6 +3,9 @@ import Foundation
 /// Primitive operations only. Recursion, collision checks, staging and publication
 /// belong to RemoteFileSystem and apply identically to every transport.
 protocol RemoteTransport {
+    /// Editing requires publication that fails if another writer created the destination.
+    var supportsExclusiveRename: Bool { get }
+    func moveExclusively(_ path: String, to destination: String, token: RemoteCancellation) throws
     func list(_ path: String, token: RemoteCancellation) throws -> [RemoteEntry]
     func createDirectory(_ path: String, token: RemoteCancellation) throws
     func download(_ path: String, to destination: URL, token: RemoteCancellation) throws
@@ -10,6 +13,19 @@ protocol RemoteTransport {
     func move(_ path: String, to destination: String, token: RemoteCancellation) throws
     func remove(_ path: String, directory: Bool, token: RemoteCancellation) throws
 }
+
+extension RemoteTransport {
+    var supportsExclusiveRename: Bool { false }
+    func moveExclusively(_ path: String, to destination: String, token: RemoteCancellation) throws {
+        guard supportsExclusiveRename else { throw RemoteEditError.unsafePublication }
+        try move(path, to: destination, token: token)
+    }
+}
+
+extension SSHTransport { var supportsExclusiveRename: Bool { true } }
+// The CLI's rename uses POSIX semantics. Remote Edit explicitly sends v3 RENAME.
+extension SFTPTransport { var supportsExclusiveRename: Bool { true } }
+extension NextcloudWebDAV { var supportsExclusiveRename: Bool { true } }
 
 extension NextcloudWebDAV: RemoteProvider {
     func remove(_ path: String, directory: Bool, token: RemoteCancellation) throws {

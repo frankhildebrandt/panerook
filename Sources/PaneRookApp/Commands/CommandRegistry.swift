@@ -19,7 +19,7 @@ enum CommandMenu: String, CaseIterable {
 }
 
 enum CommandScope: String, CaseIterable {
-    case application, panel, textEditing, dialog, remote, connections, git, tasks, favorites, results, network, console, table
+    case application, panel, textEditing, dialog, remote, remoteEdit, connections, git, tasks, favorites, results, network, console, table
     var title: String {
         switch self {
         case .application: return "Hauptfenster"
@@ -27,6 +27,7 @@ enum CommandScope: String, CaseIterable {
         case .textEditing: return "Textbearbeitung"
         case .dialog: return "Dialoge"
         case .remote: return "Remote-Panels"
+        case .remoteEdit: return "Remote-Arbeitskopien"
         case .connections: return "Verbindungsarchiv"
         case .git: return "Git-Workspace"
         case .tasks: return "Aufgaben"

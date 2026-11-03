@@ -18,6 +18,14 @@ private final class RemoteReadableFiles {
 }
 
 extension RemoteBrowser {
+    var remoteEditRequests: [RemoteEditRequest] {
+        guard !busy, !disconnected, !selection.isEmpty,
+              selection.allSatisfy({ $0.isRegularFile && !$0.isSymbolicLink }) else { return [] }
+        return selection.compactMap { entry in
+            guard let path = try? RemoteFileSystem.normalizedPath(entry.name, relativeTo: directory) else { return nil }
+            return RemoteEditRequest(fileSystem: fileSystem, path: path)
+        }
+    }
     var canMove: Bool { canDownload }
     var canRename: Bool { !busy && !disconnected && selection.count == 1 && selection.first?.isSymbolicLink == false }
     var canPreview: Bool { !busy && selection.contains { $0.isRegularFile && !$0.isSymbolicLink } }
