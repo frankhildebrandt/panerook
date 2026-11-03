@@ -65,7 +65,7 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertEqual(registry.commands(in: .file).count, 22)
-        XCTAssertEqual(registry.commands(in: .command).count, 33)
+        XCTAssertEqual(registry.commands(in: .command).count, 34)
         XCTAssertNotNil(registry["git.pane"])
         XCTAssertNotNil(registry["left.mode.5"])
         XCTAssertNotNil(registry["right.mode.5"])
