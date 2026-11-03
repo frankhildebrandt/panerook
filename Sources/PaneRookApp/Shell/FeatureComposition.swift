@@ -2,13 +2,22 @@ import AppKit
 import PaneRookRemote
 
 extension CommanderController: InspectionHost, RemoteHost, MetadataHost, WorkflowHost, PreferencesHost, FavoritesHost,
-    FileOperationsHost, PreviewHost, GitHost, NativeFileExchangeHost
+    FileOperationsHost, PreviewHost, GitHost, NativeFileExchangeHost, CommandPaletteHost
 {
     var presentationWindow: NSWindow? { view.window }
     var activePane: any PanelAccess { active }
     var leftPane: any PanelAccess { left }
     var rightPane: any PanelAccess { right }
     var otherPane: any PanelAccess { other }
+    var canPresentCommandPalette: Bool {
+        canUseMenus && !commandPalette.isPresented && !KeyboardCaptureState.isRecording
+    }
+    var paletteCommandScopes: Set<CommandScope> {
+        var scopes: Set<CommandScope> = [.application]
+        if panelsHidden { scopes.insert(.console) }
+        else if active.hasPanelKeyboardFocus && !active.hasTerminalKeyboardFocus { scopes.insert(.panel) }
+        return scopes
+    }
     func activate(_ pane: any PanelAccess) {
         if pane === left { activate(left) } else if pane === right { activate(right) }
     }
@@ -40,6 +49,7 @@ extension CommanderController {
         remote.registerCommands(in: registry)
         git.registerCommands(in: registry)
         preferences.registerCommands(in: registry)
+        commandPalette.registerCommands(in: registry)
         for (menu, pane) in [(CommandMenu.left, left), (.right, right)] {
             registerPanelCommands(in: registry, menu: menu, pane: pane)
             remote.registerPanelCommands(in: registry, menu: menu, pane: pane)

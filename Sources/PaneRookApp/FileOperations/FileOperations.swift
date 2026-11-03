@@ -68,13 +68,13 @@ final class FileOperations {
         guard !sources.isEmpty else { NSSound.beep(); return }
         let destination = rename ? owner.activePane.directory : owner.otherPane.directory
         confirmTransfer(sources: sources, sourceDirectory: owner.activePane.directory,
-            destination: destination, kind: kind, focusPane: owner.activePane, window: window)
+            destination: destination, kind: kind, rename: rename, focusPane: owner.activePane, window: window)
     }
 
     /// Every entry point captures its inputs before presenting the shared transfer dialog.
     func confirmTransfer(sources: [URL], sourceDirectory: URL, destination: URL, kind: TransferKind,
-                         focusPane: any PanelAccess, window: NSWindow) {
-        let verb = kind == .copy ? "Kopieren" : "Verschieben"
+                         rename: Bool = false, focusPane: any PanelAccess, window: NSWindow) {
+        let verb = rename ? "Umbenennen" : kind == .copy ? "Kopieren" : "Verschieben"
         let dialog = TransferDialog(sources: sources, sourceDirectory: sourceDirectory,
             destinationDirectory: destination, kind: kind) { [weak self] plan in
             guard let self else { return }
@@ -89,7 +89,7 @@ final class FileOperations {
                             && (ArchiveFileSystem.location(for: item.destination)?.memberPath.isEmpty ?? true)
                     }
                     if isLocalMove {
-                        try self.journal.move(plan, title: rename ? "Umbenennen" : "Verschieben", cancellation: token, progress: report)
+                        try self.journal.move(plan, title: verb, cancellation: token, progress: report)
                     } else {
                         try plan.execute(cancellation: token, progress: report)
                     }

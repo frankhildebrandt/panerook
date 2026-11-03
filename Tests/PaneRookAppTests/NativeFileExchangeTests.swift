@@ -307,6 +307,25 @@ final class NativeFileExchangeTests: XCTestCase {
         XCTAssertFalse(exchange.canPaste(into: right))
     }
 
+    @MainActor func testSharedTransferConfirmationPreservesRenameJournalTitle() throws {
+        let (left, _, host, exchange) = try fixture()
+        _ = exchange
+        let window = try XCTUnwrap(host.presentationWindow)
+        let original = try XCTUnwrap(urls.first)
+        let renamed = source.appendingPathComponent("neuer Name.txt")
+        host.fileOperations.confirmTransfer(sources: [original], sourceDirectory: source,
+            destination: source, kind: .move, rename: true, focusPane: left, window: window)
+        let sheet = try XCTUnwrap(window.attachedSheet)
+        let destination = try XCTUnwrap(descendants(try XCTUnwrap(sheet.contentView))
+            .compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Zielpfad" })
+        destination.stringValue = renamed.path
+        try confirmSheet(on: window, title: "Verschieben")
+        eventually { host.refreshed == 1 }
+        XCTAssertEqual(host.fileOperations.journal.nextUndo?.title, "Umbenennen")
+        XCTAssertEqual(try Data(contentsOf: renamed), Data("Inhalt 0".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+    }
+
     @MainActor func testRegistryPreservesNativeEditingIDsAndScopesMoveToPanels() throws {
         let (_, _, host, exchange) = try fixture()
         _ = host
@@ -324,7 +343,7 @@ final class NativeFileExchangeTests: XCTestCase {
         let local = CommandRegistry(defaults: defaults)
         exchange.registerCommands(in: local)
         XCTAssertNil(local.bindings["files.clipboard.copy"], "Cmd-C belongs to the native editing action")
-        XCTAssertNoThrow(try registry.setBinding(.physical(35, characters: "p", modifiers: [.command, .shift]), for: "files.clipboard.move"))
+        XCTAssertNoThrow(try registry.setBinding(.physical(35, characters: "p", modifiers: [.command, .control]), for: "files.clipboard.move"))
         XCTAssertEqual(registry.bindings["files.clipboard.move"]?.keyCode, 35)
     }
 }

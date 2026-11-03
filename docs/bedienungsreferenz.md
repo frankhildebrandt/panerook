@@ -63,6 +63,7 @@ Lokale Kopien zeigen übertragene Bytes für die aktuelle Datei und die gesamte 
 | ⌘⇧R | Im Finder zeigen |
 | ⌘⇧F | Dateien suchen |
 | ⌘K | Verbindungsarchiv |
+| ⌘⇧P | Befehlspalette öffnen |
 | Ctrl-O | Panels ein-/ausblenden; bei ausgeblendeten Panels einen Shell-Befehl eingeben |
 | Ctrl-D | Verzeichnis-Hotlist |
 
@@ -70,6 +71,15 @@ Dies ist die Standardbelegung. **Einstellungen** (**⌘,**) → **Tastatur → B
 
 Die Bereiche unterscheiden Hauptfenster, Dateipanels, Textbearbeitung, Konsole, Dialoge, Git, Remote-Panels, Verbindungsarchiv, Aufgaben, Suchergebnisse und Netzwerk. Dieselbe Kombination darf in getrennten Fenstern unterschiedliche Aktionen auslösen; Konflikte innerhalb gleichzeitig aktiver Bereiche verhindern das Speichern. Alternative Kürzel einer Aktion, etwa Enter und Enter auf dem Ziffernblock oder F3 und ⌘Y, sind als eigene Einträge anpassbar. Normale Zeicheneingaben in Textfeldern bleiben erhalten; reine Zeichenbelegungen für Dateiaktionen gelten in den Listen. Dialogbestätigung und Abbruch (standardmäßig Enter beziehungsweise Esc/F10/Ctrl-G) sind ebenfalls anpassbar. In Remote-Panels gelten für Kopieren/Herunterladen, neue Ordner, Löschen, Öffnen und Navigation dieselben Belegungen wie im Hauptfenster. Zusätzliche Remote-Belegungen lassen sich separat vergeben; F10 bricht einen Remote-Vorgang ab oder trennt die aktive Verbindung. Menüeinträge, die Funktionstastenleiste und die Tastaturhilfe zeigen die aktuelle Belegung. Auf Apple-Tastaturen brauchen die Funktionstasten je nach Systemeinstellung zusätzlich **fn**.
 
+## Befehlspalette
+
+**Befehl → Befehlspalette …** (**⌘⇧P**) öffnet eine durchsuchbare Einblendung im Hauptfenster. Sie enthält aktuell verfügbare Aktionen mit ihren eingestellten Tastenkürzeln, eigene Ordnerfavoriten aus der Hotlist, gespeicherte Verbindungen, bekannte Git-Worktrees und besuchte Ordner beider Panels. Der vollständige Pfad beziehungsweise Verbindungstyp und Server unterscheiden gleichnamige Ziele. Ein Ordner, der zugleich Favorit und besuchter Ort ist, erscheint nur einmal. Nicht erreichbare Favoriten bleiben auffindbar; ein Fehler beim Öffnen wird wie bei normaler Panelnavigation gemeldet. Als entfernbar markierte und Bare-Worktrees werden ausgelassen.
+
+Die Suche berücksichtigt Namen, Kategorien, Pfade, Branches, Server, Benutzer und Aktionskennungen. Groß-/Kleinschreibung und Akzente spielen keine Rolle. Mehrere durch Leerzeichen getrennte Suchbegriffe müssen alle passen; Abkürzungen dürfen Buchstaben auslassen, solange deren Reihenfolge stimmt. Genaue Namen, Wortanfänge und zusammenhängende Treffer stehen vor weit gestreuten Abkürzungen. Ohne Suchtext stehen Aktionen zuerst; innerhalb der besuchten Orte bleibt die Reihenfolge des jeweiligen Panelverlaufs erhalten.
+
+**↑/↓** wählen einen Treffer, **Page Up/Page Down** springen um mehrere Zeilen und **Home/End** zum Anfang oder Ende. **Return** oder **Doppelklick** führt den ausgewählten Treffer aus. **Esc**, die eingestellten Dialog-Abbruchkürzel oder ein Klick außerhalb schließen die Palette und stellen den vorherigen Fokus wieder her. Die Aktion **Befehlspalette …** lässt sich unter **Einstellungen → Tastatur** umbelegen oder ohne Kürzel verwenden. Die Suche im Belegungseditor bleibt davon unabhängig.
+
+Die Palette führt dieselben registrierten Aktionen und Verfügbarkeitsprüfungen wie die Menüs aus. Verfügbare Aktionen werden vor dem Fokuswechsel ins Suchfeld ermittelt und unmittelbar vor der Ausführung im ursprünglichen Kontext erneut geprüft. So bleiben auch Datei-Undo und Zwischenablageaktionen aus der Dateiliste auffindbar, während Textbearbeitungskürzel das Suchfeld bearbeiten. Bestehende Rückfragen und Passwortdialoge bleiben erhalten. Ziele öffnen sich im beim Aufruf aktiven Panel. Solange ein Dialog, ein Menü oder ein anderes Feature-Fenster aktiv ist, wird keine Hauptfensterpalette geöffnet. Im Terminal bleibt die Palette über ihr Command-Kürzel erreichbar; reine Dateilistenaktionen werden dort nicht angeboten, und Shell-Tasten behalten außerhalb der Palette ihre bisherige Funktion. Kontextaktionen separater Git-, Aufgaben- oder Verbindungsfenster werden weiterhin in ihren eigenen Fenstern ausgeführt. Datenquellen werden bei jedem Öffnen neu gelesen; Fehler einer Quelle werden in der Palette angezeigt und lassen die übrigen Quellen benutzbar.
 
 ## Rückgängig und Operationsprotokoll
 
