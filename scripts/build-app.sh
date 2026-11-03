@@ -85,7 +85,8 @@ fi
 mkdir -p "$bundle/Contents/Resources/Licenses"
 cp Resources/Licenses/*.txt "$bundle/Contents/Resources/Licenses/"
 for dependency in libghostty-spm MSDisplayLink; do
-  cp "$PWD/.build/checkouts/$dependency/LICENSE" "$bundle/Contents/Resources/Licenses/$dependency-LICENSE.txt"
+  # SwiftPM checkouts can be read-only; replace licenses from an earlier build.
+  cp -f "$PWD/.build/checkouts/$dependency/LICENSE" "$bundle/Contents/Resources/Licenses/$dependency-LICENSE.txt"
 done
 if [[ "$architecture" == universal ]]; then
   /usr/bin/lipo "$bundle/Contents/MacOS/PaneRook" -verify_arch arm64

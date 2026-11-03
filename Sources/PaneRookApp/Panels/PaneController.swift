@@ -44,6 +44,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     let table = FileTable()
     let pathField = NSTextField()
     let favoritesButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let availableSpace = NSTextField(labelWithString: "")
+    private let capacityReader: (URL) -> Int64?
+    private var capacityRequest = 0
     private let summary = NSTextField(labelWithString: "")
     private let back = NSButton()
     private let navigation = NSStackView()
@@ -124,12 +127,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var sortAscending: Bool { get { remoteContent?.sortAscending ?? state.sortAscending } set { state.sortAscending = newValue } }
 
     init(label: String, directory: URL, gitStatusCache: GitStatusCache = .shared,
-         terminalContent: (any TerminalPanelContent)? = nil) {
+         terminalContent: (any TerminalPanelContent)? = nil,
+         capacityReader: @escaping (URL) -> Int64? = FileSystem.availableCapacity) {
         self.label = label
         self.state = PanelState(directory: directory)
         self.gitStatusCache = gitStatusCache
         self.cachedGitHeader = gitStatusCache.header(for: directory)
         self.terminalContent = terminalContent
+        self.capacityReader = capacityReader
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
@@ -171,6 +176,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         pathField.delegate = self
         pathField.cell?.isScrollable = true
         pathField.setAccessibilityLabel("\(label): Ordnerpfad")
+
+        availableSpace.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        availableSpace.textColor = .secondaryLabelColor
+        availableSpace.setContentHuggingPriority(.required, for: .horizontal)
+        availableSpace.setContentCompressionResistancePriority(.required, for: .horizontal)
+        availableSpace.setAccessibilityLabel("\(label): Verfügbarer Speicherplatz")
+        availableSpace.isHidden = true
 
         table.delegate = self
         table.dataSource = self
@@ -251,7 +263,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         favoritesButton.setAccessibilityLabel("\(label): Favoriten")
         favoritesButton.toolTip = "Favoriten · ⌥↓"
         favoritesButton.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        for child in [back, up, pathField, favoritesButton] { navigation.addArrangedSubview(child) }
+        for child in [back, up, pathField, availableSpace, favoritesButton] { navigation.addArrangedSubview(child) }
         navigation.orientation = .horizontal
         navigation.alignment = .centerY
         navigation.spacing = 6
@@ -384,6 +396,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             content.applyDisplayOptions(rowHeight: table.rowHeight, showIcons: iconsVisible, showSummary: summaryVisible)
             if let menu = favoritesButton.menu { content.installFavoritesMenu(menu) }
         } else if mode == .network { network.start() }
+        refreshAvailableCapacity()
         onSelectionChanged?(selectedFiles.first)
         if isActive { focus() }
     }
@@ -462,6 +475,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if mode == .quickView || mode == .info { showInspection(of: inspectionURL) }
         updateSummary()
         updateNavigation()
+        refreshAvailableCapacity()
         if isActive { focus() }
         onSelectionChanged?(selectedFiles.first)
         if changingTerminal { onDirectoryChanged?() }
@@ -607,6 +621,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         let request = state.beginNavigation()
+        clearAvailableCapacity()
         gitRequest += 1
         summary.stringValue = "Ordner wird gelesen …"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -636,6 +651,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     if select != nil, let row = indexes.first { self.table.scrollRowToVisible(row) }
                     self.updateSummary()
                     self.updateNavigation()
+                    self.refreshAvailableCapacity()
                     self.refreshGitStatus()
                     if self.mode == .tree { self.tree.setRoot(url, showHidden: self.showHidden) }
                     self.onDirectoryChanged?()
@@ -646,6 +662,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     guard self.state.failNavigation(request) else { return }
                     if self.mode != .gitHistory { self.pathField.stringValue = self.directory.path }
                     self.updateSummary()
+                    self.refreshAvailableCapacity()
                     self.refreshGitStatus()
                     self.onError?(error)
                     self.loadGitStatuses(request: request)
@@ -905,6 +922,39 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             + (state.gitSnapshot != nil && state.gitFilter != .all ? "  ·  \(state.gitFilter.title)" : "")
     }
 
+    private var canShowAvailableCapacity: Bool {
+        remoteContent == nil && !loading && !panelized && !isArchiveDirectory
+            && (mode == .listing || mode == .tree)
+    }
+
+    private func clearAvailableCapacity() {
+        capacityRequest += 1
+        availableSpace.stringValue = ""
+        availableSpace.toolTip = nil
+        availableSpace.isHidden = true
+        updateGitBarLayout()
+    }
+
+    private func refreshAvailableCapacity() {
+        clearAvailableCapacity()
+        guard canShowAvailableCapacity else { return }
+        let request = capacityRequest
+        let directory = self.directory
+        let read = capacityReader
+        // Mounted volumes may take time to respond. Keep this independent of
+        // directory loading and discard results after navigation or mode changes.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let capacity = read(directory)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.capacityRequest == request, self.directory == directory,
+                      self.canShowAvailableCapacity, let capacity, capacity >= 0 else { return }
+                self.availableSpace.stringValue = "\(ByteCountFormatter.string(fromByteCount: capacity, countStyle: .file)) frei"
+                self.availableSpace.toolTip = "Verfügbarer Speicherplatz auf dem Volume dieses Ordners\n\(directory.path)"
+                self.updateGitBarLayout()
+            }
+        }
+    }
+
     private func configureGitBar() {
         gitBar.orientation = .horizontal
         gitBar.alignment = .centerY
@@ -994,6 +1044,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     private func updateGitBarLayout() {
         guard let contentTop, let gitInlineWidth else { return }
+        // Preserve a usable path field in narrow panes. Use intrinsic widths so
+        // hiding the capacity label does not change the next layout decision.
+        let fixedControls = navigation.arrangedSubviews.filter { $0 !== pathField && $0 !== availableSpace && !$0.isHidden }
+        let minimumNavigationWidth = 180 + fixedControls.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
+            + CGFloat(fixedControls.count) * navigation.spacing + navigation.edgeInsets.left + 12
+        let hideCapacity = availableSpace.stringValue.isEmpty
+            || surface.bounds.width < minimumNavigationWidth + availableSpace.intrinsicContentSize.width + navigation.spacing
+        if availableSpace.isHidden != hideCapacity { availableSpace.isHidden = hideCapacity }
         // Measure the desired control sizes, not their compressed frames, so the
         // decision stays stable when switching between one and two rows.
         let gitWidth = ceil(gitButton.intrinsicContentSize.width)
@@ -1003,9 +1061,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             .font: pathField.font ?? NSFont.systemFont(ofSize: 12)
         ]).width
         let pathWidth = max(180, ceil(pathTextWidth) + 16)
-        let navigationWidth = navigation.arrangedSubviews.reduce(CGFloat(0)) {
+        let visibleControls = navigation.arrangedSubviews.filter { !$0.isHidden }
+        let navigationWidth = visibleControls.reduce(CGFloat(0)) {
             $0 + ($1 === pathField ? pathWidth : $1.fittingSize.width)
-        } + CGFloat(navigation.arrangedSubviews.count - 1) * navigation.spacing
+        } + CGFloat(visibleControls.count - 1) * navigation.spacing
             + navigation.edgeInsets.left + 12
         let inline = !gitBar.isHidden && surface.bounds.width >= navigationWidth + 6 + gitWidth
         if gitInlineWidth.constant != gitWidth { gitInlineWidth.constant = gitWidth }

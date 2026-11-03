@@ -156,6 +156,34 @@ final class TerminalPanelTests: XCTestCase {
         XCTAssertEqual(pane.directory, shell)
     }
 
+    @MainActor func testCapacityFollowsTheRetainedListingWhenSwitchingTerminalModes() throws {
+        let terminal = Terminal()
+        let listingDirectory = files!
+        let pane = PaneController(label: "Terminal", directory: listingDirectory, terminalContent: terminal,
+            capacityReader: { url in
+                XCTAssertEqual(url, listingDirectory, "Capacity belongs to the file list, not the shell cwd")
+                return 128_000_000_000
+            })
+        pane.view.frame = NSRect(x: 0, y: 0, width: 700, height: 500)
+        pane.view.layoutSubtreeIfNeeded()
+        let space = try XCTUnwrap(descendants(of: pane.view).compactMap { $0 as? NSTextField }
+            .first { $0.accessibilityLabel() == "Terminal: Verfügbarer Speicherplatz" })
+        eventually { space.stringValue == "128 GB frei" && !space.isHidden }
+
+        pane.setMode(.terminal)
+        terminal.changeDirectory(to: changed)
+        XCTAssertEqual(pane.directory, changed)
+        XCTAssertTrue(space.isHidden)
+        XCTAssertTrue(space.stringValue.isEmpty)
+
+        pane.setMode(.listing)
+        eventually { space.stringValue == "128 GB frei" && !space.isHidden }
+        XCTAssertEqual(pane.directory, listingDirectory)
+        XCTAssertTrue(space.toolTip?.contains(listingDirectory.path) == true)
+        XCTAssertEqual(terminal.currentDirectory, changed)
+        XCTAssertEqual(terminal.sessionsStarted, 1)
+    }
+
     @MainActor func testRefreshPreservesShellAndExplicitNavigationReturnsToTheFileList() throws {
         let terminal = Terminal()
         let pane = PaneController(label: "Terminal", directory: files, terminalContent: terminal)
