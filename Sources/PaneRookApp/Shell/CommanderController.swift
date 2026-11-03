@@ -47,6 +47,9 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
             ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false
         }
     }
+    override var undoManager: UndoManager? {
+        fileOperations.acceptsNativeFileUndo ? fileOperations.fileUndoManager : super.undoManager
+    }
     var isPerformingOperation: Bool { view.window?.attachedSheet != nil }
 
     init() {

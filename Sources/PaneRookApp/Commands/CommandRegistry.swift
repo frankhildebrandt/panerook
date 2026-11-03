@@ -69,6 +69,7 @@ final class AppCommand {
     let enabled: () -> Bool
     let checked: () -> Bool
     private let run: () -> Void
+    var menuTitle: (() -> String)?
     var toolTip: String?
     var customizable: Bool { true }
     var categoryTitle: String {

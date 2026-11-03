@@ -26,6 +26,8 @@ final class TransferWorker {
     private let plan: TransferPlan
     private let cancellation: TransferCancellation
     private let progress: (OperationProgress) -> Void
+    // A published cross-volume move must finish its source check/removal despite cancellation.
+    private let validateMoveSource: ((_ committed: Bool) throws -> Void)?
     private var entries: [String: Entry] = [:]
     private var finished = Set<String>()
     private var totalItems = 0
@@ -34,8 +36,9 @@ final class TransferWorker {
     private var completedBytes: Int64 = 0
 
     init(plan: TransferPlan, cancellation: TransferCancellation,
-         progress: @escaping (OperationProgress) -> Void) {
+         progress: @escaping (OperationProgress) -> Void, validateMoveSource: ((_ committed: Bool) throws -> Void)? = nil) {
         self.plan = plan; self.cancellation = cancellation; self.progress = progress
+        self.validateMoveSource = validateMoveSource
     }
 
     func run() throws {
@@ -52,6 +55,8 @@ final class TransferWorker {
             try cancellation.check()
             try requireAvailable(item.destination)
             if plan.kind == .move {
+                try validateMoveSource?(false)
+                try cancellation.check()
                 if renamex_np(item.source.path, item.destination.path, UInt32(RENAME_EXCL)) == 0 {
                     finishTree(item.source)
                     continue
@@ -116,12 +121,22 @@ final class TransferWorker {
         let code = errno
         try cancellation.check()
         guard status == 0 else { throw fileError(code, path: item.source.path) }
+        if plan.kind == .move { try validateMoveSource?(false) }
+        try cancellation.check()
         if renamex_np(output.path, item.destination.path, UInt32(RENAME_EXCL)) != 0 {
             throw fileError(errno, path: item.destination.path)
         }
         // Treat commit + source removal as one move step. Cancellation is checked
         // before commit and before the next item; it cannot delete an uncopied source.
-        if plan.kind == .move { try FileManager.default.removeItem(at: item.source) }
+        if plan.kind == .move {
+            do {
+                try validateMoveSource?(true)
+                try FileManager.default.removeItem(at: item.source)
+            } catch {
+                throw NSError(domain: "PaneRook.Transfer", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                    "Ziel vollständig geschrieben: \(item.destination.path). Die Quelle konnte nicht vollständig entfernt werden: \(item.source.path). \(error.localizedDescription) Bitte beide Pfade prüfen; dieser Eintrag hat kein automatisches Undo."])
+            }
+        }
         finishTree(item.source)
     }
 
