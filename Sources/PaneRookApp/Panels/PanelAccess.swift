@@ -1,9 +1,12 @@
 import AppKit
+import PaneRookRemote
 import PaneRookCore
 import PaneRookPanels
 
 /// A connection occupies one panel while its local directory is retained for disconnecting.
 protocol RemotePanelContent: AnyObject {
+    var workspaceBookmark: ConnectionBookmark? { get }
+    var awaitsWorkspaceAuthentication: Bool { get }
     var onKey: ((NSEvent) -> Bool)? { get set }
     var isActive: Bool { get set }
     var viewController: NSViewController { get }
@@ -45,6 +48,8 @@ protocol RemotePanelContent: AnyObject {
 }
 
 extension RemotePanelContent {
+    var workspaceBookmark: ConnectionBookmark? { nil }
+    var awaitsWorkspaceAuthentication: Bool { false }
     var canMove: Bool { false }
     var canRename: Bool { false }
     var canPreview: Bool { false }

@@ -49,6 +49,13 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         return peer.remoteContent == nil && !peer.isArchiveDirectory && peer.mode != .network
     }
     var canUpload: Bool { !busy && !disconnected && peer?.remoteContent == nil && peer?.isArchiveDirectory == false && peer?.selectedFiles.isEmpty == false }
+    var connectionBookmark: ConnectionBookmark?
+    private let workspaceConnectionID = UUID()
+    var workspaceBookmark: ConnectionBookmark? {
+        let connection = fileSystem.connection
+        return try? ConnectionBookmark(id: connectionBookmark?.id ?? workspaceConnectionID, name: connectionBookmark?.name ?? displayName, kind: connection.kind, host: connection.host,
+            port: connection.port, user: connection.user, path: directory, identityFile: connection.identityFile)
+    }
     var displayName: String { fileSystem.connection.displayName }
 
     init(connection: RemoteConnection, peer: any PanelAccess, tasks: TaskCenter,

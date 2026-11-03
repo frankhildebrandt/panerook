@@ -71,7 +71,7 @@ final class PreferencesTools {
         applyAppearance()
         let heights: [CGFloat] = [23, 29, 35]
         let index = defaults.object(forKey: "rowDensity") as? Int ?? 1
-        for pane in [owner.leftPane, owner.rightPane] {
+        for pane in owner.allPanes {
             pane.applyDisplayOptions(rowHeight: heights[max(0, min(2, index))], showIcons: bool("showIcons"), showSummary: bool("showSummary"))
         }
         owner.applyLayout(vertical: bool("verticalPanels"), functionBar: bool("showFunctionBar"), toolbar: bool("showToolbar"))
