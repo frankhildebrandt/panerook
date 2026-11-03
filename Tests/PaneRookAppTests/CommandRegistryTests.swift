@@ -64,7 +64,7 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(registry.defaultsByID["preferences.configuration"]?.label, "⌘,")
         XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
-        XCTAssertEqual(registry.commands(in: .file).count, 22)
+        XCTAssertEqual(registry.commands(in: .file).count, 25)
         XCTAssertEqual(registry.commands(in: .command).count, 33)
         XCTAssertNotNil(registry["git.pane"])
         XCTAssertNotNil(registry["left.mode.5"])
@@ -102,7 +102,7 @@ final class CommandRegistryTests: XCTestCase {
             NSApp.mainMenu?.items.map(\.title),
             ["PaneRook", "Links", "Datei", "Befehl", "Optionen", "Rechts", "Bearbeiten", "Hilfe"])
         XCTAssertEqual(
-            NSApp.mainMenu?.items.first { $0.title == "Datei" }?.submenu?.items.filter { !$0.isSeparatorItem }.count, 22
+            NSApp.mainMenu?.items.first { $0.title == "Datei" }?.submenu?.items.filter { !$0.isSeparatorItem }.count, 25
         )
     }
 

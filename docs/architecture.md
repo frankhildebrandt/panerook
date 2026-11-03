@@ -43,6 +43,16 @@ Alle Befehle sind belegbar, auch ohne Standardkürzel. `CommandScope` trennt die
 
 `AppKeyBinding` unterscheidet layoutabhängige Zeichen-Vorgaben und aufgezeichnete physische Tasten. Gespeicherte Änderungen unter `keyBindings` überschreiben nur einzelne Vorgaben; ein expliziter leerer Eintrag entfernt eine Belegung dauerhaft. Fehlende Einträge erhalten weiterhin ihre Standardbelegung. Bestehende Daten ohne Kennzeichnung des Tastentyps bleiben lesbar. Die Tastaturkonfiguration bietet Suche, Konfliktprüfung sowie Entfernen und selektives oder vollständiges Zurücksetzen. Auch Dialogbestätigung und Abbruch sind konfigurierbar; standardmäßig brechen Esc, F10 und Ctrl-G ab. Während der Aufzeichnung lassen alle App- und Kontextmonitoren die Eingabe zum Recorder durch. Menü- und Dock-Callbacks dürfen den Commander nicht dauerhaft festhalten.
 
+## Nativer Dateiaustausch
+
+`FileOperations/NativeFileExchange` liest und schreibt echte Datei-URLs über NSPasteboard und registriert `files.clipboard.copy`, `files.clipboard.paste` und `files.clipboard.move`. Die bestehenden IDs `editing.copy`/`editing.paste` routen weiterhin über die Responder Chain; nur die fokussierte lokale `FileTable` beantwortet Datei-Kopieren/Einsetzen. Cmd-Option-V ist auf den Panelkontext begrenzt. Textfelder, Ghostty und separate Feature-Fenster behalten ihre Kontexte und Belegungen.
+
+`Panels/PanelFileExchange` kapselt die NSTableView-Drag-Source-/Drop-Delegate-Methoden, Registrierung und Zielauflösung. `PanelAccess` ergänzt opt-in Fähigkeiten (`canExportNativeFiles`, `fileExchangeDirectory`, `hasFileListKeyboardFocus`, `installFileExchange`) mit konservativen Vorgaben für andere Implementierungen. Die Shell hält und installiert den Austauschdienst. Er bekommt ausschließlich `NativeFileExchangeHost`, `PanelAccess` und `FileOperations`; Domain-Targets bleiben unverändert und UI-frei.
+
+Jeder Eingang validiert die erfassten URLs mit `TransferPlan` und ruft `FileOperations.confirmTransfer` auf. Diese gemeinsame Dialog-/Queue-Strecke dient auch F5/F6 und Umbenennen; es gibt keine zusätzliche Mutationsimplementierung. Die Planung prüft bei Ausführung erneut. Remote-/Archivmitglieder und Datei-Versprechen werden nicht als lokale Originale ausgegeben. Externe Ziele erhalten nur Copy-Angebote und verarbeiten den Empfang selbst.
+
+Integrationspunkte bei paralleler Zusammenführung sind `PanelAccess`, die kleinen Ergänzungen an `PaneController`/`FileTable`, `FeatureComposition`, `CommanderController` und die Extraktion von `FileOperations.confirmTransfer`. Neue Fachlogik und Tests liegen in eigenen Feature-Dateien; bestehende Befehls-IDs und Einstellungen bleiben erhalten. Die Datei-Menütests erwarten drei zusätzliche Aktionen.
+
 ## Remote-Anbieter erweitern
 
 Jeder Anbieter implementiert die primitiven Operationen des `RemoteTransport`-Vertrags. `RemoteProvider` ergänzt die Erstellung, Verbindungsvalidierung, Anzeige und Formularhinweise. FTP, SFTP, SSH und Nextcloud liegen in eigenen Dateien. Die Zuordnung erfolgt ausschließlich in `RemoteProviderRegistry`; die stabile Protokollkennung bleibt im gespeicherten Verbindungsformat.

@@ -45,7 +45,9 @@ final class TransferDialog: NSWindowController {
         selection.font = .systemFont(ofSize: 18, weight: .semibold)
         selection.maximumNumberOfLines = 2
         selection.lineBreakMode = .byTruncatingMiddle
-        let source = hint("Aus: \(sourceDirectory.path)")
+        let parents = Set(sources.map { $0.deletingLastPathComponent().path })
+        let source = hint(parents.count > 1 ? "Aus \(parents.count) Ordnern" : "Aus: \(sourceDirectory.path)")
+        source.toolTip = sources.map(\.path).joined(separator: "\n")
         source.maximumNumberOfLines = 2
         source.lineBreakMode = .byTruncatingMiddle
         stack.addArrangedSubview(selection)
