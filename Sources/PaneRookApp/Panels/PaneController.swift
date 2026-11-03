@@ -75,13 +75,15 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let tree = PanelDirectoryTree()
     private let network = NetworkBrowserView()
     private let gitHistory = GitHistoryView()
+    private var terminalContent: (any TerminalPanelContent)?
     private(set) var remoteContent: (any RemotePanelContent)?
     private var state: PanelState
     private let gitStatusQueue = DispatchQueue(label: "app.panerook.panel.git-status", qos: .utility)
     private var gitStatusReader: GitStatusReader?
     private let repositoryQueue = DispatchQueue(label: "app.panerook.panel.git-repository", qos: .utility)
     private var repositoryReader: GitRepositoryReader?
-    private(set) var gitRepository: GitRepositoryInfo?
+    private var listingGitRepository: GitRepositoryInfo?
+    var gitRepository: GitRepositoryInfo? { mode == .terminal ? nil : listingGitRepository }
     private var generation: Int { state.generation }
     var allEntries: [FileEntry] { get { state.allEntries } set { state.allEntries = newValue } }
     private var panelized: Bool { state.panelized }
@@ -99,7 +101,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         set { state.textEncoding = newValue; if mode == .quickView { showInspection(of: inspectionURL) } }
     }
     var visitedDirectories: [URL] { state.visitedDirectories }
-    var directory: URL { state.directory }
+    /// A terminal is a local transfer destination, while the hidden listing retains its location.
+    var directory: URL { mode == .terminal ? terminalContent?.currentDirectory ?? state.directory : state.directory }
     var isArchiveDirectory: Bool { ArchiveFileSystem.location(for: directory) != nil }
     var entries: [FileEntry] { get { state.entries } set { state.entries = newValue } }
     var onActivate: (() -> Void)?
@@ -124,11 +127,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var sortAscending: Bool { get { remoteContent?.sortAscending ?? state.sortAscending } set { state.sortAscending = newValue } }
 
     init(label: String, directory: URL, gitStatusCache: GitStatusCache = .shared,
+         terminalContent: (any TerminalPanelContent)? = nil,
          capacityReader: @escaping (URL) -> Int64? = FileSystem.availableCapacity) {
         self.label = label
         self.state = PanelState(directory: directory)
         self.gitStatusCache = gitStatusCache
         self.cachedGitHeader = gitStatusCache.header(for: directory)
+        self.terminalContent = terminalContent
         self.capacityReader = capacityReader
         super.init(nibName: nil, bundle: nil)
     }
@@ -320,7 +325,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var selectedEntries: [FileEntry] {
         guard remoteContent == nil else { return [] }
         guard !loading else { return [] }
-        guard mode != .quickView && mode != .info && mode != .network && mode != .gitHistory else { return [] }
+        guard mode != .quickView && mode != .info && mode != .network && mode != .gitHistory && mode != .terminal else { return [] }
         if mode == .tree { return tree.selectedURL.flatMap { try? LocalInspection.entry(at: $0) }.map { [$0] } ?? [] }
         return table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil }
     }
@@ -330,6 +335,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
     var canUseGitFilter: Bool { remoteContent == nil && state.gitSnapshot != nil && !loading && mode == .listing }
     var hasPanelKeyboardFocus: Bool {
+        guard mode != .terminal else { return false }
         guard let responder = view.window?.firstResponder as? NSView else { return false }
         if let remoteContent, remoteContent.viewController.isViewLoaded {
             return responder.isDescendant(of: remoteContent.viewController.view)
@@ -338,9 +344,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             || (mode == .gitHistory && responder.isDescendant(of: gitHistory))
     }
 
+    var hasTerminalKeyboardFocus: Bool {
+        remoteContent == nil && mode == .terminal && terminalContent?.hasKeyboardFocus == true
+    }
+
 
     func focus() {
         if let remoteContent { remoteContent.focus(); return }
+        if mode == .terminal { terminalContent?.focus(); return }
         if mode == .network { network.focus(); return }
         if mode == .gitHistory { gitHistory.focus(); return }
         let responder: NSView = mode == .tree ? tree.outline : (mode == .listing ? table : inspection)
@@ -351,6 +362,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         _ = view
         if remoteContent === content { return }
         if content != nil && mode == .gitHistory { setMode(.listing) }
+        if content != nil {
+            if mode == .terminal { setMode(.listing) }
+            terminalContent?.stop()
+        }
         let brief = isBriefListing
         let key = sortKey, ascending = sortAscending, pattern = filterPattern
         let previous = remoteContent
@@ -389,26 +404,60 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     func remoteStateDidChange() { onSelectionChanged?(nil) }
     func activate() { onActivate?() }
 
+    private func prepareTerminal() {
+        if terminalContent == nil { terminalContent = GhosttyTerminalController() }
+        guard let terminal = terminalContent else { return }
+        if terminal.viewController.parent == nil {
+            terminal.onActivate = { [weak self] in
+                guard let self, self.mode == .terminal, self.remoteContent == nil else { return }
+                self.onActivate?()
+            }
+            terminal.onDirectoryChanged = { [weak self] _ in
+                guard let self, self.mode == .terminal, self.remoteContent == nil else { return }
+                self.onDirectoryChanged?()
+                self.onSelectionChanged?(nil)
+            }
+            terminal.onClose = { [weak self] in
+                guard let self, self.mode == .terminal, self.remoteContent == nil else { return }
+                self.setMode(.listing)
+            }
+            let controller = terminal.viewController
+            addChild(controller)
+            controller.view.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(controller.view)
+            NSLayoutConstraint.activate([
+                controller.view.topAnchor.constraint(equalTo: content.topAnchor),
+                controller.view.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                controller.view.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                controller.view.trailingAnchor.constraint(equalTo: content.trailingAnchor)
+            ])
+        }
+        terminal.start(directory: state.directory)
+    }
+
     func setMode(_ mode: PanelMode) {
         _ = view
         if remoteContent != nil {
             guard mode == .listing else { return }
         } else { showRemoteContent(nil) }
-        if mode == .tree && isArchiveDirectory {
+        if (mode == .tree || mode == .terminal) && state.isArchiveDirectory {
             onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Im Archiv bitte die Dateiliste zur Ordnernavigation verwenden."]))
             return
         }
         let openingHistory = mode == .gitHistory && self.mode != .gitHistory
+        let changingTerminal = mode == .terminal || self.mode == .terminal
         if self.mode == .network && mode != .network { network.stop() }
         if self.mode == .gitHistory && mode != .gitHistory { gitHistory.stop() }
         self.mode = mode
-        let historyVisible = mode == .gitHistory
-        navigation.isHidden = historyVisible
-        summary.isHidden = historyVisible || !summaryVisible
+        if mode == .terminal { prepareTerminal() }
+        terminalContent?.setVisible(mode == .terminal)
+        let fullContent = mode == .gitHistory || mode == .terminal
+        navigation.isHidden = fullContent
+        summary.isHidden = fullContent || !summaryVisible
         NSLayoutConstraint.deactivate(historyContentEdges)
-        contentTop?.isActive = !historyVisible
-        contentBottom?.isActive = !historyVisible
-        if historyVisible { NSLayoutConstraint.activate(historyContentEdges) }
+        contentTop?.isActive = !fullContent
+        contentBottom?.isActive = !fullContent
+        if fullContent { NSLayoutConstraint.activate(historyContentEdges) }
         listing.isHidden = mode != .listing
         inspection.isHidden = mode != .quickView && mode != .info
         tree.isHidden = mode != .tree
@@ -429,6 +478,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         refreshAvailableCapacity()
         if isActive { focus() }
         onSelectionChanged?(selectedFiles.first)
+        if changingTerminal { onDirectoryChanged?() }
     }
 
     func showInspection(of url: URL?) {
@@ -460,7 +510,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         filterPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         if let remoteContent { remoteContent.setFilter(state.filterPattern); return }
         guard isViewLoaded else { return }
-        let selected = Set(mode == .gitHistory ? listingSelection : selectedFiles)
+        let selected = Set(mode == .gitHistory || mode == .terminal ? listingSelection : selectedFiles)
         state.filterAndSort(); table.reloadData()
         let indexes = IndexSet(entries.indices.filter { selected.contains(entries[$0].url) })
         table.selectRowIndexes(indexes.isEmpty && !entries.isEmpty ? IndexSet(integer: 0) : indexes, byExtendingSelection: false)
@@ -478,7 +528,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         showRemoteContent(nil)
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
-        gitRepository = nil
+        listingGitRepository = nil
         var seen = Set<URL>()
         let files = urls.filter { $0.isFileURL && seen.insert($0.standardizedFileURL).inserted }.compactMap { try? LocalInspection.entry(at: $0) }
         state.showResults(files)
@@ -502,7 +552,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.rowHeight = min(44, max(18, rowHeight)); tree.outline.rowHeight = table.rowHeight
         iconsVisible = showIcons
         summaryVisible = showSummary
-        summary.isHidden = !showSummary || mode == .gitHistory
+        summary.isHidden = !showSummary || mode == .gitHistory || mode == .terminal
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
         table.reloadData()
@@ -564,7 +614,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func navigate(to url: URL, recordHistory: Bool = true, select: URL? = nil, preserveDirectorySizes: Bool = false) {
         showRemoteContent(nil)
-        if mode == .network || mode == .gitHistory { setMode(.listing) }
+        if mode == .network || mode == .gitHistory || mode == .terminal { setMode(.listing) }
         let oldDirectory = directory
         let preserved = Set(selectedFiles)
         let hidden = showHidden
@@ -586,11 +636,11 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 case .success(let listing):
                     guard self.state.completeNavigation(request, to: url, files: listing.files,
                         recordHistory: recordHistory, preserveDirectorySizes: preserveDirectorySizes) else { return }
-                    self.gitRepository = nil
+                    self.listingGitRepository = nil
                     self.restoreGitStatus(in: listing.gitRoot)
                     self.applyCachedGitStatuses(request: request)
                     if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
-                    if self.mode != .gitHistory { self.pathField.stringValue = url.path }
+                    if self.mode != .gitHistory && self.mode != .terminal { self.pathField.stringValue = url.path }
                     self.table.reloadData()
                     // Normalize both sides: macOS listings may return /private/tmp
                     // while the entered path uses /tmp. Keep leaf symlinks distinct.
@@ -627,22 +677,22 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     private func loadGitRepository(request: Int) {
-        guard generation == request, !panelized, !isArchiveDirectory else { return }
+        guard generation == request, !panelized, !state.isArchiveDirectory else { return }
         let reader = GitRepositoryReader()
         repositoryReader = reader
-        let directory = self.directory
+        let directory = state.directory
         repositoryQueue.async { [weak self] in
             let repository = reader.repository(containing: directory)
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == request, !self.panelized, !reader.isCancelled else { return }
-                self.gitRepository = repository
+                self.listingGitRepository = repository
                 if let repository { self.onRepositoryVisited?(repository) }
             }
         }
     }
 
     private func loadGitStatuses(request: Int) {
-        guard generation == request, !panelized, !isArchiveDirectory else { return }
+        guard generation == request, !panelized, !state.isArchiveDirectory else { return }
         gitStatusReader?.cancel()
         let reader = GitStatusReader()
         gitStatusReader = reader
@@ -674,7 +724,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     private func restoreGitStatus(in root: URL?) {
-        guard !panelized, !isArchiveDirectory else { return }
+        guard !panelized, !state.isArchiveDirectory else { return }
         // Resolve repository boundaries on the listing worker, then reuse its
         // entire worktree snapshot even for a directory never visited before.
         let header = root.flatMap { gitStatusCache.header(for: $0) }
@@ -702,6 +752,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     func refresh(select: URL? = nil) {
         if let remoteContent { remoteContent.refresh(); return }
+        if mode == .terminal { return }
         if mode == .gitHistory { gitHistory.refresh(); return }
         if mode == .network { network.stop(); network.start(); return }
         navigate(to: directory, recordHistory: false, select: select)
@@ -717,7 +768,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     @objc func goUp() {
         if let remoteContent { remoteContent.goUp(); return }
         if mode == .network { setMode(.listing); return }
-        let parent = state.parentDirectory
+        let parent = mode == .terminal ? directory.deletingLastPathComponent() : state.parentDirectory
         navigate(to: parent, select: directory)
     }
     @objc func goBack() {
@@ -755,7 +806,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = table.sortDescriptors.first else { return }
-        let selected = Set(mode == .gitHistory ? listingSelection : selectedFiles)
+        let selected = Set(mode == .gitHistory || mode == .terminal ? listingSelection : selectedFiles)
         sortKey = descriptor.key ?? "name"
         sortAscending = descriptor.ascending
         applySort()
@@ -939,8 +990,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private func refreshGitStatus() {
         gitRequest += 1
         let request = gitRequest
-        let url = directory
-        guard !isArchiveDirectory, !panelized else {
+        let url = state.directory
+        guard !state.isArchiveDirectory, !panelized else {
             cachedGitHeader = nil
             state.gitSnapshot = nil; updateGitBar(); return
         }
@@ -948,7 +999,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitWorker.async { [weak self] in
             let result = Result { try GitRepository.discover(in: url)?.snapshot() }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.gitRequest == request, self.directory == url, !self.panelized else { return }
+                guard let self, self.gitRequest == request, self.state.directory == url, !self.panelized else { return }
                 self.cachedGitHeader = nil
                 switch result {
                 case .success(let snapshot):
