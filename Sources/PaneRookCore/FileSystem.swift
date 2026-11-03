@@ -18,6 +18,31 @@ public struct FileEntry: Sendable {
 }
 
 public enum FileSystem {
+    /// Available space on the volume containing a real directory, including mounted shares.
+    /// Call from a worker queue: querying an unavailable network volume can block.
+    public static func availableCapacity(at directory: URL) -> Int64? {
+        guard directory.isFileURL,
+              directory.host == nil || directory.host == "" || directory.host == "localhost",
+              directory.path.hasPrefix("/"), !directory.path.contains("\0") else { return nil }
+        // Rebuild the URL before and after resolving links so resource values cached
+        // by a previous directory listing cannot supply an outdated capacity.
+        let resolved = URL(fileURLWithPath: directory.path, isDirectory: true).resolvingSymlinksInPath()
+        let url = URL(fileURLWithPath: resolved.path, isDirectory: true)
+        guard ArchiveFileSystem.location(for: url) == nil else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let capacity = values.volumeAvailableCapacityForImportantUsage, capacity >= 0 {
+            return capacity
+        }
+        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey]),
+           let capacity = values.volumeAvailableCapacity, capacity >= 0 {
+            return Int64(capacity)
+        }
+        return nil
+    }
+
     public static func list(_ directory: URL, showHidden: Bool) throws -> [FileEntry] {
         if ArchiveFileSystem.location(for: directory) != nil {
             return try ArchiveFileSystem.list(directory, showHidden: showHidden)
