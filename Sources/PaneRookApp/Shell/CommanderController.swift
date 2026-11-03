@@ -112,9 +112,15 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
                 guard let self, let pane else { return }
                 self.git.open(pane: pane)
             }
+            pane.onGitHistoryRequested = { [weak self, weak pane] in
+                guard let self, let pane else { return }
+                pane.showGitHistory(from: pane === self.left ? self.right : self.left)
+            }
             pane.onSelectionChanged = { [weak self, weak pane] url in
                 guard let self, let pane else { return }
-                (pane === self.left ? self.right : self.left).showInspection(of: url)
+                let other = pane === self.left ? self.right : self.left
+                other.showInspection(of: url)
+                other.showGitHistory(from: pane)
                 self.updateDirectoryActionAvailability()
             }
             let item = NSSplitViewItem(viewController: pane)
@@ -300,6 +306,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     @objc func goUp() { active.goUp() }
     @objc func goHome() { active.navigate(to: FileManager.default.homeDirectoryForCurrentUser) }
     @objc func focusPath() {
+        if active.mode == .gitHistory { active.setMode(.listing) }
         if let remote = active.remoteContent { remote.focusPath(); return }
         view.window?.makeFirstResponder(active.pathField)
         active.pathField.selectText(nil)

@@ -6,23 +6,29 @@ public struct GitHistoryEntry: Equatable, Sendable {
     public let commit: GitCommit
     public let path: String?
     public let originalPath: String?
+    public let isDirectory: Bool
 
-    public init(commit: GitCommit, path: String? = nil, originalPath: String? = nil) {
+    public init(commit: GitCommit, path: String? = nil, originalPath: String? = nil, isDirectory: Bool = false) {
         self.commit = commit
         self.path = path
         self.originalPath = originalPath
+        self.isDirectory = isDirectory
     }
 }
 
 extension GitRepository {
     /// A linear timeline makes older/newer navigation and merge patches agree.
     /// NUL separators preserve spaces, tabs and newlines in literal file names.
-    public func historyEntries(path: String? = nil, limit: Int = 200) throws -> [GitHistoryEntry] {
+    public func historyEntries(path: String? = nil, isDirectory: Bool = false, limit: Int = 200) throws -> [GitHistoryEntry] {
         let checked = try path.map(checkedPath)
         guard try hasHEAD() else { return [] }
         var arguments = ["log", "-z", "--first-parent", "--format=%x00%H%x00%h%x00%s%x00%an%x00%at",
                          "-n", String(max(1, min(2000, limit)))]
-        if let checked { arguments += ["--name-status", "--find-renames", "--follow", "--", checked] }
+        if let checked {
+            arguments += isDirectory
+                ? ["--no-follow", "--", checked]
+                : ["--name-status", "--find-renames", "--follow", "--", checked]
+        }
         let fields = try command(arguments).components(separatedBy: "\0")
         var entries: [GitHistoryEntry] = []
         var index = 0
@@ -38,7 +44,7 @@ extension GitRepository {
             index += 5
             let entryPath = currentPath
             var originalPath: String?
-            if checked != nil {
+            if checked != nil && !isDirectory {
                 while index < fields.count, !fields[index].isEmpty {
                     // Git separates the pretty header from its first status with a newline.
                     let status = fields[index].trimmingCharacters(in: .newlines)
@@ -61,7 +67,7 @@ extension GitRepository {
                     }
                 }
             }
-            entries.append(GitHistoryEntry(commit: commit, path: entryPath, originalPath: originalPath))
+            entries.append(GitHistoryEntry(commit: commit, path: entryPath, originalPath: originalPath, isDirectory: isDirectory))
         }
         return entries
     }
@@ -76,6 +82,7 @@ extension GitRepository {
     }
 
     public func historyFile(_ entry: GitHistoryEntry) throws -> String {
+        guard !entry.isDirectory else { throw GitError("Für Verzeichnisse bitte die Diff-Ansicht verwenden.") }
         guard let path = entry.path else { throw GitError("Für die Versionsvorschau bitte eine Datei auswählen.") }
         let content: String
         do {

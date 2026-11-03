@@ -52,6 +52,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private let gitFilterButton = NSPopUpButton()
     private let watchButton = NSButton()
     private var contentTop: NSLayoutConstraint?
+    private var contentBottom: NSLayoutConstraint?
+    private var historyContentEdges: [NSLayoutConstraint] = []
     private var gitInlineWidth: NSLayoutConstraint?
     private var gitInlineConstraints: [NSLayoutConstraint] = []
     private var gitRowConstraints: [NSLayoutConstraint] = []
@@ -104,6 +106,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var onDirectoryChanged: (() -> Void)?
     var onRepositoryVisited: ((GitRepositoryInfo) -> Void)?
     var onOpenGit: (() -> Void)?
+    var onGitHistoryRequested: (() -> Void)?
     var onSelectionChanged: ((URL?) -> Void)?
     var showHidden: Bool {
         get { state.showHidden }
@@ -260,6 +263,12 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         }
         let contentTop = content.topAnchor.constraint(equalTo: navigation.bottomAnchor)
         self.contentTop = contentTop
+        let contentBottom = content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10)
+        self.contentBottom = contentBottom
+        historyContentEdges = [
+            content.topAnchor.constraint(equalTo: surface.topAnchor, constant: 1),
+            content.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -1)
+        ]
         let gitInlineWidth = gitBar.widthAnchor.constraint(equalToConstant: 0)
         self.gitInlineWidth = gitInlineWidth
         gitInlineConstraints = [
@@ -281,7 +290,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             contentTop,
             content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 1),
             content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -1),
-            content.bottomAnchor.constraint(equalTo: summary.topAnchor, constant: -10),
+            contentBottom,
             summary.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 14),
             summary.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -14),
             summary.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -12),
@@ -376,22 +385,31 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             onError?(NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Im Archiv bitte die Dateiliste zur Ordnernavigation verwenden."]))
             return
         }
-        if mode == .gitHistory && isArchiveDirectory { return }
-        let historyFile = selectedEntries.count == 1
-            ? selectedEntries.first.flatMap { !$0.isDirectory && !$0.isParent ? $0.url : nil } : nil
         let openingHistory = mode == .gitHistory && self.mode != .gitHistory
         if self.mode == .network && mode != .network { network.stop() }
         if self.mode == .gitHistory && mode != .gitHistory { gitHistory.stop() }
         self.mode = mode
+        let historyVisible = mode == .gitHistory
+        navigation.isHidden = historyVisible
+        summary.isHidden = historyVisible || !summaryVisible
+        NSLayoutConstraint.deactivate(historyContentEdges)
+        contentTop?.isActive = !historyVisible
+        contentBottom?.isActive = !historyVisible
+        if historyVisible { NSLayoutConstraint.activate(historyContentEdges) }
         listing.isHidden = mode != .listing
         inspection.isHidden = mode != .quickView && mode != .info
         tree.isHidden = mode != .tree
         network.isHidden = mode != .network
         gitHistory.isHidden = mode != .gitHistory
         pathField.stringValue = mode == .network ? "Netzwerk" : directory.path
+        pathField.isEditable = mode != .gitHistory
+        pathField.toolTip = mode == .gitHistory ? "Git-Verlauf der Auswahl im anderen Panel" : "Pfad eingeben"
         if mode == .network { network.start() }
         if mode == .tree { tree.setRoot(directory, showHidden: showHidden) }
-        if openingHistory { gitHistory.open(directory: directory, selectedFile: historyFile) }
+        if mode == .gitHistory {
+            if openingHistory { gitHistory.follow(directory: nil, selection: nil, isDirectory: false) }
+            onGitHistoryRequested?()
+        }
         if mode == .quickView || mode == .info { showInspection(of: inspectionURL) }
         updateSummary()
         updateNavigation()
@@ -404,6 +422,24 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         guard isViewLoaded, mode == .quickView || mode == .info else { return }
         inspection.show(url, information: mode == .info, encoding: textEncoding)
         updateSummary()
+    }
+
+    /// Like quick view, Git history follows the opposite panel's selection.
+    /// The viewer's own directory and listing selection remain available on return.
+    func showGitHistory(from source: PaneController) {
+        guard isViewLoaded, mode == .gitHistory else { return }
+        guard source.remoteContent == nil, !source.isArchiveDirectory, source.mode != .network else {
+            pathField.stringValue = "Git · anderes Panel"
+            gitHistory.follow(directory: nil, selection: nil, isDirectory: false)
+            return
+        }
+        let entries = source.selectedEntries.filter { !$0.isParent }
+        let selection = entries.count == 1 ? entries.first : nil
+        let sourceDirectory = selection.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() } ?? source.directory
+        pathField.stringValue = selection?.url.path ?? source.directory.path
+        pathField.toolTip = "Git-Verlauf der Auswahl im anderen Panel"
+        gitHistory.follow(directory: sourceDirectory, selection: selection?.url,
+                          isDirectory: selection?.isDirectory ?? false)
     }
 
     func setFilter(_ pattern: String) {
@@ -452,7 +488,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.rowHeight = min(44, max(18, rowHeight)); tree.outline.rowHeight = table.rowHeight
         iconsVisible = showIcons
         summaryVisible = showSummary
-        summary.isHidden = !showSummary
+        summary.isHidden = !showSummary || mode == .gitHistory
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
         table.reloadData()
@@ -539,7 +575,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.restoreGitStatus(in: listing.gitRoot)
                     self.applyCachedGitStatuses(request: request)
                     if self.mode == .tree && self.isArchiveDirectory { self.setMode(.listing) }
-                    self.pathField.stringValue = url.path
+                    if self.mode != .gitHistory { self.pathField.stringValue = url.path }
                     self.table.reloadData()
                     // Normalize both sides: macOS listings may return /private/tmp
                     // while the entered path uses /tmp. Keep leaf symlinks distinct.
@@ -547,9 +583,6 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                         ?? (oldDirectory == url ? Set(preserved.map(\.standardizedFileURL)) : [])
                     let indexes = IndexSet(self.entries.indices.filter { desired.contains(self.entries[$0].url.standardizedFileURL) })
                     self.table.selectRowIndexes(indexes.isEmpty && !self.entries.isEmpty ? IndexSet(integer: 0) : indexes, byExtendingSelection: false)
-                    if self.mode == .gitHistory && oldDirectory != url {
-                        self.gitHistory.open(directory: url, selectedFile: nil)
-                    }
                     if select != nil, let row = indexes.first { self.table.scrollRowToVisible(row) }
                     self.updateSummary()
                     self.updateNavigation()
@@ -561,7 +594,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.loadGitRepository(request: request)
                 case .failure(let error):
                     guard self.state.failNavigation(request) else { return }
-                    self.pathField.stringValue = self.directory.path
+                    if self.mode != .gitHistory { self.pathField.stringValue = self.directory.path }
                     self.updateSummary()
                     self.refreshGitStatus()
                     self.onError?(error)

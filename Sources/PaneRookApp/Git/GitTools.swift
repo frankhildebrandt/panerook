@@ -75,7 +75,7 @@ final class GitTools {
     func registerCommands(in registry: CommandRegistry) {
         registry.add(.command, "Git-Diff und Verlauf im Panel", id: "git.pane", order: 219, group: 3,
             submenu: "Git", key: "g", modifiers: [.command, .option],
-            enabled: { self.owner.canUseMenus && self.owner.activePane.remoteContent == nil && !self.owner.activePane.isArchiveDirectory && self.owner.activePane.mode != .network },
+            enabled: { self.owner.canUseMenus && self.owner.activePane.remoteContent == nil },
             checked: { self.owner.activePane.mode == .gitHistory }
         ) { self.owner.activePane.setMode(.gitHistory) }
         registry.add(.command, "Repository, Status und Versionen …", id: "git.workspace", order: 220, group: 3,

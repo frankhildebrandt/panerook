@@ -14,7 +14,6 @@ extension CommanderController {
                     guard let self else { return false }
                     return self.canUseMenus && (pane.remoteContent == nil || mode == .listing)
                         && (mode != .tree || pane.remoteContent != nil || !pane.isArchiveDirectory)
-                        && (mode != .gitHistory || !pane.isArchiveDirectory)
                 }, checked: { pane.remoteContent != nil ? mode == .listing : pane.mode == mode }
             ) { [weak self] in
                 guard let self else { return }
