@@ -25,12 +25,14 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var operations = OperationRunner(tasks: tasks, refresh: { [weak self] in self?.refreshAfterTask() })
     lazy var preview = PreviewTools(owner: self)
     lazy var fileOperations = FileOperations(owner: self)
+    lazy var fileExchange = NativeFileExchange(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
     lazy var preferences = PreferencesTools(owner: self)
     lazy var localTools = LocalTools(owner: self)
     lazy var metadata = FileMetadataTools(owner: self)
     lazy var remote = RemoteTools(owner: self)
     lazy var git = GitTools(owner: self)
+    lazy var commandPalette = CommandPaletteTools(owner: self)
     private let favoriteDestinations = FavoriteDestinationCache()
     private var favoritesMenus: [PanelFavoritesController] = []
     weak var appUpdater: AppUpdater?
@@ -45,6 +47,9 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         canUseSelection && !active.selectedFiles.contains {
             ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false
         }
+    }
+    override var undoManager: UndoManager? {
+        fileOperations.acceptsNativeFileUndo ? fileOperations.fileUndoManager : super.undoManager
     }
     var isPerformingOperation: Bool { view.window?.attachedSheet != nil }
 
@@ -94,6 +99,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         let split = NSSplitViewController()
         splitController = split
         for pane in [left, right] {
+            pane.installFileExchange(fileExchange)
             favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
             pane.showHidden = hiddenButton.state == .on
             pane.onActivate = { [weak self, weak pane] in
@@ -347,11 +353,12 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         return false
     }
     var canHandleMainKeys: Bool {
-        canUseMenus && !KeyboardCaptureState.isRecording && menuIsTracking?() != true
+        canUseMenus && !commandPalette.isPresented && !KeyboardCaptureState.isRecording && menuIsTracking?() != true
             && !favoritesMenus.contains(where: \.isTracking)
     }
     /// Called before AppKit's key-equivalent pass, so physical custom keys work on any layout.
     func handleGlobalKey(_ event: NSEvent) -> Bool {
+        if commandPalette.isPresented { return commandPalette.handleKey(event) }
         guard canHandleMainKeys, event.window === view.window else { return false }
         if !panelsHidden, active.hasTerminalKeyboardFocus {
             if commandRegistry.bindings["panels.switch.terminal"]?.matches(event) == true {

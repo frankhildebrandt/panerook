@@ -70,6 +70,9 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
                 }
                 return event
             }
+            if self.commander.commandPalette.isPresented {
+                return self.commander.commandPalette.handleKey(event) ? nil : event
+            }
             if self.handleTextEditingKey(event) { return nil }
             return self.commander.handleGlobalKey(event) ? nil : event
         }
@@ -142,12 +145,14 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         item.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: binding.modifiers)
     }
     @objc private func performCommand(_ sender: NSMenuItem) {
+        commander.commandPalette.dismiss()
         guard let command = sender.representedObject as? AppCommand, command.enabled() else { return }
         command.perform()
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let command = menuItem.representedObject as? AppCommand else { return false }
         updateKey(menuItem)
+        menuItem.title = command.menuTitle?() ?? command.title
         menuItem.state = command.checked() ? .on : .off
         return command.enabled()
     }
