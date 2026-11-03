@@ -51,6 +51,14 @@ Ein neuer Anbieter benötigt seine Implementierung, eine Kennung samt Eintrag in
 
 Rekursion, Kollisionsprüfung und temporäre Downloads mit anschließender Veröffentlichung gehören weiterhin in `RemoteFileSystem`. Ein Transport darf diese Regeln nicht duplizieren oder umgehen. `RemoteProcess` kapselt den injizierbaren Prozess-Runner; Provider-Tests benötigen keine echten Zugangsdaten.
 
+## Transferkonflikte
+
+`Core/TransferConflicts.swift` enthält UI-freie Metadaten, erlaubte Entscheidungen, auftragsbezogene Regeln und eindeutige Namensbildung. `TransferPlan` behält seine strikte Standardprüfung; die App aktiviert `allowsConflicts` und übergibt bei `execute` einen Resolver. Bestehende Aufrufer ohne diese Parameter bleiben strikt. `TransferWorker` prüft vor jeder Ausführung erneut, führt echte Ordner rekursiv zusammen und verwendet für lokale Ersetzungen `RENAME_SWAP` auf vollständig vorbereiteten Kopien. `RENAME_EXCL` schützt freie Ziele; `EXDEV` führt weiterhin zum Kopieren mit anschließendem geprüftem Quell-Cleanup. Pfad-/Metadatenprüfungen begrenzen konkurrierende Änderungen, ersetzen aber keine Dateisystemsperre.
+
+Remote bleibt unabhängig von Core. `RemoteTransferConflicts.swift` stellt dafür gleichartige Remote-Verträge und einen eigenen Transportablauf bereit; die vorhandenen Remote-Methoden erhalten nur einen optionalen Resolver. Der Ablauf sichert alte Remote-Ziele vor Veröffentlichung und versucht bei Fehlern die Wiederherstellung auch nach Abbruch. Archive verwenden weiterhin ihre vorhandene exklusive Neuschreibung; konfliktbehaftete Einträge können übersprungen oder umbenannt werden, nicht ersetzt oder zusammengeführt.
+
+`FileOperations/TransferConflictPrompt` adaptiert beide Domain-Verträge auf einen nativen Dialog. Eine Instanz gehört genau einem Queue-Auftrag; Regeln leben nur darin. Ausschließlich der Worker wartet auf die Entscheidung. AppKit bleibt auf dem Main-Thread aktiv, inklusive Abbruch einer wartenden Rückfrage. Vorhandene CommandRegistry-IDs für Kopieren, Verschieben und Umbenennen und bestehende PanelAccess-/Host-Verträge bleiben unverändert.
+
 ## Panelzustand und Hintergrundaufträge
 
 `PanelState` ist ein Werttyp ohne AppKit. Jede Navigation bekommt eine Generation. Ergebnisse älterer Generationen werden verworfen; die Übernahme von Suchergebnissen macht offene Navigation ungültig. Fehlgeschlagene Navigation ersetzt weder Verzeichnis noch Verlauf.

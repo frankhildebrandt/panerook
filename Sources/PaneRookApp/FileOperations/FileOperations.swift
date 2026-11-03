@@ -73,9 +73,16 @@ final class FileOperations {
             self.owner.activate(sourcePane)
             guard let plan else { return }
             let token = TransferCancellation()
-            self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
+            var taskID: UUID?
+            let conflicts = TransferConflictPrompt(parent: self.owner.presentationWindow, onCancel: { [weak self] in
+                token.cancel()
+                if let taskID { self?.owner.tasks.cancel(taskID) }
+            })
+            taskID = self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
                 cancellation: { token.cancel() }, work: { report in
-                    try plan.execute(cancellation: token, progress: report)
+                    try plan.execute(cancellation: token, resolveConflict: {
+                        try conflicts.resolve($0, cancelled: { token.isCancelled })
+                    }, progress: report)
                 }, completion: { [weak self] _ in self?.owner.refreshAfterTask() })
         }
         transferDialog = dialog
