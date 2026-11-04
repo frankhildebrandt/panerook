@@ -6,9 +6,9 @@ Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander: zwei Dateipan
 
 ## Download und Dokumentation
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller veröffentlichter Release](https://github.com/frankhildebrandt/panerook/releases/latest) · [Release Notes 0.4.0](docs/releases/0.4.0.md)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller veröffentlichter Release](https://github.com/frankhildebrandt/panerook/releases/latest) · [Release Notes 0.4.1](docs/releases/0.4.1.md)
 
-Version **0.4.0 (Build 6)** bietet Tabs, benannte Arbeitsbereiche, Git-Verlauf und ein eingebettetes Terminal. Voraussetzung für die fertige App ist **macOS 14 oder neuer**; Release-Pakete unterstützen Apple Silicon und Intel.
+Version **0.4.1 (Build 7)** bietet Tabs, benannte Arbeitsbereiche, Git-Verlauf und ein eingebettetes Terminal. Voraussetzung für die fertige App ist **macOS 14 oder neuer**; Release-Pakete unterstützen Apple Silicon und Intel.
 
 [Installation und Einstieg](https://frankhildebrandt.github.io/panerook/dokumentation/) erklären die Bedienung. Eigenständige Anleitungen behandeln [Tabs und Arbeitsbereiche](https://frankhildebrandt.github.io/panerook/dokumentation/arbeitsbereiche/), [Dateiaktionen](https://frankhildebrandt.github.io/panerook/dokumentation/dateiaktionen/), [Transfers und Fortsetzen](https://frankhildebrandt.github.io/panerook/dokumentation/transfers/), [Ordnersynchronisation](https://frankhildebrandt.github.io/panerook/dokumentation/synchronisation/), [Terminal](https://frankhildebrandt.github.io/panerook/dokumentation/terminal/), [Git und Worktrees](https://frankhildebrandt.github.io/panerook/dokumentation/git/), [Archive](https://frankhildebrandt.github.io/panerook/dokumentation/archive/) und [Remote-Verbindungen samt Arbeitskopien](https://frankhildebrandt.github.io/panerook/dokumentation/remote/). Die ausführliche [Bedienungsreferenz](docs/bedienungsreferenz.md) ist auch direkt im Repository lesbar.
 
@@ -45,7 +45,7 @@ npm run build
 Die statische Astro-Website verwendet den Basispfad `/panerook`. Versionierte Inhalte unter `docs/releases/<Version>.md` speisen Website-Einzelseiten und GitHub Release Notes. Versionierte App-Bilder liegen unter `website/public/screenshots/releases/<Version>/`.
 
 ```sh
-./scripts/package-release.sh 0.4.0
+./scripts/package-release.sh 0.4.1
 ```
 
 Der vorhandene Paketierungsweg erstellt Universal-DMG, Universal-ZIP, SHA-256-Prüfsummen und `appcast.xml` unter `build/release/`. Version und Buildnummer stammen aus `Resources/Info.plist`; die Buildnummer muss gegenüber dem letzten veröffentlichten Release steigen. Paketierung benötigt beide Sparkle-Schlüssel. Developer-ID-Signierung, Schlüsselbund, Notarisierung, Einrichtung und Sicherung sind in [Signierung und Releases](docs/signing.md) beschrieben. Private Schlüssel und Passwörter bleiben außerhalb des Repositorys.

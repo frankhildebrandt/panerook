@@ -460,24 +460,30 @@ extension GitHistoryPaneTests {
             ($0 is NSButton || $0 is NSSegmentedControl) && !($0 is NSPopUpButton)
         }
         let popups = descendants(of: viewer).compactMap { $0 as? NSPopUpButton }
-        for size in [NSSize(width: 320, height: 400), NSSize(width: 450, height: 500), NSSize(width: 700, height: 700)] {
-            window.setContentSize(size)
-            viewer.layoutSubtreeIfNeeded()
-            let description = "at \(Int(size.width)) × \(Int(size.height))"
-            let scroll = try XCTUnwrap(viewer.subviews.first as? NSScrollView)
-            let document = try XCTUnwrap(scroll.documentView)
-            XCTAssertGreaterThanOrEqual(diff.bounds.height, 150, description)
-            XCTAssertEqual(diff.bounds.width, viewer.bounds.width - 24, accuracy: 1, description)
-            for item in controls + popups {
-                guard !item.isHiddenOrHasHiddenAncestor else { continue }
-                let frame = item.convert(item.bounds, to: document)
-                XCTAssertGreaterThanOrEqual(frame.minX, -1, description + ": " + (item.accessibilityLabel() ?? "control"))
-                XCTAssertLessThanOrEqual(frame.maxX, document.bounds.maxX + 1, description + ": " + (item.accessibilityLabel() ?? "control"))
-                XCTAssertGreaterThanOrEqual(frame.minY, -1, description)
-                XCTAssertLessThanOrEqual(frame.maxY, document.bounds.maxY + 1, description)
-                if item is NSSegmentedControl || (item as? NSButton)?.title == "Dateiliste" {
-                    XCTAssertGreaterThanOrEqual(item.bounds.width + 1, item.fittingSize.width,
-                        description + ": " + (item.accessibilityLabel() ?? "Dateiliste"))
+        let scroll = try XCTUnwrap(viewer.subviews.first as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        for style in [NSScroller.Style.legacy, .overlay] {
+            scroll.scrollerStyle = style
+            for size in [NSSize(width: 320, height: 400), NSSize(width: 450, height: 500), NSSize(width: 700, height: 700)] {
+                window.setContentSize(size)
+                viewer.layoutSubtreeIfNeeded()
+                let description = "at \(Int(size.width)) × \(Int(size.height)), scroller style \(style.rawValue)"
+                XCTAssertGreaterThanOrEqual(diff.bounds.height, 150, description)
+                // Classic scrollers occupy viewport space; overlay scrollers do not.
+                XCTAssertEqual(scroll.bounds.width, viewer.bounds.width, accuracy: 1, description)
+                XCTAssertEqual(document.bounds.width, scroll.contentView.bounds.width, accuracy: 1, description)
+                XCTAssertEqual(diff.bounds.width, scroll.contentView.bounds.width - 24, accuracy: 1, description)
+                for item in controls + popups {
+                    guard !item.isHiddenOrHasHiddenAncestor else { continue }
+                    let frame = item.convert(item.bounds, to: document)
+                    XCTAssertGreaterThanOrEqual(frame.minX, -1, description + ": " + (item.accessibilityLabel() ?? "control"))
+                    XCTAssertLessThanOrEqual(frame.maxX, document.bounds.maxX + 1, description + ": " + (item.accessibilityLabel() ?? "control"))
+                    XCTAssertGreaterThanOrEqual(frame.minY, -1, description)
+                    XCTAssertLessThanOrEqual(frame.maxY, document.bounds.maxY + 1, description)
+                    if item is NSSegmentedControl || (item as? NSButton)?.title == "Dateiliste" {
+                        XCTAssertGreaterThanOrEqual(item.bounds.width + 1, item.fittingSize.width,
+                            description + ": " + (item.accessibilityLabel() ?? "Dateiliste"))
+                    }
                 }
             }
         }

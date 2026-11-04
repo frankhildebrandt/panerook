@@ -1,6 +1,6 @@
 # Releasevorbereitung 0.4.0
 
-Stand: 4. November 2026. **Lokale Vorbereitung abgeschlossen; Veröffentlichung beauftragt und gestartet.** Zielversion 0.4.0 und Build 6 sind bestätigt. Ausgangspunkt ist `dc8150d` (Merge von Remote Edit nach Tabs, Transfers und weiteren Features); hinzu kommen die lokalen Release-Inhalte und Metadaten dieses Checkouts. Keine Änderungen an App-Funktionen im Rahmen der Vorbereitung.
+Stand: 4. November 2026. **Nicht als App-Paket veröffentlicht; ersetzt durch 0.4.1.** Zielversion 0.4.0 und Build 6 sind bestätigt. Ausgangspunkt ist `dc8150d` (Merge von Remote Edit nach Tabs, Transfers und weiteren Features); hinzu kommen die lokalen Release-Inhalte und Metadaten dieses Checkouts. Keine Änderungen an App-Funktionen im Rahmen der Vorbereitung.
 
 Letzter tatsächlich veröffentlichter Release: **v0.3.1**, veröffentlicht am 2. November 2026 um 17:47:37 UTC, als neuester stabiler Release durch `gh release list` geprüft. Dessen App-Metadaten enthalten Version 0.3.1 und Build 5. v0.3.0 ist ein vorhandener Tag samt damaligen Notes, aber kein veröffentlichter App-Release. Vergleich: `v0.3.1...HEAD`.
 
@@ -55,3 +55,9 @@ Bei beauftragter Veröffentlichung den bestehenden Paketierungs-/Signierweg und 
 Versionierte Website-Bilder und Release-Einzelseite müssen öffentlich erreichbar sein, bevor die GitHub Notes veröffentlicht werden. Pages wird über `main` separat bereitgestellt; der App-Tag allein veröffentlicht die Website nicht. Danach GitHub-Downloads, SHA-256-Dateien, Appcast-Version/Build/Signatur sowie die öffentlichen Dokumentations-, Release- und Bild-URLs prüfen. Die für 0.4.0 vorgesehenen öffentlichen URLs sind lokal geprüft, noch nicht öffentlich veröffentlicht oder auf Erreichbarkeit bestätigt.
 
 Echte SFTP-/SSH-/Nextcloud-Rückuploads, Volume-Wechsel und Papierkorb-Wiederherstellung wurden nicht manuell mit privaten Zugängen oder zusätzlichen Volumes ausgeführt. Die entsprechenden Bediengrenzen bleiben dokumentiert; vorhandene automatisierte Transport- und Integrationsprüfungen ersetzen diese Umgebungsprüfungen nicht.
+
+## Ergebnis des Veröffentlichungsversuchs
+
+Die Website wurde mit Commit `dee734c2a8fd94a57a9dcd97e36d1d705f624485` veröffentlicht; alle 17 Seiten und zehn Bilddateien wurden öffentlich geprüft. Der [App-Release-Lauf für v0.4.0](https://github.com/frankhildebrandt/panerook/actions/runs/41824663939) scheiterte an einer falschen Breitenannahme in `GitHistoryPaneTests.testViewerKeepsNavigationAndDiffUsableAtMinimumAndWiderPaneSizes`: Der Test zog die 15 Pixel eines klassischen Scrollbalkens nicht von der erwarteten Diffbreite ab. Es wurden keine App-Pakete veröffentlicht. Der Tag v0.4.0 bleibt unverändert. Der Nutzer hat ausdrücklich 0.4.1 (Build 7) gewählt; siehe [Releaseprotokoll 0.4.1](release-preparation-0.4.1.md).
+
+Die optionalen Papierkorb- und Volume-Undo-Tests wurden beim Veröffentlichungsabschluss separat aktiviert und erfolgreich ausgeführt. Das eigens erzeugte 64-MB-Testvolume wurde danach ausgehängt.
