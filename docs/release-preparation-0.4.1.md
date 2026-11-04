@@ -1,6 +1,6 @@
 # Releaseprotokoll 0.4.1
 
-Stand: 4. November 2026. **Veröffentlichung läuft.** Version 0.4.1 (Build 7) ist ausdrücklich gewählt. Der Tag v0.4.0 bleibt nach dem fehlgeschlagenen CI-Versuch unverändert; dafür wurde kein App-Paket veröffentlicht. Letzter veröffentlichter App-Release ist vor diesem Abschluss weiterhin 0.3.1 (Build 5).
+Stand: 4. November 2026. **Veröffentlicht und öffentlich verifiziert.** Version 0.4.1 (Build 7) ist ausdrücklich gewählt. Der Tag v0.4.0 bleibt nach dem fehlgeschlagenen CI-Versuch unverändert; dafür wurde kein App-Paket veröffentlicht. Letzter veröffentlichter App-Release ist vor diesem Abschluss weiterhin 0.3.1 (Build 5).
 
 ## Umfang und Korrektur
 
@@ -18,4 +18,11 @@ Der native Aufnahmebuild für 0.4.1 ist arm64 und ad hoc signiert. Die Universal
 
 ## Veröffentlichungsergebnis
 
-Noch ausstehend: Pages-Deploy, signierte/notarisierte Universal-Pakete, GitHub-Veröffentlichung sowie öffentliche Prüfung von Seiten, Bildern, Downloads, Prüfsummen, Apple-Tickets und stabilem Appcast. Der Sparkle-Schlüssel wird zusätzlich mit dem tatsächlich veröffentlichten 0.3.1-Paket verglichen. Das Ergebnis wird nach Abschluss ergänzt.
+- [GitHub Release v0.4.1](https://github.com/frankhildebrandt/panerook/releases/tag/v0.4.1), veröffentlicht am 4. November 2026 um 12:23:53 UTC. Stabiles Release, kein Entwurf und keine Vorabversion. Release-Commit: `38b2b2201ecfd0ee48bf92464615c77a800e5e29`.
+- [App-Release-Workflow](https://github.com/frankhildebrandt/panerook/actions/runs/41827169605) erfolgreich: 544 Testfälle, drei reguläre Opt-in-Skips, keine Fehler; die drei Opt-in-Prüfungen sind separat lokal erfolgreich. Appcast-Prüfung erfolgreich. Apple hat App und DMG angenommen; beide Tickets wurden angeheftet und validiert.
+- [Pages-Workflow](https://github.com/frankhildebrandt/panerook/actions/runs/41827106232) erfolgreich auf demselben Release-Commit. Öffentliche Nachprüfung aller 18 Seiten und zehn 0.4.1-Bilder erfolgreich; Bilddateien stimmen per SHA-256 mit den lokalen Originalen überein. Die [Release-Einzelseite](https://frankhildebrandt.github.io/panerook/release-notes/0.4.1/) und alle Dokumentations-Unterseiten sind erreichbar. Lokal zusätzlich 381 Link-/Asset-Verweise und 74 Bildvorkommen geprüft.
+- Beide Pakete samt SHA-256-Dateien und `appcast.xml` erneut von GitHub heruntergeladen. Prüfsummen stimmen, veröffentlichte Notes entsprechen der gemeinsamen Markdown-Quelle. Der stabile Latest-Feed liefert 0.4.1, Build 7, Mindestversion macOS 14.0 und die korrekte ZIP-Länge.
+- Die heruntergeladene App enthält arm64 und x86_64. Developer-ID-Signaturen, angeheftete Notarisierungstickets und Gatekeeper-Bewertung erfolgreich. Das DMG wurde schreibgeschützt eingehängt: App-Plist und ausführbare Datei stimmen bytegenau mit dem ZIP überein, die Verknüpfung zeigt auf `/Applications`; das Image wurde wieder ausgehängt.
+- Sparkle-Ed25519-Signatur des veröffentlichten ZIPs kryptografisch gegen den eingebetteten Schlüssel geprüft. Dieser Schlüssel entspricht dem tatsächlich veröffentlichten 0.3.1-Paket; die Buildnummer steigt von 5 auf 7. Updates bestehender Installationen behalten damit denselben Vertrauensschlüssel.
+
+Prüfprotokolle und erneut heruntergeladene Pakete liegen lokal unter `build/release-verification/`; lokale Vorprüfungen unter `build/release-review/`. Diese Build-Artefakte sind nicht versioniert. Es bleiben keine Veröffentlichungsschritte offen. Echte Rückuploads mit privaten SFTP-/SSH-/Nextcloud-Zugängen wurden weiterhin nicht manuell ausgeführt.
