@@ -18,6 +18,14 @@ private final class RemoteReadableFiles {
 }
 
 extension RemoteBrowser {
+    var remoteEditRequests: [RemoteEditRequest] {
+        guard !busy, !disconnected, !selection.isEmpty,
+              selection.allSatisfy({ $0.isRegularFile && !$0.isSymbolicLink }) else { return [] }
+        return selection.compactMap { entry in
+            guard let path = try? RemoteFileSystem.normalizedPath(entry.name, relativeTo: directory) else { return nil }
+            return RemoteEditRequest(fileSystem: fileSystem, path: path)
+        }
+    }
     private func transferConflictPrompt() -> TransferConflictPrompt {
         TransferConflictPrompt(parent: view.window, onCancel: { [weak self] in
             guard let self, let taskID = self.queuedTask else { return }

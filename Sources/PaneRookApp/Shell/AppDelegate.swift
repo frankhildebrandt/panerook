@@ -67,8 +67,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         commander.activate(commander.active)
         NSApp.activate(ignoringOtherApps: true)
         updater.start()
+        commander.preview.remoteEdits.showRecoveryNoticeIfNeeded()
     }
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard commander.preview.remoteEdits.confirmTermination() else { return .terminateCancel }
         guard commander.tasks.hasActiveTasks else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Es laufen noch Aufgaben."

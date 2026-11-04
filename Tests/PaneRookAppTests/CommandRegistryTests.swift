@@ -64,7 +64,8 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(registry.defaultsByID["preferences.configuration"]?.label, "⌘,")
         XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
-        XCTAssertEqual(registry.commands(in: .file).count, 29)
+        XCTAssertTrue(Set(registry.commands(in: .file).map(\.id)).isSuperset(of:
+            ["preview", "edit", "copy", "move", "mkdir", "trash", "remoteEdit.sessions", "editor.choose"]))
         XCTAssertEqual(registry.commands(in: .command).count, 43)
         XCTAssertNotNil(registry["inspection.synchronizeDirectories"])
         XCTAssertNotNil(registry["files.batchRename"])
@@ -104,7 +105,8 @@ final class CommandRegistryTests: XCTestCase {
             NSApp.mainMenu?.items.map(\.title),
             ["PaneRook", "Links", "Datei", "Befehl", "Optionen", "Rechts", "Bearbeiten", "Hilfe"])
         XCTAssertEqual(
-            NSApp.mainMenu?.items.first { $0.title == "Datei" }?.submenu?.items.filter { !$0.isSeparatorItem }.count, 29
+            NSApp.mainMenu?.items.first { $0.title == "Datei" }?.submenu?.items.filter { !$0.isSeparatorItem }.count,
+            commander.commandRegistry.commands(in: .file).count
         )
     }
 

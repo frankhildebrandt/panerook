@@ -79,6 +79,11 @@ enum ContextCommands {
         add(.tasks, "tasks.resume", "Transfer wiederholen / fortsetzen")
         add(.tasks, "tasks.discardTransfer", "Offenen Transferauftrag verwerfen")
         add(.tasks, "tasks.reveal", "Aufgabenergebnis anzeigen")
+        for (id, title) in [("open", "Arbeitskopie im Editor öffnen"), ("upload", "Remote-Änderungen hochladen / wiederholen"),
+                            ("cancel", "Remote-Upload abbrechen"), ("stop", "Beobachtung beenden …"),
+                            ("reveal", "Arbeitskopien im Finder zeigen")] {
+            add(.remoteEdit, "remoteEdit." + id, title)
+        }
         add(.results, "results.reveal", "Ausgewählten Treffer im Panel zeigen", .physical(36, characters: "\r"))
         add(.results, "results.panelize", "Treffer ins Panel übernehmen")
         for (id, title) in [("preview", "Synchronisationsvorschau erstellen"), ("execute", "Synchronisation bestätigen …"),

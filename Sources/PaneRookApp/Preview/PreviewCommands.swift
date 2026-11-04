@@ -2,6 +2,7 @@ import AppKit
 
 extension PreviewTools {
     func registerCommands(in registry: CommandRegistry) {
+        remoteEdits.registerCommands(in: registry)
         let selected = {
             self.owner.canUseMenus && (self.owner.activePane.remoteContent?.canPreview ?? self.owner.canUseSelection)
         }
@@ -16,7 +17,10 @@ extension PreviewTools {
         registry.add(
             .file, "Bearbeiten", id: "edit", order: 40, group: 0, function: 4, dockTitle: { "Bearbeiten" },
             enabled: {
-                self.owner.canUseNativeSelection
+                if let remote = self.owner.activePane.remoteContent {
+                    return self.owner.canUseMenus && !remote.remoteEditRequests.isEmpty
+                }
+                return self.owner.canUseNativeSelection
                     && self.owner.activePane.selectedEntries.contains { !$0.isParent && !$0.isDirectory }
             }
         ) { self.editSelection() }

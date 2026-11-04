@@ -77,6 +77,9 @@ public struct RemoteInvocation {
     public var input: Data?
     public var inputFile: URL?
     public var outputFile: URL?
+    /// Optional request/response exchange: keep stdin open until stdout confirms
+    /// the request, so a subsystem cannot discard buffered requests on early EOF.
+    public var closeInputAfterOutput: ((Data) -> Bool)?
     public init(executable: String, arguments: [String], input: Data? = nil, inputFile: URL? = nil, outputFile: URL? = nil) {
         self.executable = executable; self.arguments = arguments; self.input = input; self.inputFile = inputFile; self.outputFile = outputFile
     }
