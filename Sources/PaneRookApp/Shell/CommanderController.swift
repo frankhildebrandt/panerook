@@ -21,7 +21,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private(set) var panelsHidden = false
     var arePanelsHidden: Bool { panelsHidden }
     lazy var tasks = TaskCenter(parentWindow: { [weak self] in self?.view.window },
-                                restoreFocus: { [weak self] in guard let self else { return }; self.activate(self.active) })
+                                restoreFocus: { [weak self] in guard let self else { return }; self.activate(self.active) },
+                                transferStore: RecoverableTransfers.applicationStore,
+                                restoredTransferCompletion: { [weak self] in self?.refreshAfterTask() },
+                                transferJournal: fileOperations.journal)
     lazy var operations = OperationRunner(tasks: tasks, refresh: { [weak self] in self?.refreshAfterTask() })
     lazy var preview = PreviewTools(owner: self)
     lazy var fileOperations = FileOperations(owner: self)

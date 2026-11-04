@@ -112,6 +112,33 @@ public final class FileOperationJournal: @unchecked Sendable {
         try run(Batch(id: UUID(), title: title, steps: steps), direction: .forward, cancellation: cancellation, progress: progress)
     }
 
+    /// Adopt already committed moves from a recoverable worker without replaying any filesystem action.
+    /// The caller validates its durable manifest before and after snapshot capture. Unsafe entries are
+    /// reported in history and are never admitted to the undo stack.
+    public func recordCompletedMoves(_ items: [(source: URL, destination: URL)], title: String,
+                                     validate: (URL, URL) throws -> Void) {
+        guard !items.isEmpty else { return }
+        operationLock.lock(); defer { operationLock.unlock() }
+        var inverses: [Step] = [], warnings: [String] = []
+        for item in items {
+            do {
+                let original = try FileOperationPath(item.source), destination = try FileOperationPath(item.destination)
+                try original.requireAbsent()
+                try validate(item.source, item.destination)
+                let snapshot = try FileOperationSnapshot.capture(destination.url, cancellation: TransferCancellation())
+                try validate(item.source, item.destination)
+                inverses.append(.move(destination, original, snapshot, restoreFromTrash: false))
+            } catch { warnings.append("\(item.destination.path): Datei-Undo nicht verfügbar. " + error.localizedDescription) }
+        }
+        stateLock.lock(); defer { stateLock.unlock() }
+        if !inverses.isEmpty { undoStack.append(Batch(id: UUID(), title: title, steps: inverses.reversed())) }
+        redoStack.removeAll()
+        if undoStack.count > limit { undoStack.removeFirst(undoStack.count - limit) }
+        events.append(FileJournalEvent(date: Date(), title: title, paths: items.map { "\($0.source.path) → \($0.destination.path)" },
+            completed: items.count, total: items.count, error: warnings.isEmpty ? nil : warnings.joined(separator: "\n")))
+        if events.count > limit { events.removeFirst(events.count - limit) }
+    }
+
     public func createDirectory(named name: String, in directory: URL, cancellation: TransferCancellation = .init(),
                                 progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
         operationLock.lock(); defer { operationLock.unlock() }

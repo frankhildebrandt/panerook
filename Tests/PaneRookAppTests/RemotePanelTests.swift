@@ -282,6 +282,7 @@ final class RemotePanelTests: XCTestCase {
                 try contents.write(to: output)
                 return Data()
             }
+            if invocation.arguments.last == "LC_ALL=C ls -lan '/home'" { return Data("drwxr-xr-x 2 501 20 64 Nov  1 10:00 me\n".utf8) }
             return Data("-rw-r--r-- 1 501 20 15 Nov  1 10:00 remote.txt\n".utf8)
         })
         let browser = try XCTUnwrap(left.remoteContent)

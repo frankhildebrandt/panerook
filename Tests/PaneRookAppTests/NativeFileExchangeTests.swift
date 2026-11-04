@@ -241,6 +241,10 @@ final class NativeFileExchangeTests: XCTestCase {
             XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: target.appendingPathComponent(url.lastPathComponent).path))
         }
+        XCTAssertEqual(host.fileOperations.journal.nextUndo?.title, "Verschieben")
+        let inverse = try XCTUnwrap(host.fileOperations.journal.nextUndo)
+        try host.fileOperations.journal.undo(expectedID: inverse.id)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: captured[0].path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: urls[1].path), "Unselected files are never moved")
     }
 

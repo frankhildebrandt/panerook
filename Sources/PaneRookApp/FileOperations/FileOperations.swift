@@ -81,6 +81,14 @@ final class FileOperations {
             self.transferDialog = nil
             self.owner.activate(focusPane)
             guard let plan else { return }
+            if !rename && !plan.items.contains(where: { ArchiveFileSystem.location(for: $0.source).map { !$0.memberPath.isEmpty } == true || ArchiveFileSystem.location(for: $0.destination).map { !$0.memberPath.isEmpty } == true }) {
+                let record = RecoverableTransfer(title: verb, moving: kind == .move, roots: plan.items.map {
+                    TransferRoot(source: TransferPath(RecoverableLocalFiles.canonicalPath($0.source)),
+                                 destination: TransferPath(RecoverableLocalFiles.canonicalPath($0.destination)))
+                })
+                self.owner.tasks.submitTransfer(record, journal: self.journal) { [weak self] in self?.owner.refreshAfterTask() }
+                return
+            }
             let token = TransferCancellation()
             self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
                 cancellation: { token.cancel() }, work: { report in
