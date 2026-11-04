@@ -7,6 +7,26 @@ import PaneRookCore
 
 
 final class FileTable: NSTableView, NSMenuItemValidation {
+    var makeContextMenu: (() -> NSMenu?)?
+
+    /// A secondary click targets its row, preserving an existing multi-selection.
+    /// Empty space clears selection so actions cannot affect an unrelated old row.
+    func prepareContextMenu(at row: Int) -> NSMenu? {
+        guard isEnabled, row >= 0, row < numberOfRows else {
+            if isEnabled { deselectAll(nil) }
+            return nil
+        }
+        window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(self)
+        didFocus?()
+        if !selectedRowIndexes.contains(row) {
+            selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        }
+        return makeContextMenu?()
+    }
+    override func menu(for event: NSEvent) -> NSMenu? {
+        prepareContextMenu(at: row(at: convert(event.locationInWindow, from: nil)))
+    }
     var copyFiles: (() -> Void)?
     var pasteFiles: (() -> Void)?
     var canCopyFiles: (() -> Bool)?
@@ -55,6 +75,8 @@ final class ThemedFileRow: NSTableRowView {
 final class PaneController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, PanelAccess {
     let tabID: UUID
     var onWorkspaceReconnectRequested: (() -> Void)?
+    var onPresentationChanged: (() -> Void)?
+    var onFileContextMenu: (() -> NSMenu?)?
     var pendingWorkspaceConnection: ConnectionBookmark?
     private var restoredTerminalDirectory: URL?
     var hasLiveTerminal: Bool { terminalContent?.isRunning == true }
@@ -75,10 +97,6 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var contentTop: NSLayoutConstraint?
     private var contentBottom: NSLayoutConstraint?
     private var historyContentEdges: [NSLayoutConstraint] = []
-    private var gitInlineWidth: NSLayoutConstraint?
-    private var gitInlineConstraints: [NSLayoutConstraint] = []
-    private var gitRowConstraints: [NSLayoutConstraint] = []
-    private var gitBarIsInline = false
     private var gitRequest = 0
     private let gitWorker = DispatchQueue(label: "PaneRook.panel.git", qos: .utility)
     private let gitWatches = GitWatchStore()
@@ -120,6 +138,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var panelized: Bool { state.panelized }
     var directorySizes: [URL: Int64] { get { state.directorySizes } set { state.directorySizes = newValue } }
     private var inspectionURL: URL?
+    private var historyURL: URL?
+    private var historySourceLabel: String?
     private var iconsVisible = true
     private var summaryVisible = true
     private var highlights: [(pattern: String, color: NSColor)] = []
@@ -245,6 +265,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.target = self
         table.doubleAction = #selector(openFromTable)
         table.didFocus = { [weak self] in self?.onActivate?() }
+        table.makeContextMenu = { [weak self] in self?.onFileContextMenu?() }
         table.handleKey = { [weak self] event in self?.onKey?(event) ?? false }
         table.setAccessibilityLabel("\(label): Dateiliste")
         table.backgroundColor = ThemeManager.surfaceColor
@@ -334,21 +355,12 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             content.topAnchor.constraint(equalTo: surface.topAnchor, constant: 1),
             content.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -1)
         ]
-        let gitInlineWidth = gitBar.widthAnchor.constraint(equalToConstant: 0)
-        self.gitInlineWidth = gitInlineWidth
-        gitInlineConstraints = [
-            navigation.trailingAnchor.constraint(equalTo: gitBar.leadingAnchor, constant: -6),
-            gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -12),
-            gitBar.centerYAnchor.constraint(equalTo: navigation.centerYAnchor),
-            gitInlineWidth
-        ]
-        gitRowConstraints = [
+        NSLayoutConstraint.activate([
             navigation.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             gitBar.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 10),
             gitBar.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -10),
             gitBar.centerYAnchor.constraint(equalTo: navigation.bottomAnchor, constant: 16)
-        ]
-        NSLayoutConstraint.activate(gitRowConstraints)
+        ])
         NSLayoutConstraint.activate([
             navigation.topAnchor.constraint(equalTo: surface.topAnchor),
             navigation.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -476,14 +488,16 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             content.setBriefListing(brief)
             content.applyDisplayOptions(rowHeight: table.rowHeight, showIcons: iconsVisible, showSummary: summaryVisible)
             if let menu = favoritesButton.menu { content.installFavoritesMenu(menu) }
+            content.installFileContextMenu(provider: { [weak self] in self?.onFileContextMenu?() })
         } else if mode == .network { network.start() }
         refreshAvailableCapacity()
+        onPresentationChanged?()
         updateLocalObservation(refresh: content == nil)
         onSelectionChanged?(selectedFiles.first)
         if isActive { focus() }
     }
 
-    func remoteStateDidChange() { onSelectionChanged?(nil) }
+    func remoteStateDidChange() { onPresentationChanged?(); onSelectionChanged?(nil) }
     func activate() { onActivate?() }
 
     private func prepareTerminal() {
@@ -536,7 +550,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if mode != .listing && mode != .tree { stopLocalObservation() }
         if mode == .terminal { prepareTerminal() }
         terminalContent?.setVisible(mode == .terminal)
-        let fullContent = mode == .gitHistory || mode == .terminal
+        let fullContent = mode == .gitHistory || mode == .terminal || mode == .quickView || mode == .info
         navigation.isHidden = fullContent
         summary.isHidden = fullContent || !summaryVisible
         NSLayoutConstraint.deactivate(historyContentEdges)
@@ -565,6 +579,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if isActive { focus() }
         onSelectionChanged?(selectedFiles.first)
         if changingTerminal { onDirectoryChanged?() }
+        onPresentationChanged?()
     }
 
     func showInspection(of url: URL?) {
@@ -572,13 +587,17 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         guard isViewLoaded, mode == .quickView || mode == .info else { return }
         inspection.show(url, information: mode == .info, encoding: textEncoding)
         updateSummary()
+        onPresentationChanged?()
     }
 
     /// Like quick view, Git history follows the opposite panel's selection.
     /// The viewer's own directory and listing selection remain available on return.
     func showGitHistory(from source: PaneController) {
         guard isViewLoaded, mode == .gitHistory else { return }
+        defer { onPresentationChanged?() }
+        historySourceLabel = source.label
         guard source.remoteContent == nil, !source.isArchiveDirectory, source.mode != .network else {
+            historyURL = nil
             pathField.stringValue = "Git · anderes Panel"
             gitHistory.follow(directory: nil, selection: nil, isDirectory: false)
             return
@@ -586,6 +605,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let entries = source.selectedEntries.filter { !$0.isParent }
         let selection = entries.count == 1 ? entries.first : nil
         let sourceDirectory = selection.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() } ?? source.directory
+        historyURL = selection?.url ?? source.directory
         pathField.stringValue = selection?.url.path ?? source.directory.path
         pathField.toolTip = "Git-Verlauf der Auswahl im anderen Panel"
         gitHistory.follow(directory: sourceDirectory, selection: selection?.url,
@@ -639,7 +659,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         table.rowHeight = min(44, max(18, rowHeight)); tree.outline.rowHeight = table.rowHeight
         iconsVisible = showIcons
         summaryVisible = showSummary
-        summary.isHidden = !showSummary || mode == .gitHistory || mode == .terminal
+        summary.isHidden = !showSummary || mode == .gitHistory || mode == .terminal || mode == .quickView || mode == .info
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
         reloadListingPreservingSelection()
@@ -1264,7 +1284,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     }
 
     private func updateGitBarLayout() {
-        guard let contentTop, let gitInlineWidth else { return }
+        guard let contentTop else { return }
         // Preserve a usable path field in narrow panes. Use intrinsic widths so
         // hiding the capacity label does not change the next layout decision.
         let fixedControls = navigation.arrangedSubviews.filter { $0 !== pathField && $0 !== availableSpace && !$0.isHidden }
@@ -1273,29 +1293,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let hideCapacity = availableSpace.stringValue.isEmpty
             || surface.bounds.width < minimumNavigationWidth + availableSpace.intrinsicContentSize.width + navigation.spacing
         if availableSpace.isHidden != hideCapacity { availableSpace.isHidden = hideCapacity }
-        // Measure the desired control sizes, not their compressed frames, so the
-        // decision stays stable when switching between one and two rows.
-        let gitWidth = ceil(gitButton.intrinsicContentSize.width)
-            + gitFilterButton.fittingSize.width + watchButton.fittingSize.width + 2 * gitBar.spacing
-        // A scrollable text field's intrinsic width does not include its full text.
-        let pathTextWidth = (pathField.stringValue as NSString).size(withAttributes: [
-            .font: pathField.font ?? NSFont.systemFont(ofSize: 12)
-        ]).width
-        let pathWidth = max(180, ceil(pathTextWidth) + 16)
-        let visibleControls = navigation.arrangedSubviews.filter { !$0.isHidden }
-        let navigationWidth = visibleControls.reduce(CGFloat(0)) {
-            $0 + ($1 === pathField ? pathWidth : $1.fittingSize.width)
-        } + CGFloat(visibleControls.count - 1) * navigation.spacing
-            + navigation.edgeInsets.left + 12
-        let inline = !gitBar.isHidden && surface.bounds.width >= navigationWidth + 6 + gitWidth
-        if gitInlineWidth.constant != gitWidth { gitInlineWidth.constant = gitWidth }
-        if inline != gitBarIsInline {
-            NSLayoutConstraint.deactivate(gitBarIsInline ? gitInlineConstraints : gitRowConstraints)
-            gitBarIsInline = inline
-            navigation.edgeInsets.right = inline ? 0 : 12
-            NSLayoutConstraint.activate(inline ? gitInlineConstraints : gitRowConstraints)
-        }
-        let rowHeight: CGFloat = gitBar.isHidden || inline ? 0 : 32
+        // Git controls have a dedicated row. Its position depends only on the
+        // available feature, never on the length of the edited path or branch.
+        let rowHeight: CGFloat = gitBar.isHidden ? 0 : 32
         if contentTop.constant != rowHeight { contentTop.constant = rowHeight }
     }
 
@@ -1333,13 +1333,37 @@ extension PaneController {
             return "☁ " + connection.name
         }
         let name = directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent
-        return mode == .terminal ? "› " + name : name
+        switch mode {
+        case .listing: return name
+        case .tree: return "Baum · " + name
+        case .network: return "Netzwerk"
+        case .terminal: return "Terminal · " + name
+        case .quickView: return "Vorschau · " + (inspectionURL?.lastPathComponent ?? "Keine Auswahl")
+        case .info: return "Info · " + (inspectionURL?.lastPathComponent ?? "Keine Auswahl")
+        case .gitHistory: return "Verlauf · " + (historyURL?.lastPathComponent ?? "Keine Auswahl")
+        }
     }
     var tabLocationDescription: String {
         if let connection = remoteContent?.workspaceBookmark ?? pendingWorkspaceConnection {
             return "\(connection.kind.rawValue.uppercased()) · \(connection.host)\(connection.path)"
         }
-        return directory.path
+        if mode == .quickView || mode == .info { return inspectionURL?.path ?? "Keine Auswahl im anderen Panel" }
+        if mode == .gitHistory { return historyURL?.path ?? "Keine Auswahl im anderen Panel" }
+        return mode == .network ? "Netzwerk" : directory.path
+    }
+    var panelContextDescription: String {
+        if let connection = remoteContent?.workspaceBookmark ?? pendingWorkspaceConnection { return connection.name }
+        if mode == .quickView || mode == .info || mode == .gitHistory {
+            let target = mode == .gitHistory ? historyURL : inspectionURL
+            let source = mode == .gitHistory ? historySourceLabel : nil
+            let peer = source?.lowercased() ?? (label == "Links" ? "rechts" : label == "Rechts" ? "links" : "anderem Panel")
+            return (target?.lastPathComponent ?? "Keine Auswahl") + " · folgt " + peer
+        }
+        return mode == .network ? "Freigaben und Geräte" : (directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
+    }
+    func canSelectPanelMode(_ mode: PanelMode) -> Bool {
+        if remoteContent != nil { return mode == .listing }
+        return !((mode == .tree || mode == .terminal) && isArchiveDirectory)
     }
     func workspaceSnapshot() -> WorkspaceTab {
         var tab = WorkspaceTab(id: tabID, directory: state.directory)

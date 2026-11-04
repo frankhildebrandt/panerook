@@ -64,6 +64,8 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
     private var actions: [ClosureAction] = []
     private var navigationActionCount = 0
     private var themeObserver: NSObjectProtocol?
+    private var parentCloseObserver: NSObjectProtocol?
+    private var didDismiss = false
     private(set) var selectedSection: SettingsSection
 
     init(preferences: PreferencesTools, section: SettingsSection, defaults: UserDefaults = .standard,
@@ -73,7 +75,7 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         self.selectedSection = section
         self.updaterView = updaterView
         self.onClose = onClose
-        let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 800),
+        let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 980, height: 680),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init(window: panel)
         panel.delegate = self
@@ -90,15 +92,31 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         show(section)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
-    deinit { if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) } }
+    deinit {
+        if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
+        if let parentCloseObserver { NotificationCenter.default.removeObserver(parentCloseObserver) }
+    }
 
     func begin(on parent: NSWindow) {
-        guard let window, parent.attachedSheet == nil else { return }
-        parent.beginSheet(window) { [weak self] _ in self?.onClose() }
+        guard let window else { return }
+        didDismiss = false
+        if let saved = defaults.string(forKey: "settings.windowFrame") {
+            let frame = NSRectFromString(saved)
+            if frame.width >= window.minSize.width, frame.height >= window.minSize.height {
+                window.setFrame(window.constrainFrameRect(frame, to: parent.screen), display: false)
+            } else { window.center() }
+        } else { window.center() }
+        if let parentCloseObserver { NotificationCenter.default.removeObserver(parentCloseObserver) }
+        parentCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+            object: parent, queue: .main) { [weak self] _ in self?.dismiss() }
+        showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
     }
     func show(_ section: SettingsSection) {
         commitTimeoutEditing()
         selectedSection = section
+        defaults.set(section.rawValue, forKey: "settings.selectedSection")
+        window?.title = section.title + " – Einstellungen"
         clear(pages)
         actions.removeSubrange(navigationActionCount..<actions.count)
         let content = makePage(section)
@@ -389,9 +407,17 @@ final class SettingsDialog: NSWindowController, NSWindowDelegate, NSSearchFieldD
         window?.makeFirstResponder(nil)
     }
     private func dismiss() {
+        guard !didDismiss else { return }
+        didDismiss = true
         commitTimeoutEditing()
         window?.makeFirstResponder(nil)
-        if let window, let parent = window.sheetParent { parent.endSheet(window) }
+        if let window {
+            defaults.set(NSStringFromRect(window.frame), forKey: "settings.windowFrame")
+            window.orderOut(nil)
+        }
+        if let parentCloseObserver { NotificationCenter.default.removeObserver(parentCloseObserver) }
+        parentCloseObserver = nil
+        onClose()
     }
     private func bind(_ control: NSControl, _ action: @escaping () -> Void) {
         let target = ClosureAction(action)

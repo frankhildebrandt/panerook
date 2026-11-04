@@ -4,6 +4,44 @@ import XCTest
 @testable import PaneRookApp
 
 final class SettingsDialogTests: XCTestCase {
+    private final class KeyWindow: NSWindow {
+        override var isKeyWindow: Bool { true }
+    }
+
+    func testSettingsRemainModelessAndRestoreLastSectionAndWindowSize() throws {
+        _ = NSApplication.shared
+        let suite = "PaneRook-modeless-settings-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let commander = CommanderController(defaults: defaults)
+        commander.tasks = TaskCenter(parentWindow: { nil }, restoreFocus: {})
+        let parent = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
+                               styleMask: [.titled], backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        parent.contentViewController = commander
+        defer { parent.close() }
+        let preferences = commander.preferences
+        preferences.showSettings(section: .panels)
+        let first = try XCTUnwrap(preferences.settingsDialog)
+        let settings = try XCTUnwrap(first.window)
+        XCTAssertNil(parent.attachedSheet)
+        XCTAssertNil(settings.sheetParent)
+        XCTAssertTrue(commander.canUseMenus, "The main window remains usable when it has focus")
+        first.show(.keyboard)
+        settings.setContentSize(NSSize(width: 900, height: 600))
+        commander.activate(commander.right)
+        settings.performClose(nil)
+        XCTAssertNil(preferences.settingsDialog)
+        XCTAssertFalse(settings.isVisible)
+        XCTAssertTrue(commander.active === commander.right, "Closing settings must preserve the panel used in the meantime")
+        preferences.showSettings()
+        let second = try XCTUnwrap(preferences.settingsDialog)
+        XCTAssertEqual(second.selectedSection, .keyboard)
+        XCTAssertEqual(try XCTUnwrap(second.window?.contentView).bounds.width, 900, accuracy: 1)
+        XCTAssertNil(parent.attachedSheet)
+        second.window?.performClose(nil)
+    }
+
     private func descendants(_ view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants($0) }
     }

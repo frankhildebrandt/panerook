@@ -19,6 +19,8 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private let status = NSTextField(labelWithString: "")
     private let statusBar = NSStackView()
     private let progress = NSProgressIndicator()
+    private let taskStatusButton = NSButton()
+    private weak var taskToolbarItem: NSToolbarItem?
     private let hiddenButton = NSButton()
     private var availabilityObservers: [NSObjectProtocol] = []
     private var actions: [(NSButton, AppCommand)] = []
@@ -38,6 +40,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var preview = PreviewTools(owner: self)
     lazy var fileOperations = FileOperations(owner: self)
     lazy var fileExchange = NativeFileExchange(owner: self)
+    lazy var fileContextActions = FileContextActions(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
     lazy var preferences = PreferencesTools(owner: self, defaults: workspaceDefaults)
     lazy var localTools = LocalTools(owner: self)
@@ -179,6 +182,13 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         statusBar.addArrangedSubview(progress)
         statusBar.addArrangedSubview(status)
         statusBar.addArrangedSubview(NSView())
+        taskStatusButton.target = self
+        taskStatusButton.action = #selector(showTaskQueue)
+        taskStatusButton.identifier = .init("tasks.status")
+        taskStatusButton.controlSize = .small
+        AppStyle.configureButton(taskStatusButton)
+        statusBar.addArrangedSubview(taskStatusButton)
+        statusBar.identifier = .init("tasks.statusBar")
         tasks.onChange = { [weak self] in self?.updateTaskStatus() }
         root.addArrangedSubview(statusBar)
         statusBar.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
@@ -274,6 +284,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         item.action = action
         item.isBordered = true
         item.isNavigational = id != ToolbarID.help && id != ToolbarID.menu && id != ToolbarID.tasks
+        if id == ToolbarID.tasks {
+            taskToolbarItem = item
+            updateTaskStatus()
+        }
         return item
     }
 
@@ -448,7 +462,16 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private func updateTaskStatus() {
         let hasActiveTasks = tasks.hasActiveTasks
         status.stringValue = tasks.summary
-        statusBar.isHidden = !hasActiveTasks
+        statusBar.isHidden = false
+        let attention = tasks.attentionCount
+        taskStatusButton.title = attention > 0 ? "Aufgaben (\(attention)) …" : "Aufgaben …"
+        taskStatusButton.image = NSImage(systemSymbolName: attention > 0 ? "exclamationmark.circle" : "list.bullet.rectangle", accessibilityDescription: nil)
+        taskStatusButton.imagePosition = .imageLeading
+        taskStatusButton.setAccessibilityLabel("Aufgaben: \(tasks.summary)")
+        status.textColor = attention > 0 ? .labelColor : .secondaryLabelColor
+        taskToolbarItem?.label = attention > 0 ? "Aufgaben (\(attention))" : "Aufgaben"
+        taskToolbarItem?.toolTip = tasks.summary
+        taskToolbarItem?.image = NSImage(systemSymbolName: attention > 0 ? "exclamationmark.circle" : "list.bullet.rectangle", accessibilityDescription: tasks.summary)
         if hasActiveTasks { progress.startAnimation(nil) }
         else { progress.stopAnimation(nil) }
     }

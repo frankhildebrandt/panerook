@@ -60,8 +60,8 @@ final class TerminalKeyboardTests: XCTestCase {
         let registry = commander.makeCommandRegistry()
         for side in ["left", "right"] {
             XCTAssertEqual(registry["\(side).mode.0"]?.title, "Dateiliste")
-            XCTAssertEqual(registry["\(side).mode.5"]?.title, "Git-Diff und Verlauf")
-            XCTAssertEqual(registry["\(side).mode.6"]?.title, "Ghostty-Terminal")
+            XCTAssertEqual(registry["\(side).mode.5"]?.title, "Git-Verlauf")
+            XCTAssertEqual(registry["\(side).mode.6"]?.title, "Terminal")
         }
     }
 

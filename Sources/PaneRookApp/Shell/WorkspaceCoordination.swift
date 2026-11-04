@@ -55,6 +55,10 @@ extension CommanderController {
     func configureTab(_ pane: PaneController) {
         pane.setLocalObservationVisible(false)
         pane.installFileExchange(fileExchange)
+        pane.onFileContextMenu = { [weak self, weak pane] in
+            guard let self, let pane else { return nil }
+            return self.fileContextActions.menu(for: pane)
+        }
         favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
         pane.onActivate = { [weak self, weak pane] in
             guard let self, let pane else { return }; self.activate(pane, focus: false)

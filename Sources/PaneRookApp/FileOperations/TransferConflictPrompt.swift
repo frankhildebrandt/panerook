@@ -25,7 +25,8 @@ final class TransferConflictPrompt: @unchecked Sendable {
     }
 
     func resolve(source: String, destination: String, sourceInfo: String, destinationInfo: String,
-                         allowed: [TransferConflictAction], cancelled: @escaping () -> Bool) throws -> TransferConflictAction {
+                         allowed: [TransferConflictAction], remoteDestination: Bool = false,
+                         cancelled: @escaping () -> Bool) throws -> TransferConflictAction {
         precondition(!Thread.isMainThread)
         let done = DispatchSemaphore(value: 0)
         var result: TransferConflictAction?
@@ -35,26 +36,18 @@ final class TransferConflictPrompt: @unchecked Sendable {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Ziel existiert bereits"
-            alert.informativeText = "Quelle: \(source)\n\(sourceInfo)\n\nZiel: \(destination)\n\(destinationInfo)"
-            let choices = NSPopUpButton(); choices.setAccessibilityLabel("Konfliktentscheidung")
-            for action in allowed { choices.addItem(withTitle: Self.title(action)) }
-            let apply = NSButton(checkboxWithTitle: "Für alle passenden Konflikte dieses Auftrags", target: nil, action: nil)
-            let notice = NSTextField(wrappingLabelWithString:
-                "Ersetzen entfernt den bisherigen Zieleintrag einschließlich seines Inhalts erst nach vollständiger Übertragung. Zusammenführen behandelt gleichnamige Untereinträge erneut. Beim Überspringen bleibt die Quelle erhalten.\n\nBei Archiven sind nur Überspringen und Beide behalten verfügbar. Remote-Ersetzungen verwenden eine Sicherung; Server bieten keine allgemeine atomare Veröffentlichung.")
-            notice.font = .systemFont(ofSize: 12); notice.textColor = .secondaryLabelColor
-            // NSAlert manages its accessory's frame. A fixed-size native container
-            // avoids competing stack constraints during sheet animation/layout.
-            let width: CGFloat = 480
-            let noticeHeight = ceil((notice.stringValue as NSString).boundingRect(
-                with: NSSize(width: width, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: notice.font!]).height) + 6
-            let accessory = NSView(frame: NSRect(x: 0, y: 0, width: width, height: noticeHeight + 80))
-            notice.frame = NSRect(x: 0, y: 0, width: width, height: noticeHeight)
-            apply.frame = NSRect(x: 0, y: noticeHeight + 14, width: width, height: 22)
-            choices.frame = NSRect(x: 0, y: noticeHeight + 48, width: width, height: 28)
-            for view in [choices, apply, notice] { accessory.addSubview(view) }
+            alert.informativeText = "Wie soll mit dem vorhandenen Eintrag umgegangen werden?"
+            let accessory = TransferConflictChoices(source: source, destination: destination,
+                sourceInfo: sourceInfo, destinationInfo: destinationInfo, allowed: allowed, remoteDestination: remoteDestination)
             alert.accessoryView = accessory
-            alert.addButton(withTitle: "Fortfahren"); alert.addButton(withTitle: "Auftrag abbrechen")
+            let confirm = alert.addButton(withTitle: accessory.selectedTitle)
+            confirm.isEnabled = !allowed.isEmpty
+            accessory.onSelection = { [weak confirm] title in
+                guard let confirm else { return }
+                confirm.title = title
+                ContextCommands.configure(confirm, id: "dialog.accept")
+            }
+            alert.addButton(withTitle: "Auftrag abbrechen")
             alert.configureKeyboardShortcuts()
             var sheetParent = parent
             while let attached = sheetParent.attachedSheet { sheetParent = attached }
@@ -63,9 +56,9 @@ final class TransferConflictPrompt: @unchecked Sendable {
             }
             alert.beginSheetModal(for: sheetParent) { [self] response in
                 timer.invalidate()
-                if response == .alertFirstButtonReturn && !cancelled(), allowed.indices.contains(choices.indexOfSelectedItem) {
-                    let action = allowed[choices.indexOfSelectedItem]
-                    if apply.state == .on { rules.action = action }
+                if response == .alertFirstButtonReturn && !cancelled(), allowed.contains(accessory.selectedAction) {
+                    let action = accessory.selectedAction
+                    if accessory.applyToMatching.state == .on { rules.action = action }
                     result = action
                 } else { onCancel() }
                 done.signal()
@@ -76,12 +69,12 @@ final class TransferConflictPrompt: @unchecked Sendable {
         return result
     }
 
-    private static func title(_ action: TransferConflictAction) -> String {
+    static func title(_ action: TransferConflictAction) -> String {
         switch action {
-        case .skip: return "Überspringen – Ziel und Quelle behalten"
-        case .keepBoth: return "Beide behalten – neuen eindeutigen Zielnamen erzeugen"
-        case .replace: return "Ersetzen – bisherigen Zieleintrag vollständig ersetzen"
-        case .merge: return "Ordner zusammenführen – übrige Zielinhalte behalten"
+        case .skip: return "Überspringen"
+        case .keepBoth: return "Beide behalten"
+        case .replace: return "Ersetzen"
+        case .merge: return "Ordner zusammenführen"
         }
     }
     static func describe(_ info: TransferEntryInfo) -> String {

@@ -51,6 +51,7 @@ extension CommanderController {
         registerHelpCommands(in: registry)
         fileOperations.registerCommands(in: registry)
         fileExchange.registerCommands(in: registry)
+        fileContextActions.registerCommands(in: registry)
         preview.registerCommands(in: registry)
         metadata.registerCommands(in: registry)
         workflow.registerCommands(in: registry)

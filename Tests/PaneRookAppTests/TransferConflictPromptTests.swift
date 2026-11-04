@@ -45,12 +45,15 @@ final class TransferConflictPromptTests: XCTestCase {
         let sheet = try waitForSheet(parent)
         defer { if sheet.sheetParent != nil { parent.endSheet(sheet, returnCode: .abort) } }
         let views = descendants(try XCTUnwrap(sheet.contentView))
-        let choices = try XCTUnwrap(views.compactMap { $0 as? NSPopUpButton }.first)
-        XCTAssertEqual(choices.numberOfItems, 3, "Files offer skip, keep both and replace, without merge.")
-        choices.selectItem(at: 1)
-        let apply = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.title.hasPrefix("Für alle passenden") })
+        let choices = views.compactMap { $0 as? NSButton }.filter { $0.identifier?.rawValue.hasPrefix("conflict.") == true }
+        XCTAssertEqual(choices.count, 3, "Files offer skip, keep both and replace, without merge.")
+        try XCTUnwrap(choices.first { $0.identifier?.rawValue == "conflict.keepBoth" }).performClick(nil)
+        let confirm = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "dialog.accept" })
+        XCTAssertEqual(confirm.title, "Beide behalten")
+        XCTAssertFalse(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue.contains("atomare") || $0.stringValue.contains("Bei Archiven") })
+        let apply = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.title.hasPrefix("Für weitere Konflikte") })
         apply.state = .on
-        parent.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+        confirm.performClick(nil)
         wait(for: [finished], timeout: 3)
         XCTAssertNil(parent.attachedSheet)
     }
