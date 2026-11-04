@@ -18,6 +18,12 @@ private final class RemoteReadableFiles {
 }
 
 extension RemoteBrowser {
+    private func transferConflictPrompt() -> TransferConflictPrompt {
+        TransferConflictPrompt(parent: view.window, onCancel: { [weak self] in
+            guard let self, let taskID = self.queuedTask else { return }
+            self.tasks.cancel(taskID)
+        })
+    }
     var canMove: Bool { canDownload }
     var canRename: Bool { !busy && !disconnected && selection.count == 1 && selection.first?.isSymbolicLink == false }
     var canPreview: Bool { !busy && selection.contains { $0.isRegularFile && !$0.isSymbolicLink } }
@@ -41,26 +47,16 @@ extension RemoteBrowser {
         let target = remoteDestination.map { $0.displayName + $0.directory } ?? localDirectory.path
         let execute = { [weak self, weak peer] in
             guard let self else { return }
-            self.performQueued(move ? "Verschieben nach \(target)" : "Kopieren nach \(target)",
-                paths: selected.map { path + "/" + $0.name }, work: { token, report in
-                    for (index, entry) in selected.enumerated() {
-                        try token.check()
-                        report(OperationProgress(completedItems: index, totalItems: selected.count, currentPath: entry.name))
-                        if let destinationFS, let remoteDirectory {
-                            if move { try source.move(entry, from: path, to: destinationFS, directory: remoteDirectory, cancellation: token) }
-                            else { try source.copy(entry, from: path, to: destinationFS, directory: remoteDirectory, cancellation: token) }
-                        } else {
-                            let destination = localDirectory.appendingPathComponent(entry.name)
-                            if move { try source.move(entry, from: path, to: destination, cancellation: token) }
-                            else { try source.download(entry, from: path, to: destination, cancellation: token) }
-                        }
-                        report(OperationProgress(completedItems: index + 1, totalItems: selected.count, currentPath: entry.name))
-                    }
-                }) { [weak self, weak peer] _ in
-                    peer?.refreshAfterTask()
-                    if move { self?.reload() }
-                    else { self?.status.stringValue = "\(selected.count) Einträge kopiert" }
-                }
+            let roots = selected.map { entry in
+                TransferRoot(source: TransferPath((path as NSString).appendingPathComponent(entry.name), endpoint: TransferEndpoint(source.connection)),
+                    destination: destinationFS.map { TransferPath((remoteDirectory! as NSString).appendingPathComponent(entry.name), endpoint: TransferEndpoint($0.connection)) }
+                        ?? TransferPath(RecoverableLocalFiles.canonicalPath(localDirectory.appendingPathComponent(entry.name))))
+            }
+            let record = RecoverableTransfer(title: move ? "Verschieben nach \(target)" : "Kopieren nach \(target)", moving: move, roots: roots)
+            self.performRecoverableTransfer(record, remotes: [source] + (destinationFS.map { [$0] } ?? [])) { [weak self, weak peer] in
+                peer?.refreshAfterTask()
+                self?.reload()
+            }
         }
         if move {
             guard let window = view.window else { return }
@@ -84,20 +80,18 @@ extension RemoteBrowser {
         alert.addButton(withTitle: verb); alert.addButton(withTitle: "Abbrechen"); alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: window) { [weak self, weak peer] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            self.performQueued(verb, paths: sources.map(\.path), work: { token, report in
-                for (index, source) in sources.enumerated() {
-                    try token.check()
-                    report(OperationProgress(completedItems: index, totalItems: sources.count, currentPath: source.path))
-                    try destination.upload(source, to: path, movingSource: move, cancellation: token)
-                    report(OperationProgress(completedItems: index + 1, totalItems: sources.count, currentPath: source.path))
-                }
-            }) { [weak self, weak peer] _ in self?.reload(); peer?.refreshAfterTask() }
+            let record = RecoverableTransfer(title: verb, moving: move, roots: sources.map { source in
+                TransferRoot(source: TransferPath(RecoverableLocalFiles.canonicalPath(source)),
+                    destination: TransferPath((path as NSString).appendingPathComponent(source.lastPathComponent), endpoint: TransferEndpoint(destination.connection)))
+            })
+            self.performRecoverableTransfer(record, remotes: [destination]) { [weak self, weak peer] in self?.reload(); peer?.refreshAfterTask() }
         }
     }
 
     func renameSelection() {
         guard !busy, selection.count == 1, let entry = selection.first, let window = view.window else { return }
         let path = directory, source = fileSystem
+        let conflicts = transferConflictPrompt()
         let alert = NSAlert(); alert.messageText = "Umbenennen"
         let name = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 28))
         AppStyle.configureField(name); name.stringValue = entry.name; name.setAccessibilityLabel("Neuer Name")
@@ -109,7 +103,7 @@ extension RemoteBrowser {
                 try FileActions.validateName(name.stringValue)
                 let destination = try RemoteFileSystem.normalizedPath(name.stringValue, relativeTo: path)
                 self.performQueued("Umbenennen", paths: [path + "/" + entry.name], work: { token, _ in
-                    try source.move(entry, from: path, to: destination, cancellation: token)
+                    try source.move(entry, from: path, to: destination, resolveConflict: { try conflicts.resolve($0, cancelled: { token.isCancelled }) }, cancellation: token)
                 }) { [weak self] _ in self?.reload() }
             } catch { self.showError(error) }
         }

@@ -30,16 +30,21 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     private(set) var panelsHidden = false
     var arePanelsHidden: Bool { panelsHidden }
     lazy var tasks = TaskCenter(parentWindow: { [weak self] in self?.view.window },
-                                restoreFocus: { [weak self] in guard let self else { return }; self.activate(self.active) })
+                                restoreFocus: { [weak self] in guard let self else { return }; self.activate(self.active) },
+                                transferStore: RecoverableTransfers.applicationStore,
+                                restoredTransferCompletion: { [weak self] in self?.refreshAfterTask() },
+                                transferJournal: fileOperations.journal)
     lazy var operations = OperationRunner(tasks: tasks, refresh: { [weak self] in self?.refreshAfterTask() })
     lazy var preview = PreviewTools(owner: self)
     lazy var fileOperations = FileOperations(owner: self)
+    lazy var fileExchange = NativeFileExchange(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
     lazy var preferences = PreferencesTools(owner: self, defaults: workspaceDefaults)
     lazy var localTools = LocalTools(owner: self)
     lazy var metadata = FileMetadataTools(owner: self)
     lazy var remote = RemoteTools(owner: self)
     lazy var git = GitTools(owner: self)
+    lazy var commandPalette = CommandPaletteTools(owner: self)
     let favoriteDestinations = FavoriteDestinationCache()
     var favoritesMenus: [PanelFavoritesController] = []
     weak var appUpdater: AppUpdater?
@@ -54,6 +59,9 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         canUseSelection && !active.selectedFiles.contains {
             ArchiveFileSystem.location(for: $0).map { !$0.memberPath.isEmpty } ?? false
         }
+    }
+    override var undoManager: UndoManager? {
+        fileOperations.acceptsNativeFileUndo ? fileOperations.fileUndoManager : super.undoManager
     }
     var isPerformingOperation: Bool { view.window?.attachedSheet != nil }
 
@@ -185,6 +193,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         preferences.restorePanels()
         restoreWorkspaceSession()
         isRestoringWorkspaces = false
+        synchronizeTabObservationVisibility()
         preferences.apply()
     }
 
@@ -203,6 +212,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     func togglePanels() {
         panelsHidden.toggle()
         splitController.view.isHidden = panelsHidden
+        synchronizeTabObservationVisibility()
         console.isHidden = !panelsHidden
         if panelsHidden { view.window?.makeFirstResponder(commandInput) }
         else { activate(active) }
@@ -284,7 +294,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         view.window?.subtitle = workspaceSession.name
         for tab in allTabPanes { tab.isActive = tab === pane }
         if focus { pane.focus() }
-        if changedTab { updateTransferPeers(); persistWorkspaces() }
+        if changedTab { synchronizeTabObservationVisibility(); updateTransferPeers(); persistWorkspaces() }
         updateDirectoryActionAvailability()
     }
     func updateDirectoryActionAvailability() {
@@ -345,11 +355,12 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         return false
     }
     var canHandleMainKeys: Bool {
-        canUseMenus && !KeyboardCaptureState.isRecording && menuIsTracking?() != true
+        canUseMenus && !commandPalette.isPresented && !KeyboardCaptureState.isRecording && menuIsTracking?() != true
             && !favoritesMenus.contains(where: \.isTracking)
     }
     /// Called before AppKit's key-equivalent pass, so physical custom keys work on any layout.
     func handleGlobalKey(_ event: NSEvent) -> Bool {
+        if commandPalette.isPresented { return commandPalette.handleKey(event) }
         guard canHandleMainKeys, event.window === view.window else { return false }
         if !panelsHidden, active.hasTerminalKeyboardFocus {
             if commandRegistry.bindings["panels.switch.terminal"]?.matches(event) == true {

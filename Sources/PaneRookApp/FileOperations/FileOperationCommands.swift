@@ -2,6 +2,7 @@ import AppKit
 
 extension FileOperations {
     func registerCommands(in registry: CommandRegistry) {
+        registerUndoCommands(in: registry)
         registry.add(
             .file, "Kopieren …", id: "copy", order: 50, group: 0, function: 5, dockTitle: { "Kopieren" },
             enabled: { self.canCopySelection }
@@ -14,6 +15,10 @@ extension FileOperations {
             .file, "Umbenennen …", id: "files.rename", order: 135, group: 0,
             enabled: { self.canRenameSelection }
         ) { self.renameSelection() }
+        registry.add(
+            .file, "Mehrfachumbenennen …", id: "files.batchRename", order: 136, group: 0,
+            enabled: { self.canBatchRenameSelection }
+        ) { self.batchRenameSelection() }
         registry.add(
             .file, "Neues Verzeichnis erstellen …", id: "mkdir", order: 140, group: 0, function: 7,
             dockTitle: { "Neuer Ordner" }, enabled: { self.canMakeDirectory }

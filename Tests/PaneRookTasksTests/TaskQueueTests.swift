@@ -2,6 +2,25 @@ import XCTest
 @testable import PaneRookTasks
 
 final class TaskQueueTests: XCTestCase {
+    func testCancellationPreservesWorkerRecoveryError() {
+        let queue = BackgroundTaskQueue()
+        let started = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let done = expectation(description: "recovery details retained")
+        let message = "Wiederherstellung fehlgeschlagen: /tmp/recovery/0"
+        let id = queue.submit(title: "rename", cancellation: { release.signal() }, work: { _ in
+            started.signal(); release.wait()
+            throw NSError(domain: "recovery", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }, completion: { (result: Result<Void, Error>) in
+            guard case .failure(let error) = result else { XCTFail(); done.fulfill(); return }
+            XCTAssertEqual(error.localizedDescription, message)
+            done.fulfill()
+        })
+        XCTAssertEqual(started.wait(timeout: .now() + 2), .success)
+        queue.cancel(id)
+        wait(for: [done], timeout: 3)
+        XCTAssertEqual(queue.snapshots.first?.state, .cancelled)
+        XCTAssertEqual(queue.snapshots.first?.error, message)
+    }
     func testFIFOAndFailedTaskDoNotBlockFollowingWork() {
         let queue = BackgroundTaskQueue()
         let done = expectation(description: "all completions"); done.expectedFulfillmentCount = 3

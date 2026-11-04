@@ -22,16 +22,22 @@ final class RemoteDriveFileActionsTests: XCTestCase {
         let source = RemoteBrowser(connection: try RemoteConnection(kind: .shell, host: "source.test", port: 22, user: "me"),
             peer: right, tasks: tasks, runner: { request, _ in
                 if let output = request.outputFile { try contents.write(to: output); return Data() }
+                if request.arguments.last == "LC_ALL=C ls -lan '/'" { return Data("drwxr-xr-x 2 501 20 64 Nov  1 10:00 source\n".utf8) }
                 return Data("-rw-r--r-- 1 501 20 24 Nov  1 10:00 selected.txt\n".utf8)
             })
         let transferred = expectation(description: "remote destination receives selected contents")
+        var uploaded: Data?
         let destination = RemoteBrowser(connection: try RemoteConnection(kind: .shell, host: "destination.test", port: 22, user: "me"),
             peer: left, tasks: tasks, runner: { request, _ in
                 if let input = request.inputFile {
-                    XCTAssertEqual(try Data(contentsOf: input), contents)
+                    uploaded = try Data(contentsOf: input)
+                    XCTAssertEqual(uploaded, contents)
                     XCTAssertTrue(request.arguments.last?.contains("'/target/selected.txt'") == true)
                     transferred.fulfill()
                 }
+                if let output = request.outputFile, let uploaded { try uploaded.write(to: output); return Data() }
+                if request.arguments.last == "LC_ALL=C ls -lan '/'" { return Data("drwxr-xr-x 2 501 20 64 Nov  1 10:00 target\n".utf8) }
+                if uploaded != nil { return Data("-rw-r--r-- 1 501 20 24 Nov  1 10:00 selected.txt\n".utf8) }
                 return Data()
             })
         left.showRemoteContent(source); right.showRemoteContent(destination)
@@ -45,6 +51,7 @@ final class RemoteDriveFileActionsTests: XCTestCase {
         source.download()
         wait(for: [transferred], timeout: 10)
         waitForListing(source)
+        XCTAssertEqual(tasks.snapshots.last?.state, .completed)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("selected.txt").path))
         XCTAssertEqual(source.selection.map(\.name), ["selected.txt"])

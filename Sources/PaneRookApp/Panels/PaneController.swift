@@ -6,7 +6,18 @@ import PaneRookCore
 
 
 
-final class FileTable: NSTableView {
+final class FileTable: NSTableView, NSMenuItemValidation {
+    var copyFiles: (() -> Void)?
+    var pasteFiles: (() -> Void)?
+    var canCopyFiles: (() -> Bool)?
+    var canPasteFiles: (() -> Bool)?
+    @objc func copy(_ sender: Any?) { copyFiles?() }
+    @objc func paste(_ sender: Any?) { pasteFiles?() }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(copy(_:)) { return canCopyFiles?() == true }
+        if item.action == #selector(paste(_:)) { return canPasteFiles?() == true }
+        return true
+    }
     var handleKey: ((NSEvent) -> Bool)?
     var didFocus: (() -> Void)?
     override func becomeFirstResponder() -> Bool {
@@ -48,6 +59,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var restoredTerminalDirectory: URL?
     var hasLiveTerminal: Bool { terminalContent?.isRunning == true }
     let table = FileTable()
+    weak var fileExchange: NativeFileExchange?
     let pathField = NSTextField()
     let favoritesButton = NSPopUpButton(frame: .zero, pullsDown: true)
     private let availableSpace = NSTextField(labelWithString: "")
@@ -74,6 +86,19 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     private var cachedGitHeader: GitHeaderStatus?
     private var watchObserver: NSObjectProtocol?
     private var themeObserver: NSObjectProtocol?
+    private var closeObserver: NSObjectProtocol?
+    private let localObservation: LocalDirectoryObservation
+    private let directoryReader: (URL, Bool) throws -> [FileEntry]
+    private let gitSnapshotReader: (URL) throws -> GitSnapshot?
+    private var observationSuspended = false
+    private var localObservationHidden = false
+    private var observationRequest = 0
+    private var automaticRefreshRunning = false
+    private var pendingLocalChange = LocalDirectoryObservation.Change()
+    private var gitSnapshotLoading = false
+    private var gitSnapshotPending = false
+    private var observedGitRefresh: DispatchWorkItem?
+    private var lastObservedGitRefresh: TimeInterval = -.infinity
     private let surface = PaneSurface()
     private let listing = NSScrollView()
     private let content = NSView()
@@ -134,7 +159,10 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
     init(label: String, directory: URL, tabID: UUID = UUID(), gitStatusCache: GitStatusCache = .shared,
          terminalContent: (any TerminalPanelContent)? = nil,
-         capacityReader: @escaping (URL) -> Int64? = FileSystem.availableCapacity) {
+         capacityReader: @escaping (URL) -> Int64? = FileSystem.availableCapacity,
+         localObservation: LocalDirectoryObservation = LocalDirectoryObservation(),
+         directoryReader: @escaping (URL, Bool) throws -> [FileEntry] = { try FileSystem.list($0, showHidden: $1) },
+         gitSnapshotReader: @escaping (URL) throws -> GitSnapshot? = { try GitRepository.discover(in: $0)?.snapshot() }) {
         self.tabID = tabID
         self.label = label
         self.state = PanelState(directory: directory)
@@ -142,18 +170,30 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         self.cachedGitHeader = gitStatusCache.header(for: directory)
         self.terminalContent = terminalContent
         self.capacityReader = capacityReader
+        self.localObservation = localObservation
+        self.directoryReader = directoryReader
+        self.gitSnapshotReader = gitSnapshotReader
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
     deinit {
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
+        localObservation.stop()
+        observedGitRefresh?.cancel()
         if let watchObserver { NotificationCenter.default.removeObserver(watchObserver) }
         if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
     }
 
     override func loadView() {
         view = NSView()
+        localObservation.onChange = { [weak self] in self?.receiveLocalChange($0) }
+        closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+            guard let self, let window = note.object as? NSWindow, self.view.window === window else { return }
+            self.observationSuspended = true
+            self.stopLocalObservation()
+        }
         surface.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(surface)
         NSLayoutConstraint.activate([
@@ -193,6 +233,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
         table.delegate = self
         table.dataSource = self
+        configureFileExchange()
         table.rowHeight = 29
         table.intercellSpacing = NSSize(width: 8, height: 1)
         table.usesAlternatingRowBackgroundColors = false
@@ -329,6 +370,29 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         updateGitBarLayout()
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        let resuming = observationSuspended
+        observationSuspended = false
+        updateLocalObservation(refresh: resuming)
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        observationSuspended = true
+        stopLocalObservation()
+    }
+
+    /// Hiding an ancestor (Ctrl-O, or a future tab host) need not deliver an
+    /// NSViewController disappearance callback. The host can signal it directly.
+    func setLocalObservationVisible(_ visible: Bool) {
+        let hidden = !visible
+        guard localObservationHidden != hidden else { return }
+        localObservationHidden = hidden
+        if visible { updateLocalObservation(refresh: true) }
+        else { stopLocalObservation() }
+    }
+
     var selectedEntries: [FileEntry] {
         guard remoteContent == nil else { return [] }
         guard !loading else { return [] }
@@ -337,6 +401,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         return table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil }
     }
     var selectedFiles: [URL] { selectedEntries.filter { !$0.isParent }.map(\.url) }
+    var canExportNativeFiles: Bool {
+        isViewLoaded && remoteContent == nil && mode == .listing && !loading && !isArchiveDirectory
+    }
+    var fileExchangeDirectory: URL? { canExportNativeFiles && !panelized ? directory : nil }
+    var hasFileListKeyboardFocus: Bool {
+        canExportNativeFiles && view.window?.firstResponder === table
+    }
     private var listingSelection: [URL] {
         table.selectedRowIndexes.compactMap { entries.indices.contains($0) && !entries[$0].isParent ? entries[$0].url : nil }
     }
@@ -383,6 +454,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         previous?.viewController.view.removeFromSuperview()
         previous?.viewController.removeFromParent()
         remoteContent = content
+        if content != nil { stopLocalObservation() }
         surface.isHidden = content != nil
         if let content {
             content.onKey = { [weak self] event in self?.onKey?(event) ?? false }
@@ -406,6 +478,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
             if let menu = favoritesButton.menu { content.installFavoritesMenu(menu) }
         } else if mode == .network { network.start() }
         refreshAvailableCapacity()
+        updateLocalObservation(refresh: content == nil)
         onSelectionChanged?(selectedFiles.first)
         if isActive { focus() }
     }
@@ -458,7 +531,9 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let changingTerminal = mode == .terminal || self.mode == .terminal
         if self.mode == .network && mode != .network { network.stop() }
         if self.mode == .gitHistory && mode != .gitHistory { gitHistory.stop() }
+        let previousMode = self.mode
         self.mode = mode
+        if mode != .listing && mode != .tree { stopLocalObservation() }
         if mode == .terminal { prepareTerminal() }
         terminalContent?.setVisible(mode == .terminal)
         let fullContent = mode == .gitHistory || mode == .terminal
@@ -486,6 +561,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         updateSummary()
         updateNavigation()
         refreshAvailableCapacity()
+        updateLocalObservation(refresh: previousMode != mode)
         if isActive { focus() }
         onSelectionChanged?(selectedFiles.first)
         if changingTerminal { onDirectoryChanged?() }
@@ -536,6 +612,7 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     func panelize(_ urls: [URL]) {
         _ = view
         showRemoteContent(nil)
+        stopLocalObservation()
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         listingGitRepository = nil
@@ -637,12 +714,15 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitStatusReader?.cancel()
         repositoryReader?.cancel()
         let request = state.beginNavigation()
+        stopLocalObservation()
+        updateLocalObservation(directory: url)
         clearAvailableCapacity()
         gitRequest += 1
         summary.stringValue = "Ordner wird gelesen …"
+        let read = directoryReader
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                let files = try FileSystem.list(url, showHidden: hidden)
+                let files = try read(url, hidden)
                 let root = ArchiveFileSystem.location(for: url) == nil ? GitWorktreeLocation.root(containing: url) : nil
                 return (files: files, gitRoot: root)
             }
@@ -684,6 +764,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.loadGitStatuses(request: request)
                     self.loadGitRepository(request: request)
                 }
+                self.updateLocalObservation()
+                self.receiveLocalChange(LocalDirectoryObservation.Change())
                 if self.pendingTaskRefresh {
                     self.pendingTaskRefresh = false
                     self.refreshAfterTask()
@@ -697,30 +779,39 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         let reader = GitRepositoryReader()
         repositoryReader = reader
         let directory = state.directory
+        let observation = observationRequest
         repositoryQueue.async { [weak self] in
             let repository = reader.repository(containing: directory)
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.generation == request, !self.panelized, !reader.isCancelled else { return }
+                guard let self, self.generation == request, self.observationRequest == observation,
+                      !self.panelized, !reader.isCancelled else { return }
                 self.listingGitRepository = repository
+                self.updateLocalObservation()
                 if let repository { self.onRepositoryVisited?(repository) }
             }
         }
     }
 
-    private func loadGitStatuses(request: Int) {
+    private func loadGitStatuses(request: Int, only changed: Set<URL>? = nil) {
         guard generation == request, !panelized, !state.isArchiveDirectory else { return }
         gitStatusReader?.cancel()
         let reader = GitStatusReader()
         gitStatusReader = reader
-        let folders = allEntries.filter { $0.isDirectory && !$0.isParent }
+        // Events use physical paths; the panel may have entered through a
+        // symlink. These are always direct children of the same listing.
+        let changedNames = changed.map { Set($0.map(\.lastPathComponent)) }
+        let folders = allEntries.filter {
+            $0.isDirectory && !$0.isParent && (changedNames == nil || changedNames!.contains($0.name))
+        }
         let cachedFolders = Set(folders.filter { state.gitStatuses[$0.url] != nil }.map(\.url))
+        let observation = observationRequest
         gitStatusQueue.async { [weak self] in
             for folder in folders {
                 guard !reader.isCancelled else { return }
                 let status = reader.status(for: folder.url)
                 guard status != nil || cachedFolders.contains(folder.url) else { continue }
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, !reader.isCancelled else { return }
+                    guard let self, self.observationRequest == observation, !reader.isCancelled else { return }
                     let previous = self.state.gitStatuses[folder.url]
                     guard self.state.applyGitStatus(status, for: folder.url, request: request) else { return }
                     self.gitStatusCache.store(status, for: folder.url)
@@ -772,6 +863,102 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if mode == .gitHistory { gitHistory.refresh(); return }
         if mode == .network { network.stop(); network.start(); return }
         navigate(to: directory, recordHistory: false, select: select)
+    }
+
+    private var canObserveLocalDirectory: Bool {
+        isViewLoaded && !observationSuspended && !localObservationHidden && remoteContent == nil && !panelized
+            && (mode == .listing || mode == .tree)
+    }
+
+    private func stopLocalObservation() {
+        observationRequest += 1
+        localObservation.stop()
+        automaticRefreshRunning = false
+        pendingLocalChange = LocalDirectoryObservation.Change()
+        gitRequest += 1
+        gitSnapshotPending = false
+        observedGitRefresh?.cancel(); observedGitRefresh = nil
+        lastObservedGitRefresh = -.infinity
+        gitStatusReader?.cancel()
+        repositoryReader?.cancel()
+    }
+
+    private func updateLocalObservation(refresh: Bool = false, directory target: URL? = nil) {
+        let url = target ?? state.directory
+        guard canObserveLocalDirectory, ArchiveFileSystem.location(for: url) == nil else {
+            localObservation.stop()
+            return
+        }
+        localObservation.watch(directory: url,
+            worktree: target == nil ? state.gitSnapshot?.root ?? listingGitRepository?.worktreeRoot : nil,
+            metadata: target == nil ? listingGitRepository?.commonDirectory : nil,
+            ignoredPaths: target == nil ? Set(state.gitSnapshot.map { snapshot in
+                snapshot.files.filter(\.isIgnored).map { snapshot.root.appendingPathComponent($0.path).standardizedFileURL }
+            } ?? []) : [])
+        if refresh {
+            receiveLocalChange(.init(listing: true, git: true, repository: true))
+        }
+    }
+
+    private func receiveLocalChange(_ change: LocalDirectoryObservation.Change) {
+        guard canObserveLocalDirectory, !state.isArchiveDirectory else { return }
+        pendingLocalChange.merge(change)
+        guard !loading, !automaticRefreshRunning, !pendingLocalChange.isEmpty else { return }
+        let change = pendingLocalChange
+        pendingLocalChange = LocalDirectoryObservation.Change()
+        let request = generation, observation = observationRequest, url = state.directory
+        if change.invalidated { localObservation.stop() }
+        if change.git { queueObservedGitRefresh() }
+        if change.repository { repositoryReader?.cancel(); loadGitRepository(request: request) }
+        guard change.listing || mode == .tree && !change.descendants.isEmpty else {
+            if !change.descendants.isEmpty { loadGitStatuses(request: request, only: change.descendants) }
+            return
+        }
+        automaticRefreshRunning = true
+        let hidden = showHidden, read = directoryReader
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = Result { try read(url, hidden) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.observationRequest == observation, self.generation == request,
+                      self.state.directory == url, self.canObserveLocalDirectory, !self.loading else { return }
+                self.automaticRefreshRunning = false
+                switch result {
+                case .success(let files):
+                    let presentation = ListingPresentation(table: self.table, entries: self.entries)
+                    guard self.state.applyObservedListing(files, in: url, request: request) else { return }
+                    self.table.reloadData()
+                    self.summary.toolTip = nil
+                    presentation.restore(table: self.table, entries: self.entries)
+                    if self.mode == .tree { self.tree.refreshLoadedDirectories() }
+                    self.loadGitStatuses(request: request, only: change.descendants.isEmpty ? nil : change.descendants)
+                    self.updateSummary(); self.updateNavigation(); self.refreshAvailableCapacity()
+                    self.updateLocalObservation()
+                    self.onSelectionChanged?(self.selectedFiles.first)
+                case .failure(let error):
+                    // A lost volume or removed root must not cause recurring
+                    // modal errors. Cmd-R/navigation can retry and reattach.
+                    self.stopLocalObservation()
+                    self.clearAvailableCapacity()
+                    self.summary.stringValue = "Ordner nicht verfügbar · ⌘R zum erneuten Laden"
+                    self.summary.toolTip = error.localizedDescription
+                }
+                self.receiveLocalChange(LocalDirectoryObservation.Change())
+            }
+        }
+    }
+
+    private func queueObservedGitRefresh() {
+        guard observedGitRefresh == nil else { return }
+        let request = observationRequest
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.observationRequest == request, self.canObserveLocalDirectory, !self.loading else { return }
+            self.observedGitRefresh = nil
+            self.lastObservedGitRefresh = ProcessInfo.processInfo.systemUptime
+            self.refreshGitStatus()
+        }
+        observedGitRefresh = item
+        let delay = max(0, 2 - (ProcessInfo.processInfo.systemUptime - lastObservedGitRefresh))
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
     func installFavoritesMenu(_ menu: NSMenu) {
         favoritesButton.menu = menu
@@ -1007,15 +1194,28 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         gitRequest += 1
         let request = gitRequest
         let url = state.directory
-        guard !state.isArchiveDirectory, !panelized else {
+        guard !state.isArchiveDirectory, !panelized, remoteContent == nil,
+              mode == .listing || mode == .tree else {
             cachedGitHeader = nil
             state.gitSnapshot = nil; updateGitBar(); return
         }
+        // Never queue one expensive snapshot per event while Git is busy.
+        guard !gitSnapshotLoading else { gitSnapshotPending = true; return }
+        gitSnapshotLoading = true
         updateGitBar()
+        let read = gitSnapshotReader
         gitWorker.async { [weak self] in
-            let result = Result { try GitRepository.discover(in: url)?.snapshot() }
+            let result = Result { try read(url) }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.gitRequest == request, self.state.directory == url, !self.panelized else { return }
+                guard let self else { return }
+                self.gitSnapshotLoading = false
+                if self.gitSnapshotPending {
+                    self.gitSnapshotPending = false
+                    self.refreshGitStatus()
+                    return
+                }
+                guard self.gitRequest == request, self.state.directory == url, !self.panelized,
+                      !self.loading, self.remoteContent == nil, self.mode == .listing || self.mode == .tree else { return }
                 self.cachedGitHeader = nil
                 switch result {
                 case .success(let snapshot):
@@ -1029,8 +1229,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                     self.state.gitSnapshot = nil
                     self.gitButton.toolTip = error.localizedDescription
                 }
-                self.setFilter(self.filterPattern)
+                let presentation = ListingPresentation(table: self.table, entries: self.entries)
+                self.state.filterAndSort()
+                self.table.reloadData()
+                presentation.restore(table: self.table, entries: self.entries)
+                self.updateSummary()
                 self.updateGitBar()
+                self.updateLocalObservation()
             }
         }
     }

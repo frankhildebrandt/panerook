@@ -37,6 +37,7 @@ extension CommanderController {
             group.onSelect = { [weak self, weak workspace] pane in
                 guard let self, let workspace, self.workspaceSession === workspace else { return }
                 self.activate(pane)
+                self.synchronizeTabObservationVisibility()
                 self.updateTransferPeers()
                 self.persistWorkspaces()
             }
@@ -52,6 +53,8 @@ extension CommanderController {
         }
     }
     func configureTab(_ pane: PaneController) {
+        pane.setLocalObservationVisible(false)
+        pane.installFileExchange(fileExchange)
         favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
         pane.onActivate = { [weak self, weak pane] in
             guard let self, let pane else { return }; self.activate(pane, focus: false)
@@ -97,8 +100,14 @@ extension CommanderController {
         }
         active = workspaceSession.activeRight ? right : left
         activate(active)
+        synchronizeTabObservationVisibility()
         updateTransferPeers()
         preferences.apply()
+    }
+    func synchronizeTabObservationVisibility() {
+        for pane in allTabPanes {
+            pane.setLocalObservationVisible(!panelsHidden && (pane === left || pane === right))
+        }
     }
     func updateTransferPeers() {
         for pane in allTabPanes {
@@ -128,6 +137,7 @@ extension CommanderController {
         let close = { [weak self, weak group, weak pane] in
             guard let self, let group, let pane, group.selected === pane else { return }
             // Retain closed panels for late local task completions, but close a shell only explicitly.
+            pane.setLocalObservationVisible(false)
             pane.closeTabContent()
             self.retiredTabPanes.append(pane)
             _ = group.removeSelected()

@@ -2,7 +2,7 @@ import AppKit
 import PaneRookRemote
 
 extension CommanderController: InspectionHost, RemoteHost, MetadataHost, WorkflowHost, PreferencesHost, FavoritesHost,
-    FileOperationsHost, PreviewHost, GitHost
+    FileOperationsHost, PreviewHost, GitHost, NativeFileExchangeHost, CommandPaletteHost
 {
     var allPanes: [any PanelAccess] { allTabPanes }
     func oppositePane(for pane: any PanelAccess) -> any PanelAccess {
@@ -17,6 +17,15 @@ extension CommanderController: InspectionHost, RemoteHost, MetadataHost, Workflo
     var leftPane: any PanelAccess { left }
     var rightPane: any PanelAccess { right }
     var otherPane: any PanelAccess { other }
+    var canPresentCommandPalette: Bool {
+        canUseMenus && !commandPalette.isPresented && !KeyboardCaptureState.isRecording
+    }
+    var paletteCommandScopes: Set<CommandScope> {
+        var scopes: Set<CommandScope> = [.application]
+        if panelsHidden { scopes.insert(.console) }
+        else if active.hasPanelKeyboardFocus && !active.hasTerminalKeyboardFocus { scopes.insert(.panel) }
+        return scopes
+    }
     func activate(_ pane: any PanelAccess) {
         if let pane = pane as? PaneController { activate(pane) }
     }
@@ -41,6 +50,7 @@ extension CommanderController {
         workspaceTools.registerCommands(in: registry)
         registerHelpCommands(in: registry)
         fileOperations.registerCommands(in: registry)
+        fileExchange.registerCommands(in: registry)
         preview.registerCommands(in: registry)
         metadata.registerCommands(in: registry)
         workflow.registerCommands(in: registry)
@@ -48,6 +58,7 @@ extension CommanderController {
         remote.registerCommands(in: registry)
         git.registerCommands(in: registry)
         preferences.registerCommands(in: registry)
+        commandPalette.registerCommands(in: registry)
         for (menu, pane) in [(CommandMenu.left, left), (.right, right)] {
             let resolve = { [unowned self] in menu == .left ? self.left : self.right }
             registerPanelCommands(in: registry, menu: menu, pane: pane, resolvePane: resolve)

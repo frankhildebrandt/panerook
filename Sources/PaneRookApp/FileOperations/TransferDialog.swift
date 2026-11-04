@@ -45,7 +45,9 @@ final class TransferDialog: NSWindowController {
         selection.font = .systemFont(ofSize: 18, weight: .semibold)
         selection.maximumNumberOfLines = 2
         selection.lineBreakMode = .byTruncatingMiddle
-        let source = hint("Aus: \(sourceDirectory.path)")
+        let parents = Set(sources.map { $0.deletingLastPathComponent().path })
+        let source = hint(parents.count > 1 ? "Aus \(parents.count) Ordnern" : "Aus: \(sourceDirectory.path)")
+        source.toolTip = sources.map(\.path).joined(separator: "\n")
         source.maximumNumberOfLines = 2
         source.lineBreakMode = .byTruncatingMiddle
         stack.addArrangedSubview(selection)
@@ -60,7 +62,7 @@ final class TransferDialog: NSWindowController {
         destination.setAccessibilityLabel("Zielpfad")
         destination.toolTip = "Ordner oder neuer Name für einen Eintrag. Relative Pfade gelten ab dem Quellordner."
         stack.addArrangedSubview(destination)
-        stack.addArrangedSubview(hint("Vorhandene Dateien werden nicht überschrieben."))
+        stack.addArrangedSubview(hint("Bei bestehenden Zielen fragt PaneRook während des Auftrags nach: Überspringen, beide behalten, ersetzen oder Ordner zusammenführen."))
 
         errorLabel.textColor = .systemRed
         errorLabel.font = .systemFont(ofSize: 12)
@@ -124,7 +126,7 @@ final class TransferDialog: NSWindowController {
         }
         do {
             acceptedPlan = try TransferPlan(sources: sources, sourcePattern: mask.stringValue,
-                destinationPath: destination.stringValue, relativeTo: sourceDirectory, kind: kind)
+                destinationPath: destination.stringValue, relativeTo: sourceDirectory, kind: kind, allowsConflicts: true)
             if let parent = window?.sheetParent, let window { parent.endSheet(window, returnCode: .OK) }
         } catch {
             errorLabel.stringValue = error.localizedDescription

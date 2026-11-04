@@ -189,6 +189,47 @@ final class PanelDirectoryTree: NSView, NSOutlineViewDataSource, NSOutlineViewDe
         tree.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         tree.expandItem(root)
     }
+    /// Update already loaded levels, keeping node identity, expansion, selection
+    /// and the clip position. Unopened directories are still loaded on demand.
+    func refreshLoadedDirectories() {
+        guard let root else { return }
+        func loaded(_ node: Node) -> [Node] {
+            guard node.expandable, node.children != nil || tree.isItemExpanded(node) else { return [] }
+            return [node] + (node.children ?? []).flatMap(loaded)
+        }
+        let nodes = loaded(root), hidden = hiddenFiles
+        generation += 1
+        let request = generation
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let listings = nodes.compactMap { node -> (Node, [FileEntry])? in
+                guard let url = node.url else { return nil }
+                return (node, (try? FileSystem.list(url, showHidden: hidden).filter(\.isDirectory)) ?? [])
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == request else { return }
+                let selection = self.selectedURL
+                let expanded = nodes.filter { self.tree.isItemExpanded($0) }
+                let scroll = self.tree.enclosingScrollView
+                let origin = scroll?.contentView.bounds.origin ?? .zero
+                for (node, files) in listings {
+                    let previous = Dictionary(uniqueKeysWithValues: (node.children ?? []).compactMap { child in child.url.map { ($0, child) } })
+                    node.loading = false
+                    node.children = files.map { entry in
+                        let expandable = !entry.isSymbolicLink
+                        if let existing = previous[entry.url], existing.expandable == expandable { return existing }
+                        return Node(url: entry.url, name: entry.name + (entry.isSymbolicLink ? " ↗" : ""), expandable: expandable)
+                    }
+                }
+                self.tree.reloadData()
+                for node in expanded { self.tree.expandItem(node) }
+                if let selection, let row = (0..<self.tree.numberOfRows).first(where: { (self.tree.item(atRow: $0) as? Node)?.url == selection }) {
+                    self.tree.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                }
+                scroll?.contentView.scroll(to: origin)
+                if let scroll { scroll.reflectScrolledClipView(scroll.contentView) }
+            }
+        }
+    }
     private func load(_ node: Node) {
         guard let url = node.url, node.expandable, !node.loading, node.children == nil else { return }
         node.loading = true

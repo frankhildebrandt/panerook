@@ -28,6 +28,7 @@ final class WorkspaceTests: XCTestCase {
     }
     private func commander() -> CommanderController {
         let commander = CommanderController(defaults: defaults)
+        commander.tasks = TaskCenter(parentWindow: { nil }, restoreFocus: {})
         _ = commander.view
         return commander
     }
@@ -75,6 +76,59 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(commander.workspaceSession.left.panes.count, 1)
         commander.closeActiveTab()
         XCTAssertEqual(commander.workspaceSession.left.panes.count, 1)
+    }
+    func testTabAndWorkspaceVisibilityControlsObservationAndKeepsNativeExchange() throws {
+        let commander = commander()
+        let events = ObservationEvents()
+        let firstFile = root.appendingPathComponent("first.txt")
+        try Data("selected".utf8).write(to: firstFile)
+        let pane = PaneController(label: "Observed tab", directory: root,
+            localObservation: LocalDirectoryObservation(delay: 0.01, factory: events.make))
+        commander.configureTab(pane)
+        commander.workspaceSession.left.append(pane)
+        eventually { !events.sources.isEmpty && pane.entries.contains { $0.name == "first.txt" } }
+        pane.selectMatching("first.txt", select: true)
+        let firstSource = try XCTUnwrap(events.sources.last)
+        XCTAssertFalse(firstSource.cancelled)
+        XCTAssertTrue(pane.fileExchange === commander.fileExchange)
+        commander.newTab()
+        XCTAssertTrue(commander.left.fileExchange === commander.fileExchange)
+        XCTAssertTrue(firstSource.cancelled)
+        let laterFile = root.appendingPathComponent("later.txt")
+        try Data("external".utf8).write(to: laterFile)
+        firstSource.receive([.init(url: laterFile)])
+        commander.workspaceSession.left.select(pane)
+        eventually { pane.entries.contains { $0.name == "later.txt" } }
+        XCTAssertEqual(pane.selectedFiles.map(\.lastPathComponent), ["first.txt"])
+        let visibleSource = try XCTUnwrap(events.sources.last)
+        commander.togglePanels()
+        XCTAssertTrue(visibleSource.cancelled)
+        commander.togglePanels()
+        eventually { events.sources.last?.cancelled == false }
+        let workspace = commander.workspaceSession
+        let resumedSource = try XCTUnwrap(events.sources.last)
+        commander.createWorkspace()
+        XCTAssertTrue(resumedSource.cancelled)
+        XCTAssertTrue(commander.left.fileExchange === commander.fileExchange)
+        commander.loadWorkspace(id: workspace.id)
+        eventually { events.sources.last?.cancelled == false }
+        let finalSource = try XCTUnwrap(events.sources.last)
+        commander.closeActiveTab()
+        XCTAssertTrue(finalSource.cancelled)
+    }
+    private final class ObservationEvents {
+        final class Source: LocalDirectoryEventSource {
+            var cancelled = false
+            let receive: ([LocalDirectoryEvent]) -> Void
+            init(receive: @escaping ([LocalDirectoryEvent]) -> Void) { self.receive = receive }
+            func cancel() { cancelled = true }
+        }
+        var sources: [Source] = []
+        func make(_ roots: [URL], _ receive: @escaping ([LocalDirectoryEvent]) -> Void) -> (any LocalDirectoryEventSource)? {
+            let source = Source(receive: receive)
+            sources.append(source)
+            return source
+        }
     }
     func testWorkspaceRoundTripRestoresBothGroupsActiveTabsAndRemoteLocationWithoutCredentials() throws {
         let connection = try RemoteConnection(kind: .ftp, host: "example.test", port: 21, user: "user", password: "NEVER_PERSIST_THIS")
@@ -226,12 +280,19 @@ final class WorkspaceTests: XCTestCase {
         defer { gate.signal() }
         let payload = Data("captured remote contents".utf8)
         commander.newTab()
+        var blockedFirstRead = false
         commander.remote.openBrowser(try RemoteConnection(kind: .shell, host: "source.test", port: 22, user: "me"), directory: "/source", pane: commander.left, runner: { request, _ in
             if let output = request.outputFile {
-                started.fulfill()
-                guard gate.wait(timeout: .now() + 10) == .success else { throw RemoteError.cancelled }
+                if !blockedFirstRead {
+                    blockedFirstRead = true
+                    started.fulfill()
+                    guard gate.wait(timeout: .now() + 10) == .success else { throw RemoteError.cancelled }
+                }
                 try payload.write(to: output)
                 return Data()
+            }
+            if request.arguments.last == "LC_ALL=C ls -lan '/'" {
+                return Data("drwxr-xr-x 2 501 20 64 Nov  1 10:00 source\n".utf8)
             }
             return Data("-rw-r--r-- 1 501 20 24 Nov  1 10:00 selected.txt\n".utf8)
         })
@@ -256,6 +317,7 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertFalse(browser.disconnected)
         gate.signal()
         eventually { !browser.isBusy && !commander.tasks.hasActiveTasks }
+        XCTAssertEqual(commander.tasks.snapshots.last?.state, .completed)
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("selected.txt")), payload)
         XCTAssertFalse(FileManager.default.fileExists(atPath: later.appendingPathComponent("selected.txt").path))
         XCTAssertFalse(browser.disconnected)
