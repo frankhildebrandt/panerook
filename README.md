@@ -106,6 +106,8 @@ PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Ver
 
 **Links/Rechts → Ghostty-Terminal** öffnet eine interaktive Shell im bisherigen Panelordner. Das andere Panel verwendet das aktuelle Terminalverzeichnis als Ziel für **F5 Kopieren** und **F6 Verschieben**. Verzeichniswechsel mit `cd` aktualisieren dieses Ziel; der beim Öffnen des Transferdialogs angezeigte Pfad bleibt für den Auftrag fest. **⌘⌥Tab** wechselt zwischen den Panels, während Tab und Ctrl-Tasten im Terminal der Shell gehören. **Dateiliste** blendet die bisherige Dateiliste wieder ein; das Terminal bleibt für den erneuten Aufruf erhalten. Ghostty ist eingebettet und muss nicht separat installiert werden.
 
+Lokale Dateilisten und geladene Verzeichnisbäume übernehmen Änderungen aus Finder, Editoren, Shell und Git automatisch. Auswahl und Scrollposition bleiben erhalten; **⌘R** lädt weiterhin manuell neu. Details und Grenzen stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#automatische-ordneraktualisierung).
+
 **Befehl → Ordner synchronisieren …** gleicht zwei lokale Ordner in einer gewählten Richtung ab: mit Änderungsvorschau, auswählbaren Aktionen, Ausschlussmustern und gespeicherten Profilen. Zusätzliche Zieleinträge bleiben standardmäßig erhalten; endgültige Löschungen benötigen eine aktivierte Option und eine sichtbare Ausführungsbestätigung. Details und Grenzen stehen unter [Ordner synchronisieren](docs/bedienungsreferenz.md#ordner-synchronisieren).
 
 Lokale Dateien lassen sich per Drag & Drop zwischen Dateilisten und aus Finder oder Desktop übernehmen. **⌘C/⌘V** kopieren Dateien, **⌘⌥V** verschiebt sie in den fokussierten Panelordner. Eingehende Drops und Einfügen verwenden den bestehenden Transferdialog und die Aufgaben-Queue. Ausgehende Drops an andere Apps bieten Kopieren an; Remote-/Archivinhalte müssen zuerst mit F5 lokal kopiert werden. Textfelder und Ghostty behalten ihre Text-Zwischenablage. Details stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#drag--drop-und-datei-zwischenablage).
@@ -132,7 +134,7 @@ Kopier- und Verschiebeaktionen fragen nach und überschreiben keine bestehenden 
 
 Inhaltssuche und die eigene Textvorschau lesen höchstens 1 MiB pro Datei. Die Suche endet bei 10.000 Treffern oder 250.000 geprüften Einträgen. Datei- und Verzeichnisvergleiche vergleichen reguläre Dateien bis 1 GiB pro Datei; der Verzeichnisvergleich ist auf 100.000 Einträge je Seite begrenzt. Ordnergrößen werden bis 1.000.000 Einträge berechnet. Symbolische Links werden bei diesen rekursiven Werkzeugen nicht verfolgt. Begrenzungen und nicht lesbare Einträge werden im Ergebnis gemeldet. Shell-Ausgaben werden zur Anzeige auf 4 MiB je Ausgabestrom begrenzt.
 
-Noch offen: interner Editor, Tabs, automatische Dateisystembeobachtung und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Wiederaufnahme. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
+Noch offen: interner Editor, Tabs und erweiterte Kopier-/Konfliktdialoge mit Überschreiben, Zusammenführen, Linkfolge und Wiederaufnahme. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
 
 ## Lizenz
 

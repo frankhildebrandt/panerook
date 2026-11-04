@@ -222,6 +222,8 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     func togglePanels() {
         panelsHidden.toggle()
         splitController.view.isHidden = panelsHidden
+        left.setLocalObservationVisible(!panelsHidden)
+        right.setLocalObservationVisible(!panelsHidden)
         console.isHidden = !panelsHidden
         if panelsHidden { view.window?.makeFirstResponder(commandInput) }
         else { activate(active) }
