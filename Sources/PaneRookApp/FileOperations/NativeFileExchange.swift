@@ -44,12 +44,12 @@ enum NativeFileURLs {
         return urls
     }
 
-    static func plan(sources: [URL], destination: URL, kind: TransferKind) throws -> TransferPlan {
+    static func plan(sources: [URL], destination: URL, kind: TransferKind, allowsConflicts: Bool = false) throws -> TransferPlan {
         try validate(sources)
         try validate([destination])
         guard ArchiveFileSystem.location(for: destination) == nil else { throw NativeFileExchangeError.virtualFiles }
-        // This also rejects aliases of the source, descendants, duplicate names and collisions.
-        return try TransferPlan(sources: sources, destination: destination, kind: kind)
+        // Validate paths and ancestry; user-facing transfers defer collisions to the shared conflict workflow.
+        return try TransferPlan(sources: sources, destination: destination, kind: kind, allowsConflicts: allowsConflicts)
     }
 
     static func dragOperation(sources: [URL], destination: URL, allowed: NSDragOperation,
@@ -122,7 +122,7 @@ final class NativeFileExchange {
     func validateDrop(sources: [URL], destination: URL, pane: any PanelAccess,
                       allowed: NSDragOperation, modifiers: NSEvent.ModifierFlags) -> NSDragOperation {
         guard let window = owner.presentationWindow, window.attachedSheet == nil, pane.canExportNativeFiles,
-              let _ = try? NativeFileURLs.plan(sources: sources, destination: destination, kind: .copy) else { return [] }
+              let _ = try? NativeFileURLs.plan(sources: sources, destination: destination, kind: .copy, allowsConflicts: true) else { return [] }
         return NativeFileURLs.dragOperation(sources: sources, destination: destination, allowed: allowed, modifiers: modifiers)
     }
 
@@ -139,7 +139,7 @@ final class NativeFileExchange {
         guard let window = owner.presentationWindow, window.attachedSheet == nil else {
             throw NativeFileExchangeError.unavailableDestination
         }
-        _ = try NativeFileURLs.plan(sources: sources, destination: destination, kind: kind)
+        _ = try NativeFileURLs.plan(sources: sources, destination: destination, kind: kind, allowsConflicts: true)
         owner.activate(pane)
         // Clipboard and drag payloads may contain files from different source directories.
         // Absolute destination plus an exact source array avoid depending on the active panel.

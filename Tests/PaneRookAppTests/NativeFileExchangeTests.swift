@@ -187,7 +187,7 @@ final class NativeFileExchangeTests: XCTestCase {
         XCTAssertEqual(right.fileDropDestination(row: fileRow, operation: .above), target)
         XCTAssertEqual(right.fileDropDestination(row: -1, operation: .on), target)
         XCTAssertNil(right.fileDropDestination(row: 999, operation: .on))
-        XCTAssertEqual(exchange.validateDrop(sources: urls, destination: source, pane: left, allowed: [.copy, .move], modifiers: []), [])
+        XCTAssertEqual(exchange.validateDrop(sources: urls, destination: source, pane: left, allowed: [.copy, .move], modifiers: []), .move)
         left.navigate(to: alternate)
         XCTAssertFalse(left.canExportNativeFiles, "An in-flight navigation may not export stale rows")
         XCTAssertNil(left.fileDropDestination(row: -1, operation: .on))
@@ -281,9 +281,11 @@ final class NativeFileExchangeTests: XCTestCase {
         eventually { window.attachedSheet == nil }
         XCTAssertEqual(clipboard.changeCount, revision)
         XCTAssertEqual(host.refreshed, 0)
-        XCTAssertFalse(exchange.acceptDrop(sources: urls, destination: source, pane: right, operation: .move))
+        XCTAssertTrue(exchange.acceptDrop(sources: urls, destination: source, pane: right, operation: .move), "Self transfers use the shared confirmation and conflict decisions.")
+        try confirmSheet(on: window, title: "Abbrechen")
+        eventually { window.attachedSheet == nil }
         XCTAssertFalse(exchange.acceptDrop(sources: urls, destination: target.appendingPathComponent("missing"), pane: right, operation: .copy))
-        XCTAssertEqual(host.errors.count, 2)
+        XCTAssertEqual(host.errors.count, 1)
         XCTAssertNil(window.attachedSheet)
         for url in urls { XCTAssertTrue(FileManager.default.fileExists(atPath: url.path)) }
     }

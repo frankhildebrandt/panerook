@@ -19,7 +19,7 @@ extension RemoteBrowser {
             if !self.disconnected { completion() }
             self.finishOperation(); self.onStateChanged?()
         }
-        queuedTask = tasks.submitTransfer(record, remotes: remotes, completion: finish)
+        queuedTask = tasks.submitTransfer(record, remotes: remotes, resolveConflicts: true, completion: finish)
         if queuedTask == nil { finish() }
     }
 }

@@ -18,6 +18,12 @@ private final class RemoteReadableFiles {
 }
 
 extension RemoteBrowser {
+    private func transferConflictPrompt() -> TransferConflictPrompt {
+        TransferConflictPrompt(parent: view.window, onCancel: { [weak self] in
+            guard let self, let taskID = self.queuedTask else { return }
+            self.tasks.cancel(taskID)
+        })
+    }
     var canMove: Bool { canDownload }
     var canRename: Bool { !busy && !disconnected && selection.count == 1 && selection.first?.isSymbolicLink == false }
     var canPreview: Bool { !busy && selection.contains { $0.isRegularFile && !$0.isSymbolicLink } }
@@ -85,6 +91,7 @@ extension RemoteBrowser {
     func renameSelection() {
         guard !busy, selection.count == 1, let entry = selection.first, let window = view.window else { return }
         let path = directory, source = fileSystem
+        let conflicts = transferConflictPrompt()
         let alert = NSAlert(); alert.messageText = "Umbenennen"
         let name = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 28))
         AppStyle.configureField(name); name.stringValue = entry.name; name.setAccessibilityLabel("Neuer Name")
@@ -96,7 +103,7 @@ extension RemoteBrowser {
                 try FileActions.validateName(name.stringValue)
                 let destination = try RemoteFileSystem.normalizedPath(name.stringValue, relativeTo: path)
                 self.performQueued("Umbenennen", paths: [path + "/" + entry.name], work: { token, _ in
-                    try source.move(entry, from: path, to: destination, cancellation: token)
+                    try source.move(entry, from: path, to: destination, resolveConflict: { try conflicts.resolve($0, cancelled: { token.isCancelled }) }, cancellation: token)
                 }) { [weak self] _ in self?.reload() }
             } catch { self.showError(error) }
         }

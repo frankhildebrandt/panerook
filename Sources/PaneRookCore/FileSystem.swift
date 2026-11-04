@@ -80,9 +80,11 @@ public enum FileSystem {
 }
 
 public enum FileActionError: LocalizedError {
-    case invalidDirectory(String), invalidName, collision(String), recursiveDestination, sameLocation, duplicateName, noMatchingSources
+    case invalidDirectory(String), invalidName, collision(String), recursiveDestination, sameLocation, duplicateName, noMatchingSources, transferChanged, unsupportedConflict
     public var errorDescription: String? {
         switch self {
+        case .transferChanged: return "Quelle oder Ziel wurde während der Übertragung geändert. Bitte den Auftrag erneut prüfen."
+        case .unsupportedConflict: return "Diese Konfliktentscheidung ist für diesen Transfer nicht verfügbar."
         case .invalidDirectory(let path): return "Kein erreichbarer Ordner: \(path)"
         case .invalidName: return "Bitte einen einzelnen Namen ohne /, : oder .. eingeben."
         case .collision(let name): return "\(name) existiert bereits im Ziel. Es wurde nichts überschrieben."
@@ -103,16 +105,17 @@ public struct TransferPlan: Sendable {
     }
     public let items: [Item]
     public let kind: TransferKind
+    public let allowsConflicts: Bool
 
-    public init(sources: [URL], destination: URL, kind: TransferKind) throws {
+    public init(sources: [URL], destination: URL, kind: TransferKind, allowsConflicts: Bool = false) throws {
         let target = try FileSystem.directory(from: destination.path, relativeTo: destination)
-        try self.init(sources: sources, outputs: sources.map { target.appendingPathComponent($0.lastPathComponent) }, kind: kind)
+        try self.init(sources: sources, outputs: sources.map { target.appendingPathComponent($0.lastPathComponent) }, kind: kind, allowsConflicts: allowsConflicts)
     }
 
     /// The MC-style dialog accepts an existing target directory or a new name for one item.
     /// Relative targets are interpreted from the source panel's directory.
     public init(sources: [URL], sourcePattern: String, destinationPath: String,
-                relativeTo base: URL, kind: TransferKind) throws {
+                relativeTo base: URL, kind: TransferKind, allowsConflicts: Bool = false) throws {
         let matched = sources.filter { fnmatch(sourcePattern, $0.lastPathComponent, 0) == 0 }
         guard !sourcePattern.isEmpty, !matched.isEmpty else { throw FileActionError.noMatchingSources }
         guard !destinationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -124,18 +127,18 @@ public struct TransferPlan: Sendable {
         let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &directory)
         let archiveDirectory = try ArchiveFileSystem.isDirectory(target)
         if (exists && directory.boolValue) || archiveDirectory {
-            try self.init(sources: matched, outputs: matched.map { target.appendingPathComponent($0.lastPathComponent) }, kind: kind)
+            try self.init(sources: matched, outputs: matched.map { target.appendingPathComponent($0.lastPathComponent) }, kind: kind, allowsConflicts: allowsConflicts)
         } else {
             guard matched.count == 1, !destinationPath.hasSuffix("/") else {
                 throw FileActionError.invalidDirectory(target.path)
             }
             _ = try FileSystem.directory(from: target.deletingLastPathComponent().path, relativeTo: base)
             try FileActions.validateName(target.lastPathComponent)
-            try self.init(sources: matched, outputs: [target], kind: kind)
+            try self.init(sources: matched, outputs: [target], kind: kind, allowsConflicts: allowsConflicts)
         }
     }
 
-    init(sources: [URL], outputs: [URL], kind: TransferKind) throws {
+    init(sources: [URL], outputs: [URL], kind: TransferKind, allowsConflicts: Bool = false) throws {
         let fm = FileManager.default
         var destinations = Set<String>()
         var items: [Item] = []
@@ -147,7 +150,7 @@ public struct TransferPlan: Sendable {
             let canonicalOutput = output.deletingLastPathComponent().resolvingSymlinksInPath()
                 .appendingPathComponent(output.lastPathComponent).standardizedFileURL.path
             guard destinations.insert(canonicalOutput).inserted else { throw FileActionError.duplicateName }
-            guard canonicalSource != canonicalOutput else { throw FileActionError.sameLocation }
+            if !allowsConflicts && canonicalSource == canonicalOutput { throw FileActionError.sameLocation }
             let isSourceDirectory: Bool
             let isSourceLink: Bool
             if ArchiveFileSystem.memberLocation(source) != nil {
@@ -164,26 +167,46 @@ public struct TransferPlan: Sendable {
             }
             // attributesOfItem also detects dangling symlinks, which fileExists follows.
             let archiveOutput = try ArchiveFileSystem.entry(output)
-            if (try? fm.attributesOfItem(atPath: output.path)) != nil || archiveOutput != nil { throw FileActionError.collision(output.lastPathComponent) }
+            if !allowsConflicts && ((try? fm.attributesOfItem(atPath: output.path)) != nil || archiveOutput != nil) { throw FileActionError.collision(output.lastPathComponent) }
             items.append(Item(source: source, destination: output))
         }
         self.items = items
         self.kind = kind
+        self.allowsConflicts = allowsConflicts
     }
 
     /// Completed items remain after a later failure. Copies and archive changes
     /// are staged and committed only after their cancellation checks succeed.
     public func execute(cancellation: TransferCancellation = .init(),
+                        resolveConflict: ((TransferConflict) throws -> TransferConflictAction)? = nil,
                         progress: @escaping (OperationProgress) -> Void = { _ in }) throws {
         try cancellation.check()
         // Queueing separates validation from execution; source and destination
         // paths (including symlink ancestors) may have changed in the meantime.
-        let current = try TransferPlan(sources: items.map(\.source), outputs: items.map(\.destination), kind: kind)
+        let current = try TransferPlan(sources: items.map(\.source), outputs: items.map(\.destination), kind: kind, allowsConflicts: allowsConflicts)
         try cancellation.check()
         if current.items.contains(where: { ArchiveFileSystem.memberLocation($0.source) != nil || ArchiveFileSystem.memberLocation($0.destination) != nil }) {
-            try ArchiveFileSystem.transfer(current.items, kind: kind, cancellation: cancellation, progress: progress)
+            var resolved: [Item] = []
+            var reserved = Set(current.items.map { $0.destination.standardizedFileURL })
+            for item in current.items {
+                try cancellation.check()
+                var target = item.destination
+                if try TransferEntryInfo.read(target) != nil {
+                    let conflict = try TransferConflict(source: item.source, destination: target)
+                    guard let resolveConflict else { throw FileActionError.collision(target.lastPathComponent) }
+                    let action = try resolveConflict(conflict)
+                    try cancellation.check()
+                    guard conflict.allowedActions.contains(action) else { throw FileActionError.unsupportedConflict }
+                    if action == .skip { continue }
+                    guard action == .keepBoth else { throw FileActionError.unsupportedConflict }
+                    target = try TransferNaming.available(target, reserving: reserved)
+                    reserved.insert(target.standardizedFileURL)
+                }
+                resolved.append(Item(source: item.source, destination: target))
+            }
+            if !resolved.isEmpty { try ArchiveFileSystem.transfer(resolved, kind: kind, cancellation: cancellation, progress: progress) }
         } else {
-            try TransferWorker(plan: current, cancellation: cancellation, progress: progress).run()
+            try TransferWorker(plan: current, cancellation: cancellation, progress: progress, resolveConflict: resolveConflict).run()
         }
     }
 }

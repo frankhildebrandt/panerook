@@ -26,8 +26,8 @@ final class TransferWorker {
     private let plan: TransferPlan
     private let cancellation: TransferCancellation
     private let progress: (OperationProgress) -> Void
-    // A published cross-volume move must finish its source check/removal despite cancellation.
     private let validateMoveSource: ((_ committed: Bool) throws -> Void)?
+    private let resolveConflict: ((TransferConflict) throws -> TransferConflictAction)?
     private var entries: [String: Entry] = [:]
     private var finished = Set<String>()
     private var totalItems = 0
@@ -36,37 +36,89 @@ final class TransferWorker {
     private var completedBytes: Int64 = 0
 
     init(plan: TransferPlan, cancellation: TransferCancellation,
-         progress: @escaping (OperationProgress) -> Void, validateMoveSource: ((_ committed: Bool) throws -> Void)? = nil) {
+         progress: @escaping (OperationProgress) -> Void,
+         resolveConflict: ((TransferConflict) throws -> TransferConflictAction)? = nil,
+         validateMoveSource: ((_ committed: Bool) throws -> Void)? = nil) {
         self.plan = plan; self.cancellation = cancellation; self.progress = progress
+        self.resolveConflict = resolveConflict
         self.validateMoveSource = validateMoveSource
     }
 
     func run() throws {
         try cancellation.check()
-        // A queued plan may be executed much later than its input dialog.
-        // Revalidate all destinations before touching the first source.
-        for item in plan.items { try requireAvailable(item.destination) }
+        if !plan.allowsConflicts {
+            for item in plan.items { try requireAvailable(item.destination) }
+        }
         for item in plan.items { try scan(item.source) }
         report()
         for item in plan.items {
-            // A panelized selection can include both a folder and one of its files.
-            // Each top-level transfer copies its own occurrence of that file.
             finished.removeAll(keepingCapacity: true)
-            try cancellation.check()
-            try requireAvailable(item.destination)
-            if plan.kind == .move {
-                try validateMoveSource?(false)
-                try cancellation.check()
-                if renamex_np(item.source.path, item.destination.path, UInt32(RENAME_EXCL)) == 0 {
-                    finishTree(item.source)
-                    continue
-                }
-                let code = errno
-                guard code == EXDEV else { throw fileError(code, path: item.destination.path) }
-            }
-            try copyStaged(item)
+            try transfer(item)
         }
         report()
+    }
+
+    private func transfer(_ item: TransferPlan.Item) throws {
+        try cancellation.check()
+        // Recheck path ancestry after waiting in the queue or a conflict dialog.
+        _ = try TransferPlan(sources: [item.source], outputs: [item.destination], kind: plan.kind, allowsConflicts: true)
+        let parent = item.destination.deletingLastPathComponent().resolvingSymlinksInPath()
+        guard let parentStamp = try TransferStamp.read(parent), parentStamp.kind == .directory else {
+            throw FileActionError.invalidDirectory(parent.path)
+        }
+        var target = item.destination
+        var replacement: [String: TransferStamp]?
+        if try TransferStamp.read(target) != nil {
+            let conflict = try TransferConflict(source: item.source, destination: target)
+            guard let resolveConflict else { throw FileActionError.collision(target.lastPathComponent) }
+            // Capture before asking: changes while the dialog is open invalidate consent.
+            let sourceBeforeDecision = try TransferStamp.read(item.source)
+            let captured = try TransferStamp.tree(target, cancellation: cancellation)
+            let action = try resolveConflict(conflict)
+            try cancellation.check()
+            guard conflict.allowedActions.contains(action) else { throw FileActionError.unsupportedConflict }
+            if action == .skip { finishTree(item.source); return }
+            guard try TransferStamp.read(item.source) == sourceBeforeDecision else { throw FileActionError.transferChanged }
+            if action == .keepBoth { target = try TransferNaming.available(target) }
+            else {
+                guard try TransferStamp.tree(target, cancellation: cancellation) == captured else { throw FileActionError.transferChanged }
+                if action == .merge {
+                    let sourceStamp = try TransferStamp.read(item.source)
+                    let targetStamp = try TransferStamp.read(target)
+                    for child in try FileManager.default.contentsOfDirectory(at: item.source, includingPropertiesForKeys: nil).sorted(by: { $0.path < $1.path }) {
+                        guard try TransferStamp.read(target)?.identity == targetStamp?.identity,
+                              try TransferStamp.read(item.source)?.identity == sourceStamp?.identity else { throw FileActionError.transferChanged }
+                        try transfer(.init(source: child, destination: target.appendingPathComponent(child.lastPathComponent)))
+                    }
+                    if plan.kind == .move {
+                        // Skipped children and concurrently added files keep their source folder.
+                        if try FileManager.default.contentsOfDirectory(atPath: item.source.path).isEmpty {
+                            guard try TransferStamp.read(item.source)?.identity == sourceStamp?.identity else { throw FileActionError.transferChanged }
+                            guard rmdir(item.source.path) == 0 else { throw fileError(errno, path: item.source.path) }
+                        }
+                    }
+                    finish(item.source.path)
+                    return
+                }
+                replacement = captured
+            }
+        }
+        guard try TransferStamp.read(parent)?.identity == parentStamp.identity,
+              item.destination.deletingLastPathComponent().resolvingSymlinksInPath() == parent else { throw FileActionError.transferChanged }
+        let resolved = TransferPlan.Item(source: item.source, destination: target)
+        // A self-move with “keep both” is a duplicate: the existing target is
+        // also the source and must remain in place.
+        let moving = plan.kind == .move && key(item.source.path) != key(item.destination.path)
+        if moving && replacement == nil {
+            try validateMoveSource?(false)
+            try cancellation.check()
+            if renamex_np(item.source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
+                finishTree(item.source); return
+            }
+            let code = errno
+            guard code == EXDEV else { throw fileError(code, path: target.path) }
+        }
+        try copyStaged(resolved, replacement: replacement, parent: parent, parentIdentity: parentStamp.identity, moving: moving)
     }
 
     private func scan(_ root: URL) throws {
@@ -94,14 +146,16 @@ final class TransferWorker {
         }
     }
 
-    private func copyStaged(_ item: TransferPlan.Item) throws {
-        let staging = item.destination.deletingLastPathComponent()
-            .appendingPathComponent(".panerook-transfer-\(UUID().uuidString)", isDirectory: true)
+    private func copyStaged(_ item: TransferPlan.Item, replacement: [String: TransferStamp]?,
+                            parent: URL, parentIdentity: String, moving: Bool) throws {
+        let sourceSnapshot = try TransferStamp.tree(item.source, cancellation: cancellation)
+        let staging = parent.appendingPathComponent(".panerook-transfer-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false,
             attributes: [.posixPermissions: 0o700])
         // This private container is always ours; the real destination never needs
         // deleting during error cleanup, even if somebody creates it meanwhile.
-        defer { try? FileManager.default.removeItem(at: staging) }
+        var preserveStaging = false
+        defer { if !preserveStaging { TransferStamp.cleanup(staging) } }
         let output = staging.appendingPathComponent("content")
         guard let state = copyfile_state_alloc() else { throw fileError(ENOMEM, path: item.source.path) }
         defer { copyfile_state_free(state) }
@@ -121,23 +175,52 @@ final class TransferWorker {
         let code = errno
         try cancellation.check()
         guard status == 0 else { throw fileError(code, path: item.source.path) }
-        if plan.kind == .move { try validateMoveSource?(false) }
+        guard try TransferStamp.tree(item.source, cancellation: cancellation) == sourceSnapshot,
+              try TransferStamp.read(parent)?.identity == parentIdentity,
+              item.destination.deletingLastPathComponent().resolvingSymlinksInPath() == parent else { throw FileActionError.transferChanged }
+        if moving { try validateMoveSource?(false) }
         try cancellation.check()
-        if renamex_np(output.path, item.destination.path, UInt32(RENAME_EXCL)) != 0 {
+        if let replacement {
+            guard try TransferStamp.tree(item.destination, cancellation: cancellation) == replacement else { throw FileActionError.transferChanged }
+            // Exchange publishes the complete new tree atomically and keeps the old
+            // entry inside our staging container until commit has succeeded.
+            let publishedIdentity = try TransferStamp.read(output)?.identity
+            if renamex_np(output.path, item.destination.path, UInt32(RENAME_SWAP)) != 0 {
+                throw fileError(errno, path: item.destination.path)
+            }
+            do {
+                // Also inspect the displaced entry: a concurrent rename between
+                // the final check and exchange must not discard an unseen target.
+                let displaced = try TransferStamp.tree(output, cancellation: .init())
+                guard TransferStamp.sameDisplacedTree(displaced, replacement) else { throw FileActionError.transferChanged }
+            } catch {
+                if (try? TransferStamp.read(item.destination))?.identity == publishedIdentity,
+                   renamex_np(output.path, item.destination.path, UInt32(RENAME_SWAP)) == 0 { throw error }
+                preserveStaging = true
+                throw NSError(domain: "PaneRookTransfer", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                    "Das Ziel wurde gleichzeitig geändert. Der verdrängte Eintrag bleibt gesichert unter \(output.path). Bitte beide Ziele prüfen."])
+            }
+        } else if renamex_np(output.path, item.destination.path, UInt32(RENAME_EXCL)) != 0 {
             throw fileError(errno, path: item.destination.path)
         }
-        // Treat commit + source removal as one move step. Cancellation is checked
-        // before commit and before the next item; it cannot delete an uncopied source.
-        if plan.kind == .move {
-            do {
-                try validateMoveSource?(true)
-                try FileManager.default.removeItem(at: item.source)
-            } catch {
-                throw NSError(domain: "PaneRook.Transfer", code: 1, userInfo: [NSLocalizedDescriptionKey:
-                    "Ziel vollständig geschrieben: \(item.destination.path). Die Quelle konnte nicht vollständig entfernt werden: \(item.source.path). \(error.localizedDescription) Bitte beide Pfade prüfen; dieser Eintrag hat kein automatisches Undo."])
-            }
+        if moving {
+            try validateMoveSource?(true)
+            guard try TransferStamp.tree(item.source, cancellation: .init()) == sourceSnapshot else { throw FileActionError.transferChanged }
+            try removeSource(item.source, snapshot: sourceSnapshot, relative: "")
         }
         finishTree(item.source)
+    }
+
+    private func removeSource(_ url: URL, snapshot: [String: TransferStamp], relative: String) throws {
+        guard let expected = snapshot[relative], try TransferStamp.read(url) == expected else { throw FileActionError.transferChanged }
+        if expected.kind == .directory {
+            for child in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+                try removeSource(child, snapshot: snapshot, relative: relative + "/" + child.lastPathComponent)
+            }
+            guard try TransferStamp.read(url)?.identity == expected.identity else { throw FileActionError.transferChanged }
+        }
+        let result = expected.kind == .directory ? rmdir(url.path) : unlink(url.path)
+        guard result == 0 else { throw fileError(errno, path: url.path) }
     }
 
     private func handle(what: Int32, stage: Int32, state: copyfile_state_t?, path: String?) -> Int32 {

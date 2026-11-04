@@ -14,11 +14,14 @@ extension TransferEndpoint {
 final class TransferFileAccess: RecoverableTransferAccess {
     let localToken = TransferCancellation()
     let remoteToken = RemoteCancellation()
-    private let remotes: [TransferEndpoint: RemoteFileSystem]
+    var conflicts: TransferConflictPrompt?
+    var conflictChoice: ((TransferRoot, [TransferConflictAction]) throws -> TransferConflictAction)?
+    var conflictTargets: [TransferPath: [TransferPath: TransferFingerprint]] = [:]
+    let remotes: [TransferEndpoint: RemoteFileSystem]
     init(remotes: [TransferEndpoint: RemoteFileSystem] = [:]) { self.remotes = remotes }
     func cancel() { localToken.cancel(); remoteToken.cancel() }
     func checkCancellation() throws { try localToken.check(); try remoteToken.check() }
-    private func remote(_ path: TransferPath) throws -> RemoteFileSystem {
+    func remote(_ path: TransferPath) throws -> RemoteFileSystem {
         guard let fs = remotes[path.endpoint] else { throw RemoteError.invalidConnection }
         return fs
     }
@@ -27,7 +30,12 @@ final class TransferFileAccess: RecoverableTransferAccess {
         if path.endpoint == .local { return try RecoverableLocalFiles.fingerprint(path.path, cancellation: localToken) }
         let fs = try remote(path)
         guard let entry = try fs.entry(at: path.path, cancellation: remoteToken) else { return nil }
-        guard !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
+        if entry.isSymbolicLink {
+            // A target link can be skipped or renamed around without following it.
+            // Actual remote source transfers still reject links in RemoteFileSystem.
+            return .init(kind: .symbolicLink, size: entry.size, modified: entry.modified,
+                         digest: "remote-link:" + entry.name)
+        }
         if entry.isDirectory { return .init(kind: .directory) }
         guard entry.isRegularFile else { throw RemoteError.specialFile }
         // Providers lack universal content IDs. Hash a private download instead of trusting size/mtime alone.
@@ -106,10 +114,10 @@ final class TransferFileAccess: RecoverableTransferAccess {
             try fs.removeTransferredFile(at: path.path, expected: entry, cancellation: remoteToken)
         }
     }
-    private func withTemporaryDirectory<T>(_ body: (URL) throws -> T) throws -> T {
+    func withTemporaryDirectory<T>(_ body: (URL) throws -> T) throws -> T {
         let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("PaneRook-Checkpoint-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { RecoverableLocalFiles.cleanupTemporaryCopy(root) }
         return try body(root)
     }
 }

@@ -57,6 +57,19 @@ public enum RecoverableLocalFiles {
                                     relativeTo: URL(fileURLWithPath: "/"), kind: .copy)
         try plan.execute(cancellation: cancellation, progress: progress)
     }
+    /// Exact-path replacement used by the durable worker after explicit consent.
+    /// The native worker owns staging and rechecks the target around publication.
+    public static func replace(_ source: URL, to destination: URL, cancellation: TransferCancellation,
+                               validate: @escaping () throws -> Void,
+                               progress: @escaping (OperationProgress) -> Void) throws {
+        let plan = try TransferPlan(sources: [source], outputs: [destination], kind: .copy, allowsConflicts: true)
+        try plan.execute(cancellation: cancellation, resolveConflict: { _ in
+            try validate()
+            return .replace
+        }, progress: progress)
+    }
+    /// Only for private temporary copies owned by the calling adapter. Does not follow links.
+    public static func cleanupTemporaryCopy(_ directory: URL) { TransferStamp.cleanup(directory) }
     public static func finishDirectory(from source: String, to destination: String) throws {
         let source = try checkedURL(source), destination = try checkedURL(destination)
         guard copyfile(source.path, destination.path, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW)) == 0 else {

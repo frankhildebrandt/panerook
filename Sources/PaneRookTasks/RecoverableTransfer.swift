@@ -49,7 +49,14 @@ public struct RecoverableTransfer: Codable, Sendable {
         public var destination: TransferFingerprint?
         public var sourceRemoved = false
         public var error: String?
+        public var originalDestination: TransferPath?
+        public var renamed: Bool?
+        public var skipped: Bool?
+        public var preserveSource: Bool?
+        public var merged: Bool?
+        public var replaced: Bool?
     }
+    public var allowsConflicts: Bool?
     public let version: Int
     public let id: UUID
     public var title: String
@@ -68,13 +75,13 @@ public struct RecoverableTransfer: Codable, Sendable {
         version = 1; id = UUID(); self.title = title; self.moving = moving; self.roots = roots
     }
     public var detail: String {
-        let explanation = "Fortsetzung auf Dateiebene · Quellen und Ziele werden geprüft · kein Überschreiben"
+        let explanation = "Fortsetzung auf Dateiebene · Quellen und Ziele werden geprüft · " + (allowsConflicts == true ? "Konflikte nur nach Rückfrage" : "kein Überschreiben")
         guard let entries else { return explanation + "\n" + roots.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n") }
         let failed = entries.filter { $0.error != nil }.count
-        let done = entries.filter { $0.destination != nil && $0.error == nil && (!moving || $0.sourceRemoved) }.count
+        let done = entries.filter { $0.skipped == true || ($0.destination != nil && $0.error == nil && (!moving || $0.sourceRemoved || $0.preserveSource == true || $0.source.kind == .directory)) }.count
         return explanation + "\n\(done) abgeschlossen · \(failed) fehlgeschlagen · \(entries.count - done - failed) offen\n"
             + entries.prefix(500).map { entry in
-                let status = entry.error.map { "Fehler: " + $0 } ?? (entry.destination == nil ? "Offen" : moving && !entry.sourceRemoved ? "Übertragen · Quelllöschung offen" : "Abgeschlossen")
+                let status = entry.skipped == true ? "Übersprungen · Quelle bleibt erhalten" : entry.error.map { "Fehler: " + $0 } ?? (entry.destination == nil ? "Offen" : moving && !entry.sourceRemoved ? "Übertragen · Quelllöschung offen" : "Abgeschlossen")
                 return "\(entry.root.source.path) → \(entry.root.destination.path): \(status)"
             }.joined(separator: "\n") + (entries.count > 500 ? "\nWeitere Einträge stehen im gespeicherten Transfermanifest." : "")
     }
@@ -101,11 +108,17 @@ public protocol RecoverableTransferAccess {
     func copyFile(from: TransferPath, to: TransferPath, progress: @escaping (OperationProgress) -> Void) throws
     func remove(_ path: TransferPath, directory: Bool) throws
     func finishDirectory(from: TransferPath, to: TransferPath) throws
+    func resolveConflict(_ root: TransferRoot, source: TransferFingerprint, target: TransferFingerprint) throws -> RecoverableConflictAction?
+    func replaceItem(from: TransferPath, to: TransferPath, expected: TransferFingerprint, progress: @escaping (OperationProgress) -> Void) throws
 }
 
 public extension RecoverableTransferAccess {
     func finishDirectory(from: TransferPath, to: TransferPath) throws {}
+    func resolveConflict(_ root: TransferRoot, source: TransferFingerprint, target: TransferFingerprint) throws -> RecoverableConflictAction? { nil }
+    func replaceItem(from: TransferPath, to: TransferPath, expected: TransferFingerprint, progress: @escaping (OperationProgress) -> Void) throws { throw RecoverableTransferError.conflict(to.path) }
 }
+
+public enum RecoverableConflictAction: Sendable { case skip, keepBoth, replace, merge }
 
 /// A checkpoint is durable before removing any source. Unknown/partial destinations are never adopted.
 public enum RecoverableTransferWorker {
@@ -146,11 +159,11 @@ public enum RecoverableTransferWorker {
             guard !transfer.roots.isEmpty else { throw RecoverableTransferError.invalidPlan }
             // Reject same/nested paths before discovery; resolving local aliases belongs to the adapter.
             for root in transfer.roots where root.source.endpoint == root.destination.endpoint {
-                guard root.source.path != root.destination.path,
+                guard (transfer.allowsConflicts == true || root.source.path != root.destination.path),
                       !root.destination.path.hasPrefix(root.source.path + "/") else { throw RecoverableTransferError.invalidPlan }
             }
             for root in transfer.roots {
-                if try access.fingerprint(root.destination) != nil { throw RecoverableTransferError.conflict(root.destination.path) }
+                if transfer.allowsConflicts != true, try access.fingerprint(root.destination) != nil { throw RecoverableTransferError.conflict(root.destination.path) }
                 try scan(root, depth: 0)
             }
             transfer.anchors = anchors
@@ -174,7 +187,16 @@ public enum RecoverableTransferWorker {
         }
         for index in transfer.entries!.indices {
             try access.checkCancellation()
+            if transfer.entries![index].skipped == true { continue }
             var entry = transfer.entries![index]
+            if let parent = transfer.entries!.first(where: {
+                $0.source.kind == .directory && $0.root.source != entry.root.source && entry.belongs(to: $0)
+                    && ($0.destination == nil || $0.error != nil)
+            }) {
+                transfer.entries![index].error = "Übergeordneter Eintrag noch nicht abgeschlossen: " + parent.root.source.path
+                try save(transfer)
+                continue
+            }
             do {
                 let source = try access.fingerprint(entry.root.source)
                 if transfer.moving, entry.destination != nil, source == nil {
@@ -191,9 +213,86 @@ public enum RecoverableTransferWorker {
                         guard transfer.moving ? actual.isSubset(of: expected) : actual == expected else { throw RecoverableTransferError.changed(entry.root.source.path) }
                     }
                     if entry.destination == nil {
-                        guard try access.fingerprint(entry.root.destination) == nil else { throw RecoverableTransferError.conflict(entry.root.destination.path) }
-                        if entry.source.kind == .directory { try access.createDirectory(entry.root.destination) }
-                        else { try access.copyFile(from: entry.root.source, to: entry.root.destination, progress: progress) }
+                        // Check destination ancestors as well: a renamed/replaced merge
+                        // directory must never redirect the remaining manifest entries.
+                        for parent in transfer.entries! where parent.source.kind == .directory
+                            && parent.root.destination.endpoint == entry.root.destination.endpoint
+                            && entry.root.destination.path.hasPrefix(parent.root.destination.path + "/") {
+                            if let expected = parent.destination {
+                                guard try access.fingerprint(parent.root.destination) == expected else { throw RecoverableTransferError.changed(parent.root.destination.path) }
+                            }
+                        }
+                        if let existing = try access.fingerprint(entry.root.destination) {
+                            guard transfer.allowsConflicts == true,
+                                  let action = try access.resolveConflict(entry.root, source: entry.source, target: existing) else {
+                                throw RecoverableTransferError.conflict(entry.root.destination.path)
+                            }
+                            try access.checkCancellation()
+                            guard try access.fingerprint(entry.root.source) == entry.source else { throw RecoverableTransferError.changed(entry.root.source.path) }
+                            switch action {
+                            case .skip:
+                                for child in transfer.entries!.indices where transfer.entries![child].belongs(to: entry) {
+                                    transfer.entries![child].skipped = true; transfer.entries![child].error = nil
+                                }
+                                try save(transfer)
+                                continue
+                            case .keepBoth:
+                                let original = entry.root.destination
+                                var candidate = original, number = 2
+                                let name = (original.path as NSString).lastPathComponent as NSString
+                                while try access.fingerprint(candidate) != nil || transfer.entries!.contains(where: { $0.root.destination == candidate && $0.root.source != entry.root.source }) {
+                                    let suffix = name.pathExtension
+                                    let stem = suffix.isEmpty ? name as String : name.deletingPathExtension
+                                    candidate = TransferPath((original.path as NSString).deletingLastPathComponent, endpoint: original.endpoint)
+                                        .appending(stem + " (\(number))" + (suffix.isEmpty ? "" : "." + suffix))
+                                    number += 1
+                                }
+                                let selfTransfer = entry.root.source == original
+                                for child in transfer.entries!.indices where transfer.entries![child].belongs(to: entry) {
+                                    if transfer.entries![child].originalDestination == nil { transfer.entries![child].originalDestination = transfer.entries![child].root.destination }
+                                    let suffix = transfer.entries![child].root.destination.path.dropFirst(original.path.count)
+                                    transfer.entries![child].root.destination = TransferPath(candidate.path + suffix, endpoint: candidate.endpoint)
+                                    if selfTransfer { transfer.entries![child].preserveSource = true }
+                                }
+                                transfer.entries![index].renamed = true
+                                entry = transfer.entries![index]
+                                try save(transfer)
+                            case .merge:
+                                guard entry.source.kind == .directory, existing.kind == .directory,
+                                      entry.root.source != entry.root.destination,
+                                      try access.fingerprint(entry.root.destination) == existing else { throw RecoverableTransferError.conflict(entry.root.destination.path) }
+                                entry.merged = true; entry.destination = existing
+                            case .replace:
+                                guard entry.root.source != entry.root.destination else { throw RecoverableTransferError.conflict(entry.root.destination.path) }
+                                entry.replaced = true
+                                transfer.entries![index] = entry
+                                try save(transfer) // Intent is durable before replacing; retry asks again.
+                                for child in transfer.entries! where child.belongs(to: entry) {
+                                    guard try access.fingerprint(child.root.source) == child.source else { throw RecoverableTransferError.changed(child.root.source.path) }
+                                    if child.source.kind == .directory {
+                                        let names = Set(transfer.entries!.filter { $0.root.source.endpoint == child.root.source.endpoint && ($0.root.source.path as NSString).deletingLastPathComponent == child.root.source.path }.map { ($0.root.source.path as NSString).lastPathComponent })
+                                        guard try Set(access.children(child.root.source)) == names else { throw RecoverableTransferError.changed(child.root.source.path) }
+                                    }
+                                }
+                                try access.replaceItem(from: entry.root.source, to: entry.root.destination, expected: existing, progress: progress)
+                                var copied = transfer.entries!
+                                for child in copied.indices where copied[child].belongs(to: entry) {
+                                    guard try access.fingerprint(copied[child].root.source) == copied[child].source,
+                                          let destination = try access.fingerprint(copied[child].root.destination),
+                                          copied[child].source.kind == .directory || destination.hasSameContent(as: copied[child].source) else {
+                                        throw RecoverableTransferError.changed(copied[child].root.source.path)
+                                    }
+                                    copied[child].destination = destination; copied[child].error = nil
+                                }
+                                transfer.entries = copied
+                                entry = copied[index]
+                                try save(transfer)
+                            }
+                        }
+                        if entry.destination == nil {
+                            if entry.source.kind == .directory { try access.createDirectory(entry.root.destination) }
+                            else { try access.copyFile(from: entry.root.source, to: entry.root.destination, progress: progress) }
+                        }
                         guard try access.fingerprint(entry.root.source) == entry.source,
                               let target = try access.fingerprint(entry.root.destination),
                               entry.source.kind == .directory || target.hasSameContent(as: entry.source) else {
@@ -203,7 +302,7 @@ public enum RecoverableTransferWorker {
                         transfer.entries![index] = entry
                         try save(transfer)
                     }
-                    if transfer.moving, !entry.sourceRemoved, entry.source.kind != .directory {
+                    if transfer.moving, !entry.sourceRemoved, entry.preserveSource != true, entry.source.kind != .directory {
                         try access.checkCancellation()
                         // Recheck immediately before deletion, after the durable copy checkpoint.
                         guard try access.fingerprint(entry.root.source) == entry.source,
@@ -229,13 +328,13 @@ public enum RecoverableTransferWorker {
             }
             transfer.entries![index] = entry
             try save(transfer) // Persistence failures stop the whole worker, never masquerade as a file error.
-            let done = transfer.entries!.filter { $0.destination != nil && $0.error == nil }.count
+            let done = transfer.entries!.filter { $0.skipped == true || ($0.destination != nil && $0.error == nil) }.count
             progress(OperationProgress(completedItems: done, totalItems: transfer.entries!.count, currentPath: entry.root.source.path))
         }
         // Apply directory metadata only after its children are present; never make a partial destination read-only.
         for index in transfer.entries!.indices.reversed() where transfer.entries![index].source.kind == .directory {
             let entry = transfer.entries![index]
-            guard entry.destination != nil, entry.error == nil, !entry.sourceRemoved,
+            guard entry.destination != nil, entry.error == nil, !entry.sourceRemoved, entry.skipped != true, entry.merged != true,
                   !transfer.entries!.contains(where: { $0.root.source.path.hasPrefix(entry.root.source.path + "/") && $0.error != nil }) else { continue }
             do {
                 try access.checkCancellation()
@@ -248,7 +347,8 @@ public enum RecoverableTransferWorker {
             for index in transfer.entries!.indices.reversed() where transfer.entries![index].source.kind == .directory {
                 try access.checkCancellation()
                 var entry = transfer.entries![index]
-                guard entry.destination != nil, entry.error == nil, !entry.sourceRemoved else { continue }
+                guard entry.destination != nil, entry.error == nil, !entry.sourceRemoved, entry.skipped != true, entry.preserveSource != true,
+                      !transfer.entries!.contains(where: { $0.belongs(to: entry) && ($0.skipped == true || $0.preserveSource == true) }) else { continue }
                 do {
                     guard try access.fingerprint(entry.root.source) == entry.source,
                           try access.children(entry.root.source).isEmpty else { throw RecoverableTransferError.changed(entry.root.source.path) }
@@ -276,25 +376,48 @@ public extension RecoverableTransfer {
         for root in roots {
             guard valid(root.source), valid(root.destination), root.source.path != "/", root.destination.path != "/" else { throw RecoverableTransferError.invalidPlan }
             if root.source.endpoint == root.destination.endpoint {
-                guard root.source.path != root.destination.path, !root.destination.path.hasPrefix(root.source.path + "/") else { throw RecoverableTransferError.invalidPlan }
+                guard (allowsConflicts == true || root.source.path != root.destination.path), !root.destination.path.hasPrefix(root.source.path + "/") else { throw RecoverableTransferError.invalidPlan }
             }
             if moving {
                 guard !roots.contains(where: { $0.source.endpoint == root.source.endpoint && root.source.path.hasPrefix($0.source.path + "/") }) else { throw RecoverableTransferError.invalidPlan }
             }
         }
         if let entries {
-            guard !entries.isEmpty, anchors != nil, roots.allSatisfy({ root in entries.contains { $0.root.source == root.source && $0.root.destination == root.destination } }) else { throw RecoverableTransferError.invalidPlan }
+            guard !entries.isEmpty, anchors != nil, roots.allSatisfy({ root in entries.contains { $0.root.source == root.source && ($0.originalDestination ?? $0.root.destination) == root.destination } }) else { throw RecoverableTransferError.invalidPlan }
         }
+        let renamedEntries = (entries ?? []).filter { $0.renamed == true }
         for entry in entries ?? [] {
-            guard valid(entry.root.source), valid(entry.root.destination),
+            let original = entry.originalDestination ?? entry.root.destination
+            guard valid(entry.root.source), valid(entry.root.destination), valid(original), original.endpoint == entry.root.destination.endpoint,
                   entry.source.kind == .directory || entry.source.digest != nil,
                   destinations.insert(entry.root.destination).inserted,
                   roots.contains(where: { root in
                       guard root.source.endpoint == entry.root.source.endpoint, root.destination.endpoint == entry.root.destination.endpoint else { return false }
-                      if root.source.path == entry.root.source.path { return root.destination.path == entry.root.destination.path }
+                      if root.source.path == entry.root.source.path { return root.destination == original }
                       guard entry.root.source.path.hasPrefix(root.source.path + "/") else { return false }
-                      return entry.root.destination.path == root.destination.path + entry.root.source.path.dropFirst(root.source.path.count)
+                      return original.path == root.destination.path + entry.root.source.path.dropFirst(root.source.path.count)
                   }) else { throw RecoverableTransferError.invalidPlan }
+            let ancestor = renamedEntries.filter {
+                $0.root.source.endpoint == entry.root.source.endpoint
+                    && entry.root.source.path.hasPrefix($0.root.source.path + "/")
+                    && ($0.originalDestination ?? $0.root.destination).endpoint == original.endpoint
+                    && original.path.hasPrefix(($0.originalDestination ?? $0.root.destination).path + "/")
+            }.max { $0.root.source.path.count < $1.root.source.path.count }
+            let mapped = ancestor.map { TransferPath($0.root.destination.path + entry.root.source.path.dropFirst($0.root.source.path.count), endpoint: original.endpoint) } ?? original
+            if entry.renamed == true {
+                guard allowsConflicts == true, (mapped.path as NSString).deletingLastPathComponent == (entry.root.destination.path as NSString).deletingLastPathComponent else { throw RecoverableTransferError.invalidPlan }
+            } else {
+                guard entry.root.destination == mapped else { throw RecoverableTransferError.invalidPlan }
+            }
         }
+    }
+}
+
+private extension RecoverableTransfer.Entry {
+    func belongs(to parent: Self) -> Bool {
+        root.source.endpoint == parent.root.source.endpoint && root.destination.endpoint == parent.root.destination.endpoint
+            && (root.source == parent.root.source || root.source.path.hasPrefix(parent.root.source.path + "/"))
+            && ((originalDestination ?? root.destination).path == (parent.originalDestination ?? parent.root.destination).path
+                || (originalDestination ?? root.destination).path.hasPrefix((parent.originalDestination ?? parent.root.destination).path + "/"))
     }
 }
