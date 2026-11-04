@@ -4,7 +4,7 @@ import Foundation
 public final class RemoteFileSystem: @unchecked Sendable {
     public typealias Runner = (RemoteInvocation, RemoteCancellation) throws -> Data
     public let connection: RemoteConnection
-    private let transport: any RemoteTransport
+    let transport: any RemoteTransport
     public init(connection: RemoteConnection, runner: @escaping Runner = RemoteFileSystem.run) {
         self.connection = connection
         self.transport = RemoteProviderRegistry.makeTransport(connection: connection, runner: runner)
@@ -39,7 +39,10 @@ public final class RemoteFileSystem: @unchecked Sendable {
         let path = try Self.normalizedPath(path)
         return try transport.list(path, token: cancellation)
     }
-    private func available(_ path: String, token: RemoteCancellation) throws {
+    func removeEmptyOrFile(_ path: String, directory: Bool, cancellation: RemoteCancellation) throws {
+        try transport.remove(path, directory: directory, token: cancellation)
+    }
+    func available(_ path: String, token: RemoteCancellation) throws {
         let parent = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent
         if try list(parent, cancellation: token).contains(where: { $0.name == name }) { throw RemoteError.collision(name) }
@@ -50,7 +53,11 @@ public final class RemoteFileSystem: @unchecked Sendable {
         try available(path, token: cancellation)
         try transport.createDirectory(path, token: cancellation)
     }
-    public func download(_ entry: RemoteEntry, from directory: String, to destination: URL, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+    public func download(_ entry: RemoteEntry, from directory: String, to destination: URL, resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).download(self, entry: entry, directory: directory, destination: destination, moving: false)
+            return
+        }
         try cancellation.check()
         guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
         guard !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
@@ -63,7 +70,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         try cancellation.check()
         try FileManager.default.moveItem(at: output, to: destination)
     }
-    private func downloadContent(_ entry: RemoteEntry, path: String, to destination: URL, token: RemoteCancellation, depth: Int) throws {
+    func downloadContent(_ entry: RemoteEntry, path: String, to destination: URL, token: RemoteCancellation, depth: Int) throws {
         try token.check()
         guard depth < 256, !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
         guard entry.isDirectory || entry.isRegularFile else { throw RemoteError.specialFile }
@@ -76,13 +83,21 @@ public final class RemoteFileSystem: @unchecked Sendable {
             try transport.download(path, to: destination, token: token)
         }
     }
-    public func upload(_ source: URL, to directory: String, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+    public func upload(_ source: URL, to directory: String, resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).upload(self, source: source, path: Self.normalizedPath(source.lastPathComponent, relativeTo: directory), moving: false)
+            return
+        }
         try uploadContent(source, path: Self.normalizedPath(source.lastPathComponent, relativeTo: directory), token: cancellation, depth: 0)
     }
     /// Moving a local source validates its captured tree before deleting any
     /// data. Cleanup unlinks captured files and removes only empty directories.
     public func upload(_ source: URL, to directory: String, movingSource: Bool,
-                       cancellation: RemoteCancellation = RemoteCancellation()) throws {
+                       resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).upload(self, source: source, path: Self.normalizedPath(source.lastPathComponent, relativeTo: directory), moving: movingSource)
+            return
+        }
         guard movingSource else { try upload(source, to: directory, cancellation: cancellation); return }
         let snapshot = try LocalTransferSnapshot.capture(source, cancellation: cancellation)
         try upload(source, to: directory, cancellation: cancellation)
@@ -92,15 +107,24 @@ public final class RemoteFileSystem: @unchecked Sendable {
 
     /// Download and remove only the unchanged entries captured for this move.
     public func move(_ entry: RemoteEntry, from directory: String, to destination: URL,
-                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+                     resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).download(self, entry: entry, directory: directory, destination: destination, moving: true)
+            return
+        }
         let snapshot = try captureTransferSnapshot(entry, from: directory, cancellation: cancellation)
         try download(snapshot.entry, from: directory, to: destination, cancellation: cancellation)
         try removeTransferredSnapshot(snapshot, from: directory, cancellation: cancellation)
     }
     /// Rename or move an entry within this connection without downloading it.
-    /// An existing destination is never intentionally replaced or merged.
+    /// Without a resolver, existing destinations are rejected. With a resolver,
+    /// replacement and merging use the shared staged conflict workflow.
     public func move(_ entry: RemoteEntry, from directory: String, to destinationPath: String,
-                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+                     resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).remote(self, entry: entry, directory: directory, destination: self, target: Self.normalizedPath(destinationPath, relativeTo: directory), moving: true)
+            return
+        }
         try cancellation.check()
         guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
         guard !entry.isSymbolicLink else { throw RemoteError.symbolicLink }
@@ -119,7 +143,11 @@ public final class RemoteFileSystem: @unchecked Sendable {
     /// used as ordinary source and destination panels. Staging is always removed.
     public func copy(_ entry: RemoteEntry, from directory: String, to destination: RemoteFileSystem,
                      directory destinationDirectory: String,
-                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+                     resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).remote(self, entry: entry, directory: directory, destination: destination, target: Self.normalizedPath(entry.name, relativeTo: destinationDirectory), moving: false)
+            return
+        }
         try cancellation.check()
         guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
         let target = try Self.normalizedPath(entry.name, relativeTo: destinationDirectory)
@@ -142,7 +170,11 @@ public final class RemoteFileSystem: @unchecked Sendable {
     /// the source is removed only after its entire copy has completed.
     public func move(_ entry: RemoteEntry, from directory: String, to destination: RemoteFileSystem,
                      directory destinationDirectory: String,
-                     cancellation: RemoteCancellation = RemoteCancellation()) throws {
+                     resolveConflict: RemoteConflictResolver? = nil, cancellation: RemoteCancellation = RemoteCancellation()) throws {
+        if let resolveConflict {
+            try ResolvedRemoteTransfer(resolve: resolveConflict, token: cancellation).remote(self, entry: entry, directory: directory, destination: destination, target: Self.normalizedPath(entry.name, relativeTo: destinationDirectory), moving: true)
+            return
+        }
         if sharesEndpoint(with: destination) {
             try move(entry, from: directory,
                      to: Self.normalizedPath(entry.name, relativeTo: destinationDirectory), cancellation: cancellation)
@@ -153,13 +185,13 @@ public final class RemoteFileSystem: @unchecked Sendable {
         }
     }
 
-    private func sharesEndpoint(with other: RemoteFileSystem) -> Bool {
+    func sharesEndpoint(with other: RemoteFileSystem) -> Bool {
         connection.kind == other.connection.kind && connection.host == other.connection.host
             && connection.port == other.connection.port && connection.user == other.connection.user
             && connection.password == other.connection.password && connection.identityFile == other.connection.identityFile
     }
 
-    private func captureTransferSnapshot(_ entry: RemoteEntry, from directory: String,
+    func captureTransferSnapshot(_ entry: RemoteEntry, from directory: String,
                                          cancellation: RemoteCancellation) throws -> RemoteTransferSnapshot {
         guard Self.validName(entry.name) else { throw RemoteError.invalidPath }
         guard let current = try list(directory, cancellation: cancellation).first(where: { $0.name == entry.name }) else {
@@ -180,7 +212,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         return RemoteTransferSnapshot(entry: entry, children: children)
     }
 
-    private func removeTransferredSnapshot(_ snapshot: RemoteTransferSnapshot, from directory: String,
+    func removeTransferredSnapshot(_ snapshot: RemoteTransferSnapshot, from directory: String,
                                            cancellation: RemoteCancellation) throws {
         // Check the whole source before the first deletion. This also detects a
         // destination nested inside the source through another connection alias.
@@ -208,7 +240,7 @@ public final class RemoteFileSystem: @unchecked Sendable {
         try cancellation.check()
         try transport.remove(path, directory: snapshot.entry.isDirectory, token: cancellation)
     }
-    private func uploadContent(_ source: URL, path: String, token: RemoteCancellation, depth: Int) throws {
+    func uploadContent(_ source: URL, path: String, token: RemoteCancellation, depth: Int) throws {
         try token.check()
         let values = try source.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])
         guard depth < 256, values.isSymbolicLink != true else { throw RemoteError.symbolicLink }

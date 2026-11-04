@@ -65,6 +65,36 @@ final class TerminalKeyboardTests: XCTestCase {
         }
     }
 
+    @MainActor func testPaletteKeepsTerminalContextAndRestoresShellFocus() throws {
+        _ = NSApplication.shared
+        let suite = "TerminalPaletteTests-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let commander = CommanderController()
+        commander.commandRegistry = commander.makeCommandRegistry(defaults: defaults)
+        let window = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
+                               styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentViewController = commander
+        defer { commander.commandPalette.dismiss(); window.close() }
+        let terminal = TerminalStub()
+        let pane = PaneController(label: "Terminal", directory: FileManager.default.homeDirectoryForCurrentUser,
+                                  terminalContent: terminal)
+        commander.addChild(pane); commander.view.addSubview(pane.view)
+        pane.setMode(.terminal); commander.activate(pane)
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: [.command, .shift], timestamp: 1, windowNumber: window.windowNumber,
+            context: nil, characters: "P", charactersIgnoringModifiers: "P", isARepeat: false, keyCode: 35))
+        XCTAssertTrue(commander.handleGlobalKey(event))
+        let palette = try XCTUnwrap(commander.commandPalette.controller)
+        XCTAssertFalse(palette.results.contains { $0.id == "command:navigation.open" })
+        XCTAssertFalse(palette.results.contains { $0.id == "command:panels.switch" })
+        XCTAssertTrue(palette.results.contains { $0.id == "command:panels.switch.terminal" })
+        XCTAssertTrue(terminal.recorder.received.isEmpty)
+        commander.commandPalette.dismiss()
+        XCTAssertTrue(pane.hasTerminalKeyboardFocus)
+        XCTAssertEqual(pane.mode, .terminal)
+    }
+
     @MainActor func testShellKeysBypassFileCommandsAndCustomControlShortcuts() throws {
         _ = NSApplication.shared
         let suite = "TerminalKeyboardRoutingTests-\(UUID())"
@@ -103,6 +133,13 @@ final class TerminalKeyboardTests: XCTestCase {
             XCTAssertTrue(try commander.handleGlobalKey(terminalEvent(code, text, flags)))
             XCTAssertEqual(commander.active.mode, .terminal)
             XCTAssertFalse(commander.panelsHidden)
+        }
+        for (code, text, flags) in [(UInt16(8), "c", NSEvent.ModifierFlags.command),
+                                    (UInt16(9), "v", NSEvent.ModifierFlags.command),
+                                    (UInt16(9), "v", NSEvent.ModifierFlags([.command, .option]))] {
+            XCTAssertFalse(try commander.handleGlobalKey(terminalEvent(code, text, flags)),
+                           "Command clipboard keys stay with the terminal responder")
+            XCTAssertFalse(commander.commandRegistry["files.clipboard.move"]?.enabled() ?? true)
         }
         XCTAssertEqual(terminal.recorder.received, shellKeys.map { $0.0 })
         XCTAssertTrue(try commander.handleGlobalKey(terminalEvent(48, "\t", [.command, .option])))

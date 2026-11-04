@@ -26,7 +26,7 @@ public struct OperationProgress: Sendable {
 }
 
 public enum BackgroundTaskState: Sendable {
-    case queued, running, cancelling, completed, failed, cancelled
+    case queued, running, cancelling, completed, failed, cancelled, interrupted
     public var isActive: Bool { self == .queued || self == .running || self == .cancelling }
 }
 
@@ -37,6 +37,7 @@ public struct BackgroundTaskSnapshot: Sendable {
     public let state: BackgroundTaskState
     public let progress: OperationProgress
     public let error: String?
+    public var canResume: Bool = false
 }
 
 public enum BackgroundTaskError: LocalizedError {
@@ -50,17 +51,18 @@ public final class BackgroundTaskQueue: @unchecked Sendable {
     private final class Job {
         let id: UUID
         let title: String
-        let detail: String
+        var detail: String
         var state: BackgroundTaskState = .queued
         var progress = OperationProgress()
         var error: String?
+        var recoverable = false
         var cancellation: (() -> Void)?
         var cancelledBeforeStart: (() -> Void)?
         init(id: UUID, title: String, detail: String, cancellation: @escaping () -> Void) {
             self.id = id; self.title = title; self.detail = detail; self.cancellation = cancellation
         }
         var snapshot: BackgroundTaskSnapshot {
-            BackgroundTaskSnapshot(id: id, title: title, detail: detail, state: state, progress: progress, error: error)
+            BackgroundTaskSnapshot(id: id, title: title, detail: detail, state: state, progress: progress, error: error, canResume: recoverable && !state.isActive && state != .completed)
         }
     }
     private let lock = NSLock()
@@ -80,12 +82,15 @@ public final class BackgroundTaskQueue: @unchecked Sendable {
     }
 
     @discardableResult
-    public func submit<Value>(title: String, detail: String = "", cancellation: @escaping () -> Void = {},
+    public func submit<Value>(id: UUID = UUID(), recoverable: Bool = false, title: String, detail: String = "", cancellation: @escaping () -> Void = {},
                               work: @escaping (@escaping (OperationProgress) -> Void) throws -> Value,
                               completion: @escaping (Result<Value, Error>) -> Void) -> UUID {
-        let job = Job(id: UUID(), title: title, detail: detail, cancellation: cancellation)
+        let job = Job(id: id, title: title, detail: detail, cancellation: cancellation)
         job.cancelledBeforeStart = { completion(.failure(BackgroundTaskError.cancelled)) }
         lock.lock()
+        guard !jobs.contains(where: { $0.id == id && $0.state.isActive }) else { lock.unlock(); return id }
+        jobs.removeAll { $0.id == id }
+        job.recoverable = recoverable
         jobs.append(job)
         notifyLocked()
         worker.async { [self, job] in
@@ -135,7 +140,32 @@ public final class BackgroundTaskQueue: @unchecked Sendable {
     }
     public func cancelAll() { snapshots.filter { $0.state.isActive }.forEach { cancel($0.id) } }
     public func clearFinished() {
-        lock.lock(); jobs.removeAll { !$0.state.isActive }; notifyLocked(); lock.unlock()
+        lock.lock(); jobs.removeAll { !$0.state.isActive && !$0.snapshot.canResume }; notifyLocked(); lock.unlock()
+    }
+    public func restoreTransfer(_ transfer: RecoverableTransfer) {
+        lock.lock(); defer { lock.unlock() }
+        guard !jobs.contains(where: { $0.id == transfer.id }) else { return }
+        let job = Job(id: transfer.id, title: transfer.title, detail: transfer.detail, cancellation: {})
+        switch transfer.state {
+        case .completed: job.state = .completed
+        case .failed: job.state = .failed
+        case .cancelled: job.state = .cancelled
+        default: job.state = .interrupted
+        }
+        if let entries = transfer.entries {
+            job.progress = OperationProgress(completedItems: entries.filter { $0.destination != nil && $0.error == nil }.count, totalItems: entries.count)
+        }
+        job.error = transfer.error
+        job.recoverable = true
+        jobs.append(job); notifyLocked()
+    }
+    public func updateDetail(_ id: UUID, detail: String) {
+        lock.lock(); defer { lock.unlock() }
+        jobs.first { $0.id == id }?.detail = detail; notifyLocked()
+    }
+    public func removeInactive(_ id: UUID) {
+        lock.lock(); defer { lock.unlock() }
+        jobs.removeAll { $0.id == id && !$0.state.isActive }; notifyLocked()
     }
     /// Called under the lock. Coalescing bounds main-queue work even for byte-level updates.
     private func notifyLocked() {

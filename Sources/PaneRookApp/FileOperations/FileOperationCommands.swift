@@ -2,6 +2,7 @@ import AppKit
 
 extension FileOperations {
     func registerCommands(in registry: CommandRegistry) {
+        registerUndoCommands(in: registry)
         registry.add(
             .file, "Kopieren …", id: "copy", order: 50, group: 0, function: 5, dockTitle: { "Kopieren" },
             enabled: { self.canCopySelection }

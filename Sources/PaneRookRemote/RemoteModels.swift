@@ -35,7 +35,7 @@ public struct RemoteEntry: Equatable, Sendable {
 }
 
 public enum RemoteError: LocalizedError {
-    case invalidConnection, invalidNextcloudConnection, invalidPath, cancelled, unsupportedListing, symbolicLink, specialFile, sourceChanged, collision(String), process(String)
+    case invalidConnection, invalidNextcloudConnection, invalidPath, cancelled, unsupportedListing, symbolicLink, specialFile, sourceChanged, targetChanged, collision(String), process(String)
     public var errorDescription: String? {
         switch self {
         case .invalidConnection: return "Verbindungsdaten sind ungültig."
@@ -45,6 +45,7 @@ public enum RemoteError: LocalizedError {
         case .unsupportedListing: return "Die Verzeichnisliste des Servers konnte nicht gelesen werden."
         case .symbolicLink: return "Symbolische Links werden bei Remote-Aktionen nicht verarbeitet."
         case .specialFile: return "Geräte und andere Spezialdateien können nicht übertragen werden."
+        case .targetChanged: return "Das Ziel wurde während der Konfliktentscheidung oder Übertragung geändert. Bitte erneut prüfen."
         case .sourceChanged: return "Die Quelle wurde während der Übertragung geändert. Die Kopie bleibt am Ziel; geänderte Quelldaten wurden nicht gelöscht."
         case .collision(let name): return "\(name) existiert bereits."
         case .process(let message): return message
