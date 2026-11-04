@@ -196,7 +196,7 @@ final class LocalTools {
         NSError(domain: "PaneRook", code: 1, userInfo: [NSLocalizedDescriptionKey:
             "Dieses Werkzeug benötigt lokale Dateien und Ordner. Bitte Archiveinträge zuerst in einen lokalen Ordner kopieren."])
     }
-    private func retain(_ controller: NSWindowController) {
+    func retain(_ controller: NSWindowController) {
         windows.removeAll { $0.window?.isVisible == false }
         windows.append(controller)
     }

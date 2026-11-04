@@ -9,6 +9,8 @@ final class TaskCenter {
     private let restoreFocus: () -> Void
     private let queue = BackgroundTaskQueue()
     private let transfers: RecoverableTransfers
+    private let moveJournal: RecoverableTransferJournal?
+    private var transferJournals: [UUID: RecoverableTransferJournal] = [:]
     private var transferLoadError: Error?
     private var details: [UUID: TaskProgressWindow] = [:]
     private var resultActions: [UUID: () -> Void] = [:]
@@ -19,7 +21,8 @@ final class TaskCenter {
     private var idleHandler: (() -> Void)?
     var onChange: (() -> Void)?
 
-    init(parentWindow: @escaping () -> NSWindow?, restoreFocus: @escaping () -> Void, transferStore: TransferStore? = nil, restoredTransferCompletion: @escaping () -> Void = {}) {
+    init(parentWindow: @escaping () -> NSWindow?, restoreFocus: @escaping () -> Void, transferStore: TransferStore? = nil, restoredTransferCompletion: @escaping () -> Void = {}, transferJournal: FileOperationJournal? = nil) {
+        moveJournal = transferJournal.map(RecoverableTransferJournal.init)
         transfers = RecoverableTransfers(store: transferStore ?? TransferStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("PaneRook-Transfers-" + UUID().uuidString)))
         self.parentWindow = parentWindow
         self.restoreFocus = restoreFocus
@@ -82,15 +85,17 @@ final class TaskCenter {
         return id
     }
     @discardableResult
-    func submitTransfer(_ record: RecoverableTransfer, remotes: [RemoteFileSystem] = [], completion: @escaping () -> Void) -> UUID? {
+    func submitTransfer(_ record: RecoverableTransfer, remotes: [RemoteFileSystem] = [], journal: FileOperationJournal? = nil, completion: @escaping () -> Void) -> UUID? {
+        if let journal { transferJournals[record.id] = RecoverableTransferJournal(journal) }
         do { try transfers.submit(record, remotes: remotes, completion: completion); return record.id }
         catch { showTransferError(error); return nil }
     }
     private func executeTransfer(_ record: RecoverableTransfer, access: TransferFileAccess, completion: @escaping () -> Void) {
         guard !queue.snapshots.contains(where: { $0.id == record.id && $0.state.isActive }) else { return }
-        let store = transfers.store
+        let store = transfers.store, moveJournal = transferJournals[record.id] ?? moveJournal
         submit(id: record.id, recoverable: true, title: record.title, detail: record.detail, cancellation: { access.cancel() }, work: { [weak self] report in
             var current = record
+            defer { moveJournal?.record(current) }
             func save(_ record: RecoverableTransfer) throws {
                 let value = access.sanitized(record)
                 try store.save(value)

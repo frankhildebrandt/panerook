@@ -71,6 +71,19 @@ public struct PanelState {
         loading = false
         return true
     }
+    /// Observation refreshes the current location without starting navigation or
+    /// clearing its Git snapshot. It cannot replace search results or a new load.
+    @discardableResult
+    public mutating func applyObservedListing(_ files: [FileEntry], in url: URL, request: Int) -> Bool {
+        guard generation == request, directory == url, !loading, !panelized,
+              !isArchiveDirectory, mode == .listing || mode == .tree else { return false }
+        allEntries = (url.path == "/" ? [] : [.parent(of: url)]) + files
+        let directories = Set(files.filter(\.isDirectory).map(\.url))
+        gitStatuses = gitStatuses.filter { directories.contains($0.key) }
+        directorySizes = [:]
+        filterAndSort()
+        return true
+    }
     public mutating func showResults(_ files: [FileEntry]) {
         generation += 1
         loading = false

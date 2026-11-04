@@ -81,6 +81,11 @@ enum ContextCommands {
         add(.tasks, "tasks.reveal", "Aufgabenergebnis anzeigen")
         add(.results, "results.reveal", "Ausgewählten Treffer im Panel zeigen", .physical(36, characters: "\r"))
         add(.results, "results.panelize", "Treffer ins Panel übernehmen")
+        for (id, title) in [("preview", "Synchronisationsvorschau erstellen"), ("execute", "Synchronisation bestätigen …"),
+                            ("selectAll", "Alle Sync-Aktionen auswählen"), ("selectNone", "Keine Sync-Aktionen auswählen"),
+                            ("profile.save", "Synchronisationsprofil speichern"), ("profile.remove", "Synchronisationsprofil entfernen")] {
+            add(.results, "sync." + id, title)
+        }
         add(.network, "network.open", "Ausgewählten Netzwerkserver öffnen", .physical(36, characters: "\r"))
         add(.network, "network.open.keypad", "Netzwerkserver öffnen (Ziffernblock)", .physical(76, characters: "\u{3}"))
         add(.network, "network.connect", "Mit Netzwerkserver verbinden …")

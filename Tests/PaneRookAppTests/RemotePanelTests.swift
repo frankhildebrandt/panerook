@@ -108,6 +108,8 @@ final class RemotePanelTests: XCTestCase {
         XCTAssertNil(other.remoteContent)
         XCTAssertEqual(other.directory, rightDirectory)
         XCTAssertEqual(Set(NSApp.windows.map(ObjectIdentifier.init)), windows)
+        XCTAssertFalse(pane.canExportNativeFiles, "Remote contents must not expose the retained local selection as file URLs")
+        XCTAssertNil(pane.fileExchangeDirectory)
         XCTAssertTrue(pane.selectedEntries.isEmpty)
         XCTAssertTrue(pane.selectedFiles.isEmpty)
         XCTAssertFalse(pane.canApplyTaskResult(in: leftDirectory))
