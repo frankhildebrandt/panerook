@@ -7,7 +7,11 @@ const sections = [
   ['installation', 'Installation'],
   ['erste-schritte', 'Erste Schritte'],
   ['tastatur', 'Tastaturkürzel'],
+  ['arbeitsbereiche', 'Tabs & Arbeitsbereiche'],
   ['dateiaktionen', 'Dateien organisieren'],
+  ['transfers', 'Transfers & Aufgaben'],
+  ['synchronisation', 'Ordner synchronisieren'],
+  ['terminal', 'Terminal & Befehle'],
   ['archive', 'Archive'],
   ['git', 'Git & Worktrees'],
   ['suche-aufgaben', 'Suche & Aufgaben'],
@@ -25,7 +29,11 @@ const shortcuts = [
   ['⌘A', 'Alle Einträge auswählen'],
   ['F1', 'Tastaturhilfe öffnen'],
   ['Leertaste / F3 / ⌘Y', 'Quick Look anzeigen'],
-  ['F4', 'Datei in TextEdit bearbeiten'],
+  ['F4', 'Im bevorzugten Editor bearbeiten; Remote-Arbeitskopie öffnen'],
+  ['⌘T / ⌘⇧W', 'Tab öffnen / schließen'],
+  ['⌘⇧[ / ⌘⇧]', 'Vorheriger / nächster Tab'],
+  ['⌘⌥Tab', 'Panel wechseln, auch aus dem Terminal'],
+  ['⌘Z / ⇧⌘Z', 'Unterstützte lokale Dateiaktion rückgängig / wiederholen'],
   ['F5 / F6', 'Ins andere Panel kopieren / verschieben'],
   ['⌘C / ⌘V', 'Lokale Dateien kopieren / im fokussierten Panel einsetzen'],
   ['⌘⌥V', 'Dateien aus der Zwischenablage hierher verschieben'],
@@ -86,11 +94,11 @@ const shortcuts = [
             <li>Wechsle mit <kbd>Tab</kbd> ins andere Panel und öffne dort den gewünschten Zielordner.</li>
             <li>Wähle in der Quelle eine Datei aus und drücke <kbd>F5</kbd>. Prüfe den Zielpfad im Dialog und bestätige mit <kbd>Enter</kbd>.</li>
           </ol>
-          <h3>Navigieren und wiederfinden</h3>
+          <h3>Befehlspalette</h3><p><strong>Befehl → Befehlspalette …</strong> (<kbd>⌘⇧P</kbd>) durchsucht verfügbare Aktionen mit ihren aktuellen Kürzeln, Ordnerfavoriten, gespeicherte Verbindungen, bekannte Worktrees und besuchte Orte beider Panels. Abkürzungen und mehrere Suchbegriffe sind möglich. <kbd>↑/↓</kbd> wählen, Return führt aus und Esc schließt die Palette. Ziele öffnen im beim Aufruf aktiven Panel; bestehende Rückfragen und Passwortdialoge bleiben wirksam.</p><h3>Navigieren und wiederfinden</h3>
           <p>In Dateiliste und Verzeichnisbaum steht rechts am Pfad der verfügbare Speicherplatz des aktuellen Volumes, etwa <strong>128 GB frei</strong>. Das funktioniert auch bei eingebundenen Netzwerkfreigaben, sofern macOS deren Kapazität meldet. Ordnerwechsel, <kbd>⌘R</kbd> und Dateiaktionen aktualisieren die Anzeige. Bei schmalen Panels, unbekannter Kapazität, Archiven, Suchergebnissen und den übrigen Ansichten bleibt sie ausgeblendet. Bei lokalen Cloud-Ordnern zeigt sie den Platz auf dem lokalen Volume.</p>
           <p><kbd>Enter</kbd> oder ein Doppelklick öffnet Ordner und Dateien. Mit <kbd>Rücktaste</kbd> oder <kbd>⌘↑</kbd> gehst du eine Ebene nach oben. Pfeiltasten bewegen die Auswahl, <kbd>⇧</kbd> erweitert sie, <kbd>⌘A</kbd> wählt alle Einträge. Über die Spaltenköpfe sortierst du die Liste.</p>
           <p>Das <strong>Favoritenmenü rechts am Pfad</strong> (<kbd>⌥↓</kbd>) führt zu Volumes, erkannten lokalen Cloud-Ordnern, Netzwerkfreigaben und eigenen Favoriten. Unter <strong>Eigene Favoriten</strong> kannst du den aktuellen Ordner hinzufügen. Favoriten stehen in beiden Panels zur Verfügung. Cloud-Einträge öffnen lokale Ordner des jeweiligen Anbieters.</p>
-          <p>Im Menü <strong>Links</strong> beziehungsweise <strong>Rechts</strong> wechselst du zwischen Dateiliste, Schnellansicht, Info und Verzeichnisbaum. Schnellansicht und Info folgen der Auswahl im anderen Panel. Über <strong>Filter …</strong> kannst du Dateimasken wie <code>*.pdf</code> verwenden; Ordner bleiben zur Navigation sichtbar.</p>
+          <p>Im Menü <strong>Links</strong> beziehungsweise <strong>Rechts</strong> wechselst du zwischen Dateiliste, Schnellansicht, Info, Verzeichnisbaum, Git-Diff und Verlauf sowie Ghostty-Terminal. Schnellansicht und Info folgen der Auswahl im anderen Panel. Über <strong>Filter …</strong> kannst du Dateimasken wie <code>*.pdf</code> verwenden; Ordner bleiben zur Navigation sichtbar.</p>
         </section>
 
         <section id="tastatur" aria-labelledby="tastatur-title">
@@ -107,18 +115,23 @@ const shortcuts = [
           <p><strong>Befehl → Befehlspalette …</strong> (<kbd>⌘⇧P</kbd>, frei belegbar) durchsucht verfügbare Aktionen mit ihren aktuellen Tastenkürzeln, eigene Ordnerfavoriten, gespeicherte Verbindungen, bekannte Git-Worktrees und besuchte Ordner beider Panels. Die Suche versteht Abkürzungen und mehrere Suchbegriffe, auch für Pfade und Server. <kbd>↑</kbd>/<kbd>↓</kbd> wählen einen Treffer, <kbd>Return</kbd> führt aus und <kbd>Esc</kbd> schließt. Ziele öffnen sich im ursprünglichen Panel; Rückfragen und Passwortdialoge bleiben erhalten. In offenen Dialogen und separaten Feature-Fenstern bleibt die Hauptfensterpalette gesperrt.</p>
         </section>
 
+        <section id="arbeitsbereiche"><h2>Tabs und Projekte wieder öffnen</h2><p>Jede Panelhälfte hat eigene Tabs. Benannte Arbeitsbereiche halten beide Tabgruppen und ihre Orte zusammen. <a href={`${base}/dokumentation/arbeitsbereiche/`}>Tabs &amp; Arbeitsbereiche →</a></p></section>
+        <section id="transfers"><h2>Konflikte entscheiden und Transfers fortsetzen</h2><p>Vorhandene Ziele überspringen, beide Fassungen behalten, ersetzen oder Ordner zusammenführen. Kopier- und Verschiebeaufträge bleiben über Neustarts erhalten. <a href={`${base}/dokumentation/transfers/`}>Transfers &amp; Aufgaben →</a></p></section>
+        <section id="synchronisation"><h2>Ordner synchronisieren</h2><p>Zwei lokale Ordner mit Änderungsvorschau, Ausschlüssen und gespeicherten Profilen in einer Richtung abgleichen. <a href={`${base}/dokumentation/synchronisation/`}>Zur Anleitung →</a></p></section>
+        <section id="terminal"><h2>Shell und Dateien nebeneinander</h2><p>Ein eingebettetes Ghostty-Terminal startet im lokalen Panelordner. <a href={`${base}/dokumentation/terminal/`}>Terminal &amp; eigene Befehle →</a></p></section>
         <section id="dateiaktionen" aria-labelledby="dateiaktionen-title">
           <p class="section-number">04 / ORGANISIEREN</p>
           <h2 id="dateiaktionen-title">Dateien kopieren, verschieben und ansehen</h2>
+          <p><a href={`${base}/dokumentation/dateiaktionen/`}>Mehrfachumbenennen, Rückgängig und Operationsprotokoll →</a></p>
           <p><kbd>F5</kbd> kopiert die Auswahl, <kbd>F6</kbd> verschiebt sie. Der Dialog schlägt das andere Panel als Ziel vor. Du kannst den Zielpfad ändern und bei einem einzelnen Eintrag einen neuen Namen vergeben. Relative Ziele beziehen sich auf den Quellordner. Eine Quellmaske mit <code>*</code>, <code>?</code> oder Zeichenklassen grenzt die Auswahl ein.</p>
           <p><kbd>F7</kbd> legt einen neuen Ordner an. Mit <kbd>F8</kbd> oder <kbd>⌘⌫</kbd> legst du lokale Dateien in den macOS-Papierkorb. Im Menü <strong>Datei</strong> findest du außerdem Aktionen für Links, Zugriffsrechte, Eigentümer und Sparse-Dateien.</p>
-          <div class="note"><p><strong>Zielnamen prüfen.</strong> PaneRook überschreibt keine bestehenden Ziele und führt Ordner nicht automatisch zusammen. Für Dateiaktionen gibt es kein Undo. Lokal gelöschte Dateien kannst du über den Finder aus dem Papierkorb zurückholen.</p></div>
+          <div class="note"><p><strong>Zielnamen prüfen.</strong> Bei vorhandenen Zielen fragt PaneRook während des Auftrags nach. Ersetzen und Zusammenführen brauchen eine ausdrückliche Entscheidung. Unterstützte lokale Einzelaktionen lassen sich mit ⌘Z rückgängig machen; Ersetzen und Zusammenführen haben kein automatisches Datei-Undo.</p></div>
           <h3>Dateien ziehen und einsetzen</h3>
           <p>In lokalen Dateilisten kopiert <kbd>⌘C</kbd> die Auswahl in die Datei-Zwischenablage. <kbd>⌘V</kbd> kopiert sie in den fokussierten Panelordner, <kbd>⌘⌥V</kbd> verschiebt sie. Das funktioniert auch mit im Finder kopierten Dateien. In Textfeldern und im Ghostty-Terminal bleiben die Kürzel Textaktionen.</p>
           <p>Ziehe lokale Dateien zwischen den Panels oder aus Finder und Desktop auf einen Ordner oder die freie Listenfläche. Auf demselben Volume wird Verschieben angeboten, über Volume-Grenzen Kopieren. <kbd>⌥</kbd> wählt Kopieren, <kbd>⌘</kbd> Verschieben, sofern die Quell-App dies erlaubt. Einfügen und Drops öffnen den bestehenden Transferdialog und laufen nach Bestätigung über die Aufgaben-Queue; ungültige Ziele und Selbst-Drops werden abgewiesen.</p>
-          <p class="secondary-copy">Aus PaneRook zu anderen Apps gezogene Dateien werden als Kopien angeboten. Remote- und Archivinhalte zuerst mit <kbd>F5</kbd> lokal kopieren; virtuelle Pfade und Datei-Versprechen werden nicht ausgetauscht. Der Hintergrund einer Suchergebnisliste ist kein Einfügeziel. Namenskonflikte überschreiben keine Dateien.</p>
+          <p class="secondary-copy">Aus PaneRook zu anderen Apps gezogene Dateien werden als Kopien angeboten. Remote- und Archivinhalte zuerst mit <kbd>F5</kbd> lokal kopieren; virtuelle Pfade und Datei-Versprechen werden nicht ausgetauscht. Der Hintergrund einer Suchergebnisliste ist kein Einfügeziel. Namenskonflikte öffnen die ausdrückliche Konfliktrückfrage.</p>
           <h3>Vorschau und Bearbeiten</h3>
-          <p><kbd>Leertaste</kbd>, <kbd>F3</kbd> oder <kbd>⌘Y</kbd> öffnet Quick Look. <kbd>F4</kbd> öffnet eine lokale Datei in TextEdit. <kbd>Enter</kbd> verwendet die Standard-App oder deine konfigurierte App-Zuordnung. Für Text gibt es zusätzlich eine eingebaute Vorschau mit wählbarer Codierung.</p>
+          <p><kbd>Leertaste</kbd>, <kbd>F3</kbd> oder <kbd>⌘Y</kbd> öffnet Quick Look. <kbd>F4</kbd> öffnet eine lokale Datei im bevorzugten Editor (voreingestellt TextEdit). Unter <strong>Datei → Bevorzugten Editor wählen …</strong> legst du ihn fest. Remote-Dateien verwenden getrennte Arbeitskopien; siehe <a href={`${base}/dokumentation/remote/#bearbeiten`}>Remote-Dateien bearbeiten</a>. <kbd>Enter</kbd> verwendet die Standard-App oder deine konfigurierte App-Zuordnung. Für Text gibt es zusätzlich eine eingebaute Vorschau mit wählbarer Codierung.</p>
         </section>
 
         <section id="archive" aria-labelledby="archive-title">
@@ -137,7 +150,7 @@ const shortcuts = [
           <p><strong>Befehl → Datei suchen</strong> (<kbd>⌘⇧F</kbd>) durchsucht lokale Ordner rekursiv nach Dateien und Text. Die Treffer kannst du ins Panel übernehmen. Unter <strong>Befehl</strong> findest du auch <strong>Dateien vergleichen</strong>, <strong>Verzeichnisse vergleichen</strong> und <strong>Verzeichnisgrößen anzeigen</strong>.</p>
           <p>Längere Vorgänge zeigen ein Fortschrittsfenster. Mit <strong>In den Hintergrund</strong> (<kbd>⌥B</kbd>) gibst du die Panels frei, während der Vorgang weiterläuft. Weitere Aufgaben warten in einer gemeinsamen Queue und starten nacheinander.</p>
           <p>Der <strong>Aufgaben</strong>-Button rechts in der Titelleiste oder <strong>Befehl → Hintergrundaufgaben</strong> öffnet die Aufgabenliste in einem separaten Fenster. Dort findest du Fortschritt, Ergebnisse und Fehler und kannst Aufgaben abbrechen. Der Button ist auch ohne aktive Aufgaben erreichbar; ein weiterer Klick holt dasselbe Fenster nach vorne. Bei ausgeblendeter Symbolleiste bleibt die Liste über das Menü erreichbar.</p>
-          <p class="secondary-copy">Das Schließen des Fortschrittsfensters lässt die Aufgabe weiterlaufen. <strong>Abbrechen</strong>, <kbd>Esc</kbd>, <kbd>F10</kbd> oder <kbd>Ctrl-G</kbd> stoppen sie. Bereits abgeschlossene Einträge bleiben erhalten. Die Queue wird nur für die aktuelle App-Sitzung gespeichert.</p>
+          <p class="secondary-copy">Das Schließen des Fortschrittsfensters lässt die Aufgabe weiterlaufen. <strong>Abbrechen</strong>, <kbd>Esc</kbd>, <kbd>F10</kbd> oder <kbd>Ctrl-G</kbd> stoppen sie. Bereits abgeschlossene Einträge bleiben erhalten. Allgemeine Aufgaben gelten für die Sitzung; lokale und Remote-Kopier-/Verschiebeaufträge bleiben gespeichert und lassen sich ausdrücklich fortsetzen. <a href={`${base}/dokumentation/transfers/`}>Fortsetzen und Grenzen →</a></p>
         </section>
 
         <section id="remote" aria-labelledby="remote-title">
@@ -150,7 +163,7 @@ const shortcuts = [
           <h2 id="einstellungen-title">Deine Arbeitsumgebung einstellen</h2>
           <p>Unter <strong>Optionen → Einstellungen …</strong> passt du Layout, Paneldarstellung, Zeilenhöhe, Symbole, Rückfragen, Farbschema und Codierung an. Unter <strong>Tastatur → Belegung bearbeiten</strong> kannst du Tastenkürzel für Aktionen ändern. Panelpfade, Sortierung, Filter, Listenformat, Fensterposition und Panelbreite bleiben gespeichert.</p>
           <p><a href={`${base}/screenshots/releases/0.3.1/einstellungen.png`}><img src={`${base}/screenshots/releases/0.3.1/einstellungen.png`} width="2360" height="1600" alt="Einstellungen mit Auswahl von Farbschema und Themes" loading="lazy" style="max-width:100%;height:auto" /></a></p>
-          <p>Das Benutzermenü (<kbd>F2</kbd>) und <strong>Befehl ausführen</strong> starten eigene Shell-Befehle im aktuellen Panelordner. Ausgabe, Fehler und Exitcode erscheinen in einem Ergebnisfenster. Über das Befehl-Menü kannst du Benutzermenü, App-Zuordnungen und Hervorhebungen bearbeiten. Eine interaktive Terminalsession ist nicht eingebaut.</p>
+          <p>Das Benutzermenü (<kbd>F2</kbd>) und <strong>Befehl ausführen</strong> starten eigene Shell-Befehle im aktuellen Panelordner. Ausgabe, Fehler und Exitcode erscheinen in einem Ergebnisfenster. Über das Befehl-Menü kannst du Benutzermenü, App-Zuordnungen und Hervorhebungen bearbeiten. Für interaktive Sitzungen wähle <strong>Links/Rechts → Ghostty-Terminal</strong>.</p>
         </section>
 
         <section id="updates" aria-labelledby="updates-title">
@@ -158,7 +171,7 @@ const shortcuts = [
           <h2 id="updates-title">PaneRook aktualisieren</h2>
           <p>Ab <strong>Version 0.2.0</strong> prüfst du mit <strong>PaneRook → Nach Updates suchen …</strong> direkt in der App auf neue Versionen. Standardmäßig läuft zusätzlich einmal täglich eine Prüfung im Hintergrund.</p>
           <p>Unter <strong>PaneRook → Einstellungen … → Updates</strong> steuerst du automatische Prüfungen sowie automatisches Herunterladen und Installieren. Die automatische Installation ist zunächst ausgeschaltet. Angeboten werden stabile Releases; die Update-Signatur wird vor dem Entpacken geprüft.</p>
-          <div class="note"><p><strong>Von Version 0.1.1 wechseln.</strong> Installiere 0.2.0 einmal manuell aus dem DMG oder ZIP. Danach sind Updates in der App möglich. Starte die installierte App aus dem Programme-Ordner, nicht aus dem geöffneten DMG.</p></div>
+          <div class="note"><p><strong>Von Version 0.1.1 wechseln.</strong> Installiere die aktuelle Version einmal manuell aus dem DMG oder ZIP. Danach sind Updates in der App möglich. Starte die installierte App aus dem Programme-Ordner, nicht aus dem geöffneten DMG.</p></div>
           <a class="intro-link" href={`${base}/release-notes/`}>Was sich geändert hat <span aria-hidden="true">→</span></a>
         </section>
 
@@ -166,11 +179,11 @@ const shortcuts = [
           <p class="section-number">11 / GUT ZU WISSEN</p>
           <h2 id="grenzen-title">Grenzen im Alltag</h2>
           <ul>
-            <li><strong>Aktualisieren:</strong> Die App beobachtet das Dateisystem noch nicht automatisch. Lade externe Änderungen mit <kbd>⌘R</kbd> neu.</li>
+            <li><strong>Aktualisieren:</strong> Lokale Listen und geladene Baumebenen folgen externen Änderungen automatisch und erhalten Auswahl und Scrollanker. Archive, Suchergebnisse und Remote-Ansichten haben eigene Regeln. Bei getrennten Volumes oder verzögerten Netzwerkereignissen bleibt <kbd>⌘R</kbd> verfügbar.</li>
             <li><strong>Große Dateien:</strong> Textsuche und eingebaute Textvorschau lesen höchstens 1 MiB pro Datei. Datei- und Verzeichnisvergleiche prüfen reguläre Dateien bis 1 GiB pro Datei. Grenzen und nicht lesbare Einträge werden im Ergebnis gemeldet.</li>
             <li><strong>Archive:</strong> Die Verarbeitung ist auf 100.000 Einträge, 16 GiB je Datei und 64 GiB je Schreib- oder Entpackvorgang begrenzt. Für gelöschte Archiveinträge gibt es keinen Papierkorb.</li>
             <li><strong>Git:</strong> Rebase, interaktives Staging einzelner Hunks, Submodule-Verwaltung und die Bearbeitung der Remote-Konfiguration haben noch keine eigene Oberfläche.</li>
-            <li><strong>Arbeitsweise:</strong> Tabs, ein interner Editor sowie Überschreiben, Zusammenführen und Wiederaufnahme in erweiterten Kopierdialogen sind noch nicht umgesetzt.</li>
+            <li><strong>Arbeitsweise:</strong> Ein interner Editor fehlt. Datei-Undo gilt nur für unterstützte lokale Aktionen pro Fenster und Sitzung. Fortsetzen erfolgt auf Dateiebene; offene Dateien beginnen neu. Archivaktionen werden nicht über Neustarts fortgesetzt.</li>
           </ul>
           <p>Du hast einen Fehler gefunden oder eine Frage? Im <a href={`${repository}/issues`}>GitHub-Issuebereich</a> kannst du das Verhalten beschreiben und Verbesserungen vorschlagen.</p>
         </section>

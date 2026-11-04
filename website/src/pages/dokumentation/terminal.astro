@@ -1,0 +1,17 @@
+---
+import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<DocumentationLayout title="Terminal & Befehle" description="Ghostty im Panel nutzen, Arbeitsverzeichnisse übernehmen und eigene Shell-Befehle ausführen.">
+
+<h2>Eine Shell neben den Dateien</h2>
+<ol><li>Öffne einen lokalen Ordner und wähle <strong>Links/Rechts → Ghostty-Terminal</strong>. Ghostty ist eingebettet und braucht keine separate Installation.</li><li>Arbeite in der Shell. Der Kopf zeigt Titel und zuletzt gemeldetes lokales Arbeitsverzeichnis. zsh und bash verwenden die mitgelieferte Shell-Integration; andere Shells benötigen lokale OSC-7-Meldungen.</li><li>Wechsle mit <kbd>⌘⌥Tab</kbd> ins andere Panel. Dessen F5/F6 schlägt das im Terminalkopf angezeigte Verzeichnis als Ziel vor. Ein späteres <code>cd</code> ändert einen bereits geöffneten Transferdialog nicht.</li></ol>
+<figure><a href={`${base}/screenshots/releases/0.4.0/terminal.png`}><img src={`${base}/screenshots/releases/0.4.0/terminal.png`} width="4112" height="2466" alt="Dateiliste neben dem eingebetteten Ghostty-Terminal mit Demo-Projekt" loading="lazy" /></a><figcaption>Dateien kopieren und daneben in der Shell weiterarbeiten. Zum Vergrößern anklicken.</figcaption></figure>
+<p>Tab, Pfeiltasten, Esc, Funktionstasten und Ctrl-Kombinationen gehören im Terminal der Shell. <kbd>⌘C/⌘V</kbd> kopieren und fügen Text ein; <kbd>⌘A</kbd> markiert Terminalinhalt. Ein entferntes Verzeichnis einer SSH-Sitzung wird nicht als lokales Transferziel verwendet.</p>
+<p><strong>Dateiliste</strong> kehrt zur bisherigen Auswahl zurück und hält die Shell für den erneuten Aufruf offen. <kbd>⌘L</kbd> öffnet die Pfadeingabe in der Dateiliste. <code>exit</code> beendet die Shell. Das Schließen des Fensters oder Ersetzen durch eine Remote-Verbindung beendet sie ebenfalls. In Archiven und Remote-Panels ist der Terminalmodus nicht verfügbar; Prozesse werden nach einem App-Neustart nicht wiederhergestellt.</p>
+<h2>Einzelne Befehle und Benutzermenü</h2>
+<p><strong>Befehl ausführen</strong> und das <strong>Benutzermenü</strong> (<kbd>F2</kbd>) starten gewählte Befehle im aktuellen Panelordner. Ausgabe, Fehler und Exitcode erscheinen im Ergebnisfenster; der Auftrag ist abbrechbar. <strong>Anordnen</strong> übernimmt ausgegebene vorhandene Dateipfade, einen pro Zeile, ins auslösende Panel.</p>
+<p>Eigene Befehle erhalten <code>PANEROOK_FILE</code> (erste Auswahl), <code>PANEROOK_DIRECTORY</code>, <code>PANEROOK_OTHER_DIRECTORY</code> und <code>PANEROOK_SELECTION_JSON</code> (alle ausgewählten Pfade). Die Ausgabe ist auf 4 MiB je Ausgabestrom begrenzt.</p>
+<p>Die Bearbeiten-Einträge im Befehl-Menü öffnen Konfigurationen unter <code>~/Library/Application Support/PaneRook/</code>: <code>menu.json</code> enthält ein Array mit <code>title</code> und <code>command</code>, <code>extensions.json</code> mit <code>pattern</code> und <code>application</code>, <code>highlight.json</code> mit <code>pattern</code> und <code>color</code> (blue, green, orange, red, purple oder gray). App-Zuordnungen starten keine Shell-Befehle. Die Befehlschronik lässt sich unter Einstellungen → Allgemein abschalten.</p>
+
+</DocumentationLayout>

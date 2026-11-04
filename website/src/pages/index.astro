@@ -7,38 +7,43 @@ const documentation = `${base}/dokumentation/`;
 const features = [
   {
     number: '01', tag: 'DATEIEN & NAVIGATION', title: 'Zwei Panels. Ein Arbeitsfluss.',
-    description: 'Quellordner links, Zielordner rechts. Kopiere und verschiebe deine Auswahl direkt zwischen den Panels und behalte beide Seiten im Blick.',
-    details: ['Mit Tab das Panel wechseln, mit F5 kopieren und mit F6 verschieben.', 'Favoriten, Verlauf und Dateimasken verkürzen wiederkehrende Wege.', 'Quick Look, Schnellansicht und Dateiinfos helfen bei der Auswahl.'],
-    image: 'panels.png', width: 2360, height: 1480, alt: 'PaneRook mit zwei nativen Dateipanels, Pfadzeilen und der Funktionstastenleiste.',
-    caption: 'Zwei unabhängige Dateilisten und die wichtigsten Aktionen direkt im Fenster.', anchor: 'erste-schritte', link: 'Die Panels kennenlernen',
+    description: 'Quellordner links, Zielordner rechts. Halte mehrere Orte als Tabs offen und finde beide Tabgruppen über einen benannten Arbeitsbereich wieder.',
+    details: ['Mit Tab das Panel wechseln, mit F5 kopieren und mit F6 verschieben.', 'Mit ⌘T neue Tabs öffnen; beide Tabgruppen als Projekt speichern.', 'Quick Look, Schnellansicht und Dateiinfos helfen bei der Auswahl.'],
+    image: 'releases/0.4.0/panels.png', width: 4112, height: 2466, alt: 'PaneRook mit zwei nativen Dateipanels, Pfadzeilen und der Funktionstastenleiste.',
+    caption: 'Zwei unabhängige Dateilisten und die wichtigsten Aktionen direkt im Fenster.', anchor: 'arbeitsbereiche', link: 'Tabs & Arbeitsbereiche kennenlernen',
   },
   {
-    number: '02', tag: 'GIT & WORKTREES', title: 'Vom Unterschied zum Commit.',
-    description: 'Erkenne den Repository-Status im Dateipanel und öffne die Git-Werkzeuge direkt über die Branchanzeige. So bleiben Dateien und Versionsverwaltung zusammen.',
+    number: '02', tag: 'GIT & WORKTREES', title: 'Dateiversionen direkt im Panel.',
+    description: 'Wähle eine Datei im einen Panel und lies ihre früheren Versionen im anderen. Git-Verlauf, Arbeitskopie und Staged-Änderungen bleiben neben deinen Dateien erreichbar.',
     details: ['Unified oder Side-by-Side: Diffs mit Zeilennummern und farbigen Änderungen lesen.', 'Dateien stagen, Commits erstellen und Verlauf, Branches oder Stashes öffnen.', 'Besuchte Repositories und ihre Worktrees über die Favoriten wiederfinden.'],
-    image: 'git-diff.png', width: 2360, height: 1440, alt: 'Git-Fenster von PaneRook mit einer Side-by-Side-Gegenüberstellung einer geänderten Textdatei.',
-    caption: 'Vorher und Nachher nebeneinander: Änderungen direkt im Git-Fenster prüfen.', anchor: 'git', link: 'Mit Git arbeiten',
+    image: 'releases/0.4.0/git-verlauf.png', width: 4112, height: 2466, alt: 'Git-Verlauf im rechten Panel mit ausgewähltem Commit und damaligem README-Inhalt.',
+    caption: 'Commits und damaligen Dateiinhalt ansehen, ohne eine Version auszuchecken.', anchor: 'git', link: 'Mit Git arbeiten',
   },
   {
     number: '03', tag: 'ZIP, TAR & TGZ', title: 'Archive wie Ordner öffnen.',
     description: 'Öffne ein Archiv mit Enter und navigiere durch seine Unterordner im gewohnten Dateipanel. Kopiere gezielt einzelne Inhalte, ohne vorher alles in einen Ordner zu entpacken.',
     details: ['Dateien und Ordner zwischen lokalem Ordner und Archiv kopieren.', 'Einträge umbenennen, verschieben und neue Ordner im Archiv anlegen.', 'Ausgewählte Inhalte für Quick Look als temporäre Kopie bereitstellen.'],
-    image: 'archives.png', width: 2360, height: 1480, alt: 'Ein geöffnetes ZIP-Archiv im PaneRook-Dateipanel neben einem lokalen Ordner.',
+    image: 'releases/0.4.0/archive.png', width: 4112, height: 2466, alt: 'Ein geöffnetes ZIP-Archiv im PaneRook-Dateipanel neben einem lokalen Ordner.',
     caption: 'Der Archivinhalt bleibt im Panel navigierbar, der lokale Ordner daneben erreichbar.', anchor: 'archive', link: 'Archive öffnen und bearbeiten',
   },
   {
     number: '04', tag: 'REMOTE & VERBINDUNGEN', title: 'Deine Ziele. Immer griffbereit.',
-    description: 'Speichere wiederkehrende FTP-, SSH-, SFTP- und Nextcloud-Verbindungen im durchsuchbaren Verbindungsarchiv. Öffne eine Verbindung direkt im ausgewählten Panel und übertrage Dateien zum gegenüberliegenden lokalen Panel.',
+    description: 'Speichere wiederkehrende FTP-, SSH-, SFTP- und Nextcloud-Verbindungen im durchsuchbaren Verbindungsarchiv. Öffne eine Verbindung direkt im ausgewählten Panel und übertrage Dateien ins gegenüberliegende Panel.',
     details: ['Remote-Ordner durchsuchen, Dateien hoch- und herunterladen.', 'Verbindungen nach Name, Server, Benutzer oder Protokoll finden.', 'SSH-Schlüssel oder Agent nutzen; Nextcloud über HTTPS und App-Passwort verbinden.'],
-    image: 'releases/0.3.1/remote.png', width: 4112, height: 2466, alt: 'Lokaler Ordner neben einem verbundenen FTP-Panel mit Demo-Dateien.',
+    image: 'releases/0.4.0/remote.png', width: 4112, height: 2466, alt: 'Lokaler Ordner neben einem verbundenen FTP-Panel mit Demo-Dateien.',
     caption: 'Ein lokaler Ordner und die Verbindung stehen direkt nebeneinander.', anchor: 'remote', link: 'Remote-Verbindungen einrichten',
   },
 ];
 const tools = [
   { title: 'Finden und vergleichen', description: 'Dateien und Text rekursiv suchen, Treffer ins Panel übernehmen, Ordnergrößen berechnen und Dateien oder Verzeichnisse vergleichen.', anchor: 'suche-aufgaben' },
-  { title: 'Aufgaben im Hintergrund', description: 'Längere Aktionen zeigen ihren Fortschritt und lassen sich abbrechen oder in den Hintergrund legen. Weitere Aufgaben starten der Reihe nach.', anchor: 'suche-aufgaben' },
+  { title: 'Transfers fortsetzen', description: 'Vorhandene Ziele gezielt behandeln und gespeicherte Kopier- und Verschiebeaufträge nach einem Neustart auf Dateiebene fortsetzen.', anchor: 'transfers' },
+  { title: 'Ordner synchronisieren', description: 'Lokale Ordner mit Vorschau, Ausschlüssen und gespeicherten Profilen in einer Richtung abgleichen.', anchor: 'synchronisation' },
+  { title: 'Shell neben deinen Dateien', description: 'Ghostty im Panel starten und das angezeigte lokale Arbeitsverzeichnis als Ziel für F5/F6 verwenden.', anchor: 'terminal' },
+  { title: 'Namen als Vorschau', description: 'Suchen und Ersetzen, Nummerierung und Datumswerte kombinieren und neue Dateinamen vor dem Anwenden prüfen.', anchor: 'dateiaktionen' },
   { title: 'Auf deinem Mac zu Hause', description: 'Native AppKit-Oberfläche, Quick Look, Finder-Anbindung und helle oder dunkle Darstellung. Ab macOS 26 mit Liquid Glass.', anchor: 'einstellungen' },
 ];
+const topicLinks = new Set(['arbeitsbereiche', 'dateiaktionen', 'transfers', 'synchronisation', 'terminal', 'git', 'archive', 'remote']);
+const topicURL = (anchor: string) => topicLinks.has(anchor) ? `${documentation}${anchor}/` : `${documentation}#${anchor}`;
 const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopieren'], ['F6', 'Verschieben'], ['F7', 'Neuer Ordner'], ['⌘K', 'Verbindungen']];
 ---
 
@@ -47,17 +52,17 @@ const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopi
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> NATIV FÜR MACOS · VERSION {version}</div>
       <h1 id="hero-title">Zwei Panels.<br /><span>Alles im Griff.</span></h1>
-      <p class="hero-copy">Deine Dateien, direkt auf Kurs. PaneRook verbindet den Arbeitsfluss von Midnight Commander mit einer nativen Mac-Oberfläche.</p>
+      <p class="hero-copy">Deine Dateien, direkt auf Kurs. Mit unabhängigen Tabs, benannten Arbeitsbereichen, Git-Verlauf und einem Terminal neben deinen Dateien.</p>
       <div class="hero-actions">
         <a class="button primary" href={release}>Für macOS herunterladen <span aria-hidden="true">↓</span></a>
         <a class="button secondary" href={documentation}>Installation & erste Schritte <span aria-hidden="true">→</span></a>
       </div>
       <p class="requirements">Ab macOS 14 · Apple Silicon & Intel</p>
       <figure class="hero-screenshot">
-        <a href={`${base}/screenshots/releases/0.3.1/panels.png`} aria-label="Screenshot der beiden Dateipanels in voller Größe öffnen">
-          <img src={`${base}/screenshots/releases/0.3.1/panels.png`} width="4112" height="2466" alt="Die native PaneRook-App mit zwei Dateipanels und einer Leiste für die Funktionstasten." fetchpriority="high" />
+        <a href={`${base}/screenshots/releases/0.4.0/panels.png`} aria-label="Screenshot der beiden Dateipanels in voller Größe öffnen">
+          <img src={`${base}/screenshots/releases/0.4.0/panels.png`} width="4112" height="2466" alt="PaneRook 0.4.0 mit benanntem Arbeitsbereich Küstenreise und unabhängigen Tabs je Dateipanel." fetchpriority="high" />
         </a>
-        <figcaption>PaneRook auf macOS · App-Screenshot mit Beispieldateien</figcaption>
+        <figcaption>PaneRook 0.4.0 auf macOS · Benannter Arbeitsbereich mit Demo-Dateien</figcaption>
       </figure>
       <div class="shortcut-strip" aria-label="Die wichtigsten Tastaturkürzel">
         {shortcuts.map(([key, action]) => <span><kbd>{key}</kbd>{action}</span>)}
@@ -78,7 +83,7 @@ const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopi
               <h3 id={`feature-${feature.number}`}>{feature.title}</h3>
               <p>{feature.description}</p>
               <ul>{feature.details.map(detail => <li>{detail}</li>)}</ul>
-              <a class="text-link" href={`${documentation}#${feature.anchor}`}>{feature.link} <span aria-hidden="true">→</span></a>
+              <a class="text-link" href={topicURL(feature.anchor)}>{feature.link} <span aria-hidden="true">→</span></a>
             </div>
             <figure class="feature-screenshot">
               <a href={`${base}/screenshots/${feature.image}`} aria-label={`${feature.title} Screenshot in voller Größe öffnen`}>
@@ -90,7 +95,7 @@ const shortcuts = [['Tab', 'Panel wechseln'], ['F3', 'Quick Look'], ['F5', 'Kopi
         ))}
       </div>
       <div class="tool-grid">
-        {tools.map(tool => <article><h3>{tool.title}</h3><p>{tool.description}</p><a class="text-link" href={`${documentation}#${tool.anchor}`}>Mehr erfahren <span aria-hidden="true">→</span></a></article>)}
+        {tools.map(tool => <article><h3>{tool.title}</h3><p>{tool.description}</p><a class="text-link" href={topicURL(tool.anchor)}>Mehr erfahren <span aria-hidden="true">→</span></a></article>)}
       </div>
       <p class="feature-note">Du möchtest einen Ablauf genauer kennenlernen? <a href={documentation}>Zur vollständigen Dokumentation →</a></p>
     </section>

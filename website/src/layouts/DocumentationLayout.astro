@@ -1,0 +1,38 @@
+---
+import SiteLayout from './SiteLayout.astro';
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const topics = [['arbeitsbereiche', 'Tabs & Arbeitsbereiche'], ['dateiaktionen', 'Dateien organisieren'], ['transfers', 'Transfers & Aufgaben'], ['synchronisation', 'Ordner synchronisieren'], ['terminal', 'Terminal & Befehle'], ['git', 'Git & Worktrees'], ['archive', 'Archive'], ['remote', 'Remote-Verbindungen']];
+---
+<SiteLayout title={`${title} · PaneRook`} description={description} page="documentation">
+  <main id="inhalt" class="wrap documentation">
+    <p><a href={`${base}/dokumentation/`}>← Dokumentation</a></p>
+    <h1>{title}</h1>
+    <div class="article-body"><slot /></div>
+    <nav aria-label="Weitere Dokumentation"><a href={`${base}/dokumentation/`}>Themenübersicht</a>{topics.map(([slug, label]) => <a href={`${base}/dokumentation/${slug}/`}>{label}</a>)}</nav>
+  </main>
+</SiteLayout>
+<style>
+  .documentation { padding-block: 56px 80px; }
+  h1 { max-width: 860px; margin: 28px 0 40px; font-size: clamp(34px, 5vw, 56px); letter-spacing: -1.5px; line-height: 1.15; overflow-wrap: anywhere; }
+  .documentation > p a, nav a { color: #c9a8f7; }
+  .article-body { max-width: 860px; overflow-wrap: anywhere; }
+  .article-body :global(h2) { margin: 36px 0 20px; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.6px; }
+  .article-body :global(h3) { margin: 28px 0 12px; font-size: 20px; }
+  .article-body :global(p), .article-body :global(li) { color: #bfb5cd; font-size: 15px; line-height: 1.85; }
+  .article-body :global(ul), .article-body :global(ol) { padding-left: 24px; }
+  .article-body :global(li) { margin-bottom: 12px; }
+  .article-body :global(strong) { color: #eee5f7; }
+  .article-body :global(a) { color: #c9a8f7; text-decoration: underline; text-underline-offset: 3px; }
+  .article-body :global(img) { max-width: 100%; height: auto; border-radius: 8px; }
+  .article-body :global(figure) { margin: 28px 0; }
+  .article-body :global(figcaption) { color: #bfb5cd; font-size: 13px; margin-top: 10px; line-height: 1.6; }
+  .article-body :global(code), .article-body :global(kbd) { color: #d7bcef; padding: 2px 4px; background: #251e2e; border-radius: 3px; font-size: .9em; }
+  .article-body :global(kbd) { border: 1px solid #51445f; }
+  .article-body :global(.note) { border-left: 2px solid #a97cde; padding: 16px 20px; background: #211b2a; margin: 24px 0; }
+  .article-body :global(.note p) { margin: 0; }
+  .article-body :global(.section-number) { color: #b9a0ed; font-size: 11px; letter-spacing: 1.8px; }
+  nav { display: flex; flex-wrap: wrap; gap: 16px 24px; border-top: 1px solid #44374f; padding-top: 28px; margin-top: 40px; font-size: 14px; }
+  @media (max-width: 600px) { .documentation { padding-block: 32px 48px; } .article-body :global(p), .article-body :global(li) { font-size: 14px; } }
+</style>

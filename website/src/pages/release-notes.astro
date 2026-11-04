@@ -7,25 +7,21 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const documents = import.meta.glob<MarkdownInstance<Record<string, never>>>('../../../docs/releases/*.md', { eager: true });
 const notes = (await Promise.all(Object.entries(documents).map(async ([path, document]) => {
   const version = path.split('/').pop()!.replace(/\.md$/, '');
-  const prefix = `v${version.replaceAll('.', '-')}-`;
-  // Trusted repository Markdown: nest headings below the version and keep IDs
-  // and fragment links unique when several release documents share a page.
-  const html = (await document.compiledContent())
-    .replace(/(<\/?h)([1-5])(?=[\s>])/g, (_, tag, level) => `${tag}${Number(level) + 1}`)
-    .replace(/(\sid=")([^"]+)"/g, `$1${prefix}$2"`)
-    .replace(/(\shref="#)([^"]+)"/g, `$1${prefix}$2"`);
-  return { version, html };
+  const content = await document.compiledContent();
+  const html = content.match(/<p>[\s\S]*?<\/p>/)?.[0] ?? '';
+  const anchors = [...content.matchAll(/\sid="([^"]+)"/g)].map(match => ({ id: `v${version.replaceAll('.', '-')}-${match[1]}` }));
+  return { version, html, anchors };
 })))
   .filter(note => /^\d+\.\d+\.\d+$/.test(note.version))
   .sort((a, b) => b.version.localeCompare(a.version, 'en', { numeric: true }));
 ---
 
-<SiteLayout title="Release Notes · PaneRook" description="Alle veröffentlichten PaneRook-Versionen: neue Funktionen, Downloads, Installationshinweise und bekannte Grenzen." page="releases">
+<SiteLayout title="Release Notes · PaneRook" description="PaneRook-Versionshinweise: neue Funktionen, Downloads, Installationshinweise und bekannte Grenzen." page="releases">
   <main id="inhalt" class="wrap">
     <header class="page-intro">
       <p class="eyebrow">PANEROOK IM WANDEL</p>
       <h1>Release Notes</h1>
-      <p>Neue Werkzeuge, Verbesserungen und Hinweise zum Update. Hier findest du die Änderungen jeder veröffentlichten Version.</p>
+      <p>Neue Werkzeuge, Verbesserungen und Hinweise zum Update. Hier findest du die Versionshinweise und die zugehörigen Einzelseiten. Version 0.3.0 wurde vorbereitet, aber nicht als App-Paket veröffentlicht.</p>
       <div class="intro-links">
         <a class="download-link" href={release}>Version {currentVersion} herunterladen <span aria-hidden="true">↗</span></a>
         <a href={`${base}/dokumentation/#updates`}>So funktionieren Updates <span aria-hidden="true">→</span></a>
@@ -35,18 +31,19 @@ const notes = (await Promise.all(Object.entries(documents).map(async ([path, doc
       <aside>
         <nav aria-label="Versionen">
           <p>ALLE VERSIONEN</p>
-          {notes.map(note => <a href={`#v${note.version.replaceAll('.', '-')}`}>{note.version}{note.version === currentVersion && <span>Aktuell</span>}</a>)}
+          {notes.map(note => <a href={`${base}/release-notes/${note.version}/`}>{note.version}{note.version === currentVersion && <span>Aktuell</span>}</a>)}
         </nav>
         <a class="github-link" href={`${repository}/releases`}>Releases auf GitHub ↗</a>
       </aside>
       <div class="release-list">
-        {notes.map(({ version, html }) => (
+        {notes.map(({ version, html, anchors }) => (
           <article id={`v${version.replaceAll('.', '-')}`} aria-labelledby={`title-${version}`}>
+            {anchors.map(anchor => <span id={anchor.id} aria-hidden="true" />)}
             <header class="release-header">
               <h2 id={`title-${version}`}><a href={`${base}/release-notes/${version}/`}>Version {version}</a></h2>
               {version === currentVersion && <span class="badge">Aktuelle Version</span>}
             </header>
-            <div class="release-body" set:html={html} />
+            <div class="release-body" set:html={html} /><a class="release-link" href={`${base}/release-notes/${version}/`}>Alle Neuerungen mit Screenshots →</a><br />
             <a class="release-link" href={`${repository}/releases/tag/v${version}`}>Release {version} auf GitHub <span aria-hidden="true">↗</span></a>
           </article>
         ))}

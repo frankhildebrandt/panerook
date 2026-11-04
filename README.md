@@ -2,81 +2,39 @@
 
 # PaneRook
 
-Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander. Zwei unabhängige Panels, direkte Tastaturbedienung und native macOS-Integration. Swift + AppKit, mit Sparkle für App-Updates und eingebettetem Ghostty-Terminal.
+Ein nativer macOS-Dateimanager, inspiriert von Midnight Commander: zwei Dateipanels mit unabhängigen Tabs, direkter Tastaturbedienung, Git, Archiven, Remote-Verbindungen und eingebettetem Ghostty-Terminal. Swift + AppKit, MIT-Lizenz.
 
-## Download
+## Download und Dokumentation
 
-[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller Release](https://github.com/frankhildebrandt/panerook/releases/latest)
+[Projektseite](https://frankhildebrandt.github.io/panerook/) · [Aktueller veröffentlichter Release](https://github.com/frankhildebrandt/panerook/releases/latest) · [Release Notes 0.4.0](docs/releases/0.4.0.md)
 
-Version **0.3.1** öffnet Remote-Verbindungen im ausgewählten Panel und bietet einen gemeinsamen Einstellungsdialog mit Themes und frei belegbaren Tastenkürzeln. PaneRook unterstützt Apple Silicon und Intel ab macOS 14. Installation und Bedienung stehen in der [Dokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/).
+Version **0.4.0 (Build 6)** bietet Tabs, benannte Arbeitsbereiche, Git-Verlauf und ein eingebettetes Terminal. Voraussetzung für die fertige App ist **macOS 14 oder neuer**; Release-Pakete unterstützen Apple Silicon und Intel.
 
-## Starten
+[Installation und Einstieg](https://frankhildebrandt.github.io/panerook/dokumentation/) erklären die Bedienung. Eigenständige Anleitungen behandeln [Tabs und Arbeitsbereiche](https://frankhildebrandt.github.io/panerook/dokumentation/arbeitsbereiche/), [Dateiaktionen](https://frankhildebrandt.github.io/panerook/dokumentation/dateiaktionen/), [Transfers und Fortsetzen](https://frankhildebrandt.github.io/panerook/dokumentation/transfers/), [Ordnersynchronisation](https://frankhildebrandt.github.io/panerook/dokumentation/synchronisation/), [Terminal](https://frankhildebrandt.github.io/panerook/dokumentation/terminal/), [Git und Worktrees](https://frankhildebrandt.github.io/panerook/dokumentation/git/), [Archive](https://frankhildebrandt.github.io/panerook/dokumentation/archive/) und [Remote-Verbindungen samt Arbeitskopien](https://frankhildebrandt.github.io/panerook/dokumentation/remote/). Die ausführliche [Bedienungsreferenz](docs/bedienungsreferenz.md) ist auch direkt im Repository lesbar.
 
-Voraussetzungen: macOS 14 oder neuer und Xcode 26 oder neuer mit ausgewählter Command Line Toolchain.
+## Entwickeln
+
+Voraussetzungen: macOS 14+, **Xcode 26+** mit ausgewählter Command Line Toolchain. Für die Website: **Node 24+**.
 
 ```sh
 make dev
 ```
 
-Das Makefile bietet folgende Targets:
-
-| Aufruf | Aktion |
+| Aufruf | Ergebnis |
 | --- | --- |
 | `make run` | Optimiertes App-Bundle bauen und starten |
-| `make dev` | Debug-App starten, Änderungen beobachten und nach erfolgreichem Build neu starten |
-| `make build` | Optimiertes App-Bundle unter `build/PaneRook.app` bauen (auch Standard für `make`) |
-| `make test` | Swift-Tests und Appcast-Prüfung ausführen |
-| `make clean` | SwiftPM-Buildprodukte und den Ordner `build/` entfernen |
+| `make dev` | Debug-App mit Watcher; Ctrl-C beendet Watcher und gestartete App |
+| `make build` | Einmaliger Release-Build unter `build/PaneRook.app` |
+| `make test` | Swift-Tests und Appcast-Prüfung |
+| `make clean` | SwiftPM-Buildprodukte und `build/` entfernen |
 
-Die Build-Targets verwenden `scripts/build-app.sh`.
-`make dev` prüft im Sekundentakt `Sources/`, `Resources/`, `scripts/`, das Makefile sowie `Package.swift` und `Package.resolved`, ohne zusätzliche Watcher-Abhängigkeit. Bei Buildfehlern läuft die zuletzt gestartete App weiter; die nächste Änderung löst einen neuen Versuch aus. `Ctrl-C` beendet den Watcher und die von ihm gestartete App. Beim Neustart wird diese App beendet; laufende Dateioperationen vorher abschließen.
+`make dev` beobachtet Sources, Resources, Skripte, Makefile und Paketdateien im Sekundentakt. Bei Buildfehlern bleibt die letzte App offen. Vor einem automatischen Neustart laufende Dateiaktionen abschließen. Alternativ `open Package.swift` und das Scheme **PaneRook** in Xcode ausführen.
 
-Für Entwicklung in Xcode: `open Package.swift`, Scheme **PaneRook** ausführen. Das Skript erzeugt zusätzlich das eigentliche App-Bundle und signiert es ohne weitere Konfiguration lokal ad hoc.
+SwiftPM lädt die festgelegten Abhängigkeiten Sparkle **2.10.0** und libghostty-spm **1.5.2** (Ghostty **1.3.1**, MIT). Das Buildskript bettet Sparkle samt Helfern, Ghostty-Ressourcen, Shell-Integration, Terminfo und Lizenztexte ein und signiert lokale Builds standardmäßig ad hoc. Ghostty muss nicht separat installiert sein. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` sind Updates im Entwicklungsbuild deaktiviert; das gilt auch für das bloße SwiftPM-Executable.
 
-SwiftPM lädt die festgelegte Sparkle-Version **2.10.0** sowie **libghostty-spm 1.5.2** (Ghostty **1.3.1**, MIT) beim ersten Build. Ghostty wird statisch verlinkt; das Buildskript legt Shell-Integration, Terminfo und Lizenztexte ins App-Bundle. Das Buildskript bettet außerdem das Sparkle-Framework und seine Helfer in das App-Bundle ein und signiert sie. Ohne `PANEROOK_SPARKLE_PUBLIC_KEY` bleiben Update-Funktionen im Entwicklungsbuild deaktiviert; das gilt auch beim Start des bloßen SwiftPM-Executables.
+Bei blockierter verschachtelter Sandbox ist `PANEROOK_DISABLE_BUILD_SANDBOX=1 make test` beziehungsweise `make dev` die vorhandene Ausweichmöglichkeit. Falls das Erzeugen von dSYM-Dateien gesperrt ist, kann `PANEROOK_DISABLE_DEBUG_SYMBOLS=1` verwendet werden.
 
-Für ein Universal-DMG und ein Universal-ZIP inklusive eigener SHA-256-Prüfsummen:
-
-```sh
-./scripts/package-release.sh
-```
-
-Die Pakete liegen unter `build/release/`. Das DMG enthält `PaneRook.app` und eine Verknüpfung zum Programme-Ordner. Das Skript baut beide Architekturen und prüft die App-Signatur sowie das Disk-Image. Eine optionale Versionsangabe (`./scripts/package-release.sh 0.3.1`) muss mit `Resources/Info.plist` übereinstimmen.
-
-Für das Paketieren müssen zusätzlich `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` gesetzt sein. Die einmalige Einrichtung steht unter [Update-Signierung](docs/signing.md#sparkle-update-signierung). Das Skript erstellt außerdem `appcast.xml` für GitHub Releases und prüft, dass Update-Signatur und eingebetteter öffentlicher Schlüssel zusammenpassen.
-
-Für Release-Builds ist ein **Developer ID Application**-Zertifikat für **Frank Hildebrandt (4R24354Z88)** eingerichtet. Der zugehörige private Schlüssel und der eigene Schlüsselbund liegen verschlüsselt außerhalb des Repositorys unter `~/Library/Application Support/PaneRook/Signing/DeveloperID/`. Für einen lokalen Build mit dieser Identität:
-
-```sh
-signing_directory="$HOME/Library/Application Support/PaneRook/Signing/DeveloperID"
-security unlock-keychain -p "$(cat "$signing_directory/keychain-password.txt")" \
-  "$signing_directory/signing.keychain-db"
-PANEROOK_SIGNING_IDENTITY="$(cat "$signing_directory/identity.txt")" \
-PANEROOK_SIGNING_KEYCHAIN="$signing_directory/signing.keychain-db" \
-PANEROOK_SIGNING_TIMESTAMP=secure \
-PANEROOK_NOTARY_PROFILE=panerook-notary \
-PANEROOK_NOTARY_KEYCHAIN="$signing_directory/signing.keychain-db" \
-./scripts/package-release.sh
-```
-
-Mit konfigurierten Apple-Zugangsdaten kann der Release-Workflow App und DMG notarisieren und die Tickets anheften. Einrichtung, verschlüsselte Sicherung, Zertifikatserneuerung und die optionale persönliche Signatur stehen unter [Signierung und Releases](docs/signing.md).
-
-```sh
-make test
-```
-
-In einer Umgebung, die verschachtelte Build-Sandboxen verhindert:
-
-```sh
-PANEROOK_DISABLE_BUILD_SANDBOX=1 make dev
-PANEROOK_DISABLE_BUILD_SANDBOX=1 make test
-```
-
-Falls die Umgebung das Erzeugen von dSYM-Dateien verhindert, lässt sich zusätzlich `PANEROOK_DISABLE_DEBUG_SYMBOLS=1` setzen. Das App-Bundle wird dann ohne separate Debug-Symbole erstellt.
-
-## Projektseite und Releases
-
-Die statische Website liegt unter `website/` und wird mit Astro gebaut. Neben der Produktseite mit App-Screenshots gibt es eine [Dokumentation für Installation und Nutzung](https://frankhildebrandt.github.io/panerook/dokumentation/) sowie [Release Notes](https://frankhildebrandt.github.io/panerook/release-notes/). Alle Seiten verwenden dieselbe Hauptnavigation.
+## Website und Release-Pakete
 
 ```sh
 cd website
@@ -84,68 +42,26 @@ npm ci
 npm run build
 ```
 
-`astro.config.mjs` setzt `site` auf `https://frankhildebrandt.github.io` und `base` auf `/panerook`. Die Release-Notes-Seite übernimmt die versionierten Markdown-Dateien aus `docs/releases/` automatisch und sortiert sie absteigend nach Version. Der Workflow `.github/workflows/pages.yml` veröffentlicht Änderungen an der Website oder diesen Release-Dateien auf `main` über GitHub Actions auf GitHub Pages. In den Repository-Einstellungen muss **Pages → Source → GitHub Actions** aktiviert sein.
+Die statische Astro-Website verwendet den Basispfad `/panerook`. Versionierte Inhalte unter `docs/releases/<Version>.md` speisen Website-Einzelseiten und GitHub Release Notes. Versionierte App-Bilder liegen unter `website/public/screenshots/releases/<Version>/`.
 
-Der Workflow `.github/workflows/release.yml` testet die App auf einem macOS-Runner und signiert App und DMG mit der in GitHub-Secrets hinterlegten Developer-ID-Identität. Mit vollständigen Apple-Notarisierungs-Secrets übermittelt er beide an Apple und heftet die Tickets an. Ohne vollständige Signierkonfiguration bricht er ab. Ein Tag `v<Version>` veröffentlicht anschließend ein GitHub-Release mit Universal-DMG, Universal-ZIP und den jeweiligen SHA-256-Prüfsummen; die Version muss zum App-Bundle passen. Release-Hinweise liegen optional unter `docs/releases/<Version>.md`. Über **Run workflow** lässt sich der Build auch ohne Veröffentlichung als Actions-Artefakt ausführen. Release 0.1.1 ist die erste signierte und notarisierte Ausgabe mit DMG und ZIP.
+```sh
+./scripts/package-release.sh 0.4.0
+```
 
-## App-Updates
+Der vorhandene Paketierungsweg erstellt Universal-DMG, Universal-ZIP, SHA-256-Prüfsummen und `appcast.xml` unter `build/release/`. Version und Buildnummer stammen aus `Resources/Info.plist`; die Buildnummer muss gegenüber dem letzten veröffentlichten Release steigen. Paketierung benötigt beide Sparkle-Schlüssel. Developer-ID-Signierung, Schlüsselbund, Notarisierung, Einrichtung und Sicherung sind in [Signierung und Releases](docs/signing.md) beschrieben. Private Schlüssel und Passwörter bleiben außerhalb des Repositorys.
 
-**PaneRook → Nach Updates suchen …** prüft manuell auf eine neuere Version. Standardmäßig prüft die App außerdem einmal täglich im Hintergrund. Unter **PaneRook → Einstellungen … → Updates** lassen sich die automatischen Prüfungen und das automatische Herunterladen und Installieren einstellen. Automatische Installation ist zunächst ausgeschaltet; Sparkle speichert die gewählte Einstellung für spätere Starts.
+Änderungen an Website oder Release-Texten auf `main` starten den separaten Pages-Workflow. Ein gepushter `v<Version>`-Tag startet App-Prüfungen, Paketierung und GitHub-Veröffentlichung; ein manueller Workflowlauf erzeugt nur Actions-Artefakte. Der Release-Workflow verlangt die Signierkonfiguration; Notarisierung benötigt zusätzlich die vollständige Apple-Konfiguration. Bilder auf Pages müssen vor den GitHub Notes öffentlich erreichbar sein. Lokale Vorbereitung führt keine Tags, Pushes oder Deployments aus.
 
-Der Feed liegt als `appcast.xml` beim [neuesten stabilen GitHub Release](https://github.com/frankhildebrandt/panerook/releases/latest). Downloads laufen über HTTPS; Sparkle prüft die Ed25519-Signatur des Update-ZIPs vor dem Entpacken. Vorabversionen werden über diesen Feed nicht angeboten. Die App sollte im Programme-Ordner liegen, nicht im geöffneten DMG.
+## Funktionen und Grenzen
 
-Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY` und `PANEROOK_SPARKLE_PRIVATE_KEY` einzurichten. Jede neue Ausgabe braucht eine höhere `CFBundleVersion` sowie eine passende `CFBundleShortVersionString` in `Resources/Info.plist`. Bestehende Installationen von **0.1.1** müssen **0.2.0** als erste Ausgabe mit Updater einmal manuell installieren; anschließend sind Updates in der App möglich.
+F5/F6 übertragen zwischen den gewählten Tabs; vorhandene Ziele benötigen eine ausdrückliche Konfliktentscheidung. Kopier-/Verschiebeaufträge bleiben gespeichert und lassen sich auf Dateiebene fortsetzen. Lokale unterstützte Einzelaktionen haben Undo/Redo pro Fenster und Sitzung; Ersetzen, Zusammenführen und Mehrfachumbenennen haben kein automatisches Datei-Undo. Die Ordnersynchronisation ist ein lokaler Ein-Wege-Abgleich mit Vorschau und optionalen endgültigen Löschungen.
 
-## Funktionen und Bedienung
+F4 öffnet den bevorzugten externen Editor. Remote-Arbeitskopien werden erst ausdrücklich zurückgeladen, mit Versionsprüfung und erhaltener Serversicherung für SFTP, SSH und Nextcloud; FTP-Rückupload ist dabei gesperrt. Remote-Transfers unterstützen reguläre Dateien und Ordner, keine Links. SSH/SFTP benötigen Schlüssel oder Agent und bestätigtes Hostvertrauen. Ein interner Editor und das Folgen von Links bei Transfers fehlen.
 
-PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Verbindungen, einem Ghostty-Terminal und Hintergrundaufgaben. Die [Nutzerdokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/) erklärt Einstieg und Bedienung; ausführliche zusätzliche Hinweise stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
+PaneRook arbeitet mit den Rechten des angemeldeten Benutzers; App-Sandbox und Security-Scoped Bookmarks sind nicht eingerichtet. macOS kann Ordnerfreigaben verlangen. Grenzen für große Dateien, Archive, Suchergebnisse, Wiederherstellung und konkurrierende Änderungen stehen in den jeweiligen Anleitungen und der [Bedienungsreferenz](docs/bedienungsreferenz.md).
 
-Jedes Panel unterstützt unabhängige Tabs (**⌘T**, Wechsel mit **⌘⇧[ / ⌘⇧]**, Schließen mit **⌘⇧W**). **Befehl → Arbeitsbereiche** speichert beide Tabgruppen mit Orten und Ansichtsoptionen unter einem Projektnamen. Beim Wechsel bleiben Shells und Transfers erhalten; nach einem Neustart werden Remote-Verbindungen bei Bedarf erneut authentifiziert. Details und Grenzen stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#tabs-und-benannte-projektarbeitsbereiche).
+## Technische Referenzen und Lizenz
 
-**Datei → Mehrfachumbenennen …** kombiniert Suchen/Ersetzen (auch reguläre Ausdrücke), Präfix/Suffix, Nummerierung, Datumswerte und Schreibweise für lokale Auswahlen. Alte und neue Namen stehen in einer Live-Vorschau nebeneinander; Regeln lassen sich als Presets speichern. Kollisionen blockieren die Ausführung. Die Aufgabenqueue führt bestätigte Änderungen ohne Überschreiben aus, auch bei Namenszyklen und reinen Groß-/Kleinschreibungswechseln. Details und Wiederherstellungsgrenzen stehen unter [Mehrfachumbenennen](docs/bedienungsreferenz.md#mehrfachumbenennen).
+[Architektur und Modulgrenzen](docs/architecture.md) · [Signierung und Releases](docs/signing.md) · [MC-Untersuchung](docs/midnight-commander-reference.md) · [MIT-Lizenz](LICENSE)
 
-**Befehl → Befehlspalette …** (**⌘⇧P**, frei belegbar) durchsucht verfügbare Aktionen samt aktuellen Tastenkürzeln, Ordnerfavoriten, gespeicherte Verbindungen, bekannte Git-Worktrees und besuchte Ordner beider Panels. Die unscharfe Suche unterstützt Abkürzungen und mehrere Suchbegriffe. Pfeiltasten wählen einen Treffer, Return führt ihn aus und Esc schließt die Palette. Bestehende Verfügbarkeitsprüfungen, Rückfragen und Passwortdialoge gelten auch hier.
-
-Über **Links/Rechts → Git-Diff und Verlauf** oder **⌘⌥G** wird ein Panel zum Git-Viewer. Der Viewer folgt dem Ordner und der ausgewählten Datei oder dem Verzeichnis im anderen Panel. Commit-Auswahl und Älter/Neuer navigieren durch die zugehörigen Versionen, mit Diff, damaligem Dateiinhalt und aktuellen Arbeitskopie-/Staged-Änderungen. **Dateiliste** kehrt zur bisherigen Auswahl zurück.
-
-**Links/Rechts → Ghostty-Terminal** öffnet eine interaktive Shell im bisherigen Panelordner. Das andere Panel verwendet das aktuelle Terminalverzeichnis als Ziel für **F5 Kopieren** und **F6 Verschieben**. Verzeichniswechsel mit `cd` aktualisieren dieses Ziel; der beim Öffnen des Transferdialogs angezeigte Pfad bleibt für den Auftrag fest. **⌘⌥Tab** wechselt zwischen den Panels, während Tab und Ctrl-Tasten im Terminal der Shell gehören. **Dateiliste** blendet die bisherige Dateiliste wieder ein; das Terminal bleibt für den erneuten Aufruf erhalten. Ghostty ist eingebettet und muss nicht separat installiert werden.
-
-**F4** bearbeitet lokale Dateien und verwaltete Remote-Arbeitskopien im wählbaren Editor. **Datei → Remote-Arbeitskopien …** zeigt Änderungen und lädt sie auf Wunsch mit Versionsprüfung und erhaltener Serversicherung zurück (SFTP, SSH und Nextcloud). Details und die FTP-Grenze stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#remote-dateien-bearbeiten).
-
-Lokale Dateilisten und geladene Verzeichnisbäume übernehmen Änderungen aus Finder, Editoren, Shell und Git automatisch. Auswahl und Scrollposition bleiben erhalten; **⌘R** lädt weiterhin manuell neu. Details und Grenzen stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#automatische-ordneraktualisierung).
-
-**Befehl → Ordner synchronisieren …** gleicht zwei lokale Ordner in einer gewählten Richtung ab: mit Änderungsvorschau, auswählbaren Aktionen, Ausschlussmustern und gespeicherten Profilen. Zusätzliche Zieleinträge bleiben standardmäßig erhalten; endgültige Löschungen benötigen eine aktivierte Option und eine sichtbare Ausführungsbestätigung. Details und Grenzen stehen unter [Ordner synchronisieren](docs/bedienungsreferenz.md#ordner-synchronisieren).
-
-Lokale Dateien lassen sich per Drag & Drop zwischen Dateilisten und aus Finder oder Desktop übernehmen. **⌘C/⌘V** kopieren Dateien, **⌘⌥V** verschiebt sie in den fokussierten Panelordner. Eingehende Drops und Einfügen verwenden den bestehenden Transferdialog und die Aufgaben-Queue. Ausgehende Drops an andere Apps bieten Kopieren an; Remote-/Archivinhalte müssen zuerst mit F5 lokal kopiert werden. Textfelder und Ghostty behalten ihre Text-Zwischenablage. Details stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#drag--drop-und-datei-zwischenablage).
-
-## Architektur
-
-- `Sources/PaneRook/`: ausführbarer Einstieg.
-- `Sources/PaneRookApp/`: AppKit-Oberfläche, nach Features gegliedert; `Shell/` enthält Fensterkoordination und die Zusammenstellung der Features.
-- `Sources/PaneRookCore/`: lokale Dateioperationen, Archive, Metadaten, Suche, Vergleich und Shell-Ausführung.
-- `Sources/PaneRookTasks/`: UI-unabhängige Aufgaben-Queue und Fortschrittsmodelle.
-- `Sources/PaneRookRemote/`: Verbindungsarchiv, Transferregeln und separate FTP-, SSH-, SFTP- und Nextcloud-Anbieter.
-- `Sources/PaneRookPanels/`: testbarer Panelzustand mit Navigation, Verlauf, Filterung und Sortierung.
-- `Tests/`: eigene Tests für Core, Tasks, Remote, Panels und App-Integration, einschließlich automatischer Architekturgrenzen. Ein SFTP-Test verwendet den lokalen System-`sftp-server`; echte Remote-Zugänge werden dadurch nicht geprüft.
-- `Resources/Info.plist` und `scripts/build-app.sh`: lokales macOS-App-Bundle.
-- `scripts/generate-icon.swift`: reproduzierbares App-Icon in `Resources/` und `assets/`.
-- [Architektur, Schnittstellen und parallele Entwicklung](docs/architecture.md).
-- [MC-Untersuchung und Ausgangspunkt](docs/midnight-commander-reference.md).
-
-## Grenzen und nächste Schritte
-
-Die App arbeitet mit den Rechten des angemeldeten Benutzers und erhöht sie nicht für Chmod/Chown. macOS kann für geschützte Ordner eine Zugriffsfreigabe verlangen. Eine App-Sandbox und Security-Scoped Bookmarks sind noch nicht eingerichtet.
-
-Kopier- und Verschiebeaktionen fragen bei bestehenden Zielen während der Ausführung nach: **Überspringen**, **Beide behalten** mit eindeutigem Namen, **Ersetzen** oder **Ordner zusammenführen**. Entscheidungen gelten einzeln oder als passende Regel für den aktuellen Auftrag. Der Dialog zeigt Quell-/Zielpfade, Typ, Größe und Änderungsdatum. Es wird nie ohne ausdrückliche Entscheidung ersetzt. Lokale Dateien und vollständige Ersetzungen werden neben dem Ziel vorbereitet und atomar veröffentlicht; Ersetzungen tauschen erst danach den Zieleintrag aus. Beim Zusammenführen werden Untereinträge einzeln behandelt, übersprungene Quellen bleiben auch beim Verschieben erhalten. Attribute und symbolische Links bleiben erhalten; Links werden nicht rekursiv verfolgt. Archivkonflikte bieten entsprechend den vorhandenen Archivfähigkeiten Überspringen und Beide behalten. Remote-Ersetzungen verwenden temporäre Uploads und eine Sicherung des bisherigen Ziels; die Server bieten keine allgemeine atomare Garantie gegen konkurrierende Änderungen. Details und Wiederherstellungsgrenzen stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
-
-Eingabefehler bleiben im Dialog sichtbar; Esc bricht auch aus Textfeldern ab. Abbruch und Laufzeitfehler können eine teilweise abgeschlossene Auswahl hinterlassen; vorher abgeschlossene Einträge bleiben erhalten und beide Panels werden aktualisiert. Wiederaufnehmbare Transfers veröffentlichen Dateien einzeln; neue Verzeichnisse werden dateiweise aufgebaut, Ersetzungen werden vollständig vorbereitet. Verschieben speichert das bestätigte Ergebnis vor dem Entfernen der unveränderten Quelle. Ersetzungen benötigen zusätzlichen freien Speicher für die neue Kopie. **⌘Z / ⇧⌘Z** machen lokale Einzelumbenennungen, unveränderte Verschiebungen auf freie oder neu benannte Ziele, neue leere Ordner und Papierkorb-Aktionen rückgängig bzw. wiederholen sie. Das **Datei → Operationsprotokoll** zeigt abgeschlossene Schritte und Teilfehler. Ersetzungen und zusammengeführte Verzeichnisse haben kein automatisches Datei-Undo. Das Journal gilt pro Fenster und Sitzung; Textfelder und Ghostty behalten ihre native Bedienung. Details stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#rückgängig-und-operationsprotokoll).
-
-Inhaltssuche und die eigene Textvorschau lesen höchstens 1 MiB pro Datei. Die Suche endet bei 10.000 Treffern oder 250.000 geprüften Einträgen. Datei- und Verzeichnisvergleiche vergleichen reguläre Dateien bis 1 GiB pro Datei; der Verzeichnisvergleich ist auf 100.000 Einträge je Seite begrenzt. Ordnergrößen werden bis 1.000.000 Einträge berechnet. Symbolische Links werden bei diesen rekursiven Werkzeugen nicht verfolgt. Begrenzungen und nicht lesbare Einträge werden im Ergebnis gemeldet. Shell-Ausgaben werden zur Anzeige auf 4 MiB je Ausgabestrom begrenzt.
-
-Kopier- und Verschiebeaufträge zwischen lokalen und Remote-Ordnern bleiben über App-Neustarts erhalten. **Wiederholen / Fortsetzen** prüft abgeschlossene Dateien und überträgt offene Dateien erneut auf Dateiebene. Übersprungene Einträge und eindeutige Zielnamen bleiben im Manifest erhalten; destruktive Konfliktentscheidungen werden bei einer offenen Ersetzung erneut abgefragt. Passwörter werden nicht gespeichert. Archivaktionen bleiben auf die Sitzung begrenzt.
-
-Noch offen: interner Editor und Linkfolge bei Transfers. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
-
-## Lizenz
-
-PaneRook steht unter der [MIT-Lizenz](LICENSE).
+Die Module trennen AppKit-Oberfläche (`PaneRookApp`), lokale Dateisystemarbeit (`PaneRookCore`), Aufgaben (`PaneRookTasks`), Remote-Anbieter (`PaneRookRemote`) und Panelzustand (`PaneRookPanels`). Tests prüfen auch Modulgrenzen und lokale Transportverträge; echte Serverzugänge und Volume-Wechsel benötigen zusätzliche manuelle Prüfung.

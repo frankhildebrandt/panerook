@@ -1,0 +1,20 @@
+---
+import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+<DocumentationLayout title="Tabs & Arbeitsbereiche" description="Ordner in unabhängigen Tabs öffnen, Projekte benennen und nach einem Neustart weiterarbeiten.">
+
+<p>Jede Panelhälfte hat eigene Tabs. Die ausgewählten Tabs bilden Quelle und Ziel für F5/F6. Ein eingereihter Auftrag behält diese Orte auch nach einem Tab- oder Arbeitsbereichswechsel.</p>
+<h2>Tabs öffnen und wechseln</h2>
+<ol><li>Wähle <strong>Befehl → Tabs → Neuer Tab</strong>, <kbd>⌘T</kbd> oder <strong>+</strong>. Der neue Tab übernimmt Ort und Ansichtsoptionen.</li><li>Klicke den gewünschten Tab an oder wechsle mit <kbd>⌘⇧[</kbd> und <kbd>⌘⇧]</kbd>. Viele Tabs lassen sich horizontal scrollen.</li><li><strong>×</strong> oder <kbd>⌘⇧W</kbd> schließt den aktiven Tab. Der letzte Tab jeder Hälfte bleibt erhalten. <kbd>Tab</kbd> und <kbd>⌘⌥Tab</kbd> wechseln zwischen den Panelhälften.</li></ol>
+<p>Navigation, Verlauf, Auswahl, Sortierung, Filter und Ansicht bleiben während der Sitzung je Tab erhalten. Die Menüs Links/Rechts steuern den dort ausgewählten Tab.</p>
+<figure><a href={`${base}/screenshots/releases/0.4.0/panels.png`}><img src={`${base}/screenshots/releases/0.4.0/panels.png`} width="4112" height="2466" alt="Zwei Dateipanels mit unabhängigen Tabs und Demo-Dateien" loading="lazy" /></a><figcaption>Mehrere Orte je Panel offen halten. Zum Vergrößern anklicken.</figcaption></figure>
+<h2>Ein Projekt benennen</h2>
+<ol><li>Richte beide Tabgruppen mit den gewünschten lokalen Ordnern, Archiven oder Remote-Orten ein.</li><li>Wähle <strong>Befehl → Arbeitsbereiche → Arbeitsbereich benennen / speichern …</strong> und vergib einen eindeutigen Namen.</li><li>Mit <strong>Arbeitsbereiche öffnen / verwalten …</strong> wechselst du zu einem gespeicherten Projekt; <strong>Neuer Arbeitsbereich</strong> öffnet ein frisches Panelpaar.</li></ol>
+<p>Änderungen am benannten Arbeitsbereich werden beim Navigieren, Wechseln und Beenden gespeichert. Erneutes Speichern benennt ihn um. Entfernen löscht seine dauerhafte Speicherung; die geöffnete Sitzung bleibt erreichbar.</p>
+<h2>Nach einem Neustart</h2>
+<p>Bei aktiviertem <strong>Panelzustand wiederherstellen</strong> kehren Orte, Tabgruppen, aktive Tabs und Ansichtsoptionen zurück. Benannte Arbeitsbereiche lassen sich auch bei abgeschalteter Wiederherstellung ausdrücklich öffnen. Nur die zuletzt aktive unbenannte Sitzung wird über einen Neustart erhalten.</p>
+<p>Beim Wechsel bleiben offene Shells und Verbindungen erhalten. Nach einem Neustart startet ein Terminal eine neue Shell, ohne frühere Ausgabe oder Prozesse. Remote-Tabs bieten <strong>Wieder verbinden …</strong> an und fragen benötigte Zugangsdaten erneut ab; Passwörter und Schlüsselinhalt werden nicht gespeichert. <strong>Lokale Dateiliste</strong> kehrt zum lokalen Ort zurück.</p>
+<p>Das Schließen eines Tabs mit laufender Shell fragt nach. Ein Remote-Tab mit aktivem Vorgang lässt sich erst nach Abschluss oder Abbruch schließen. Auswahl, Verlauf und Suchergebnisse sind nur innerhalb der Sitzung erhalten.</p>
+
+</DocumentationLayout>
