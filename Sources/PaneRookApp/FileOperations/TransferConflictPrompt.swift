@@ -24,7 +24,7 @@ final class TransferConflictPrompt: @unchecked Sendable {
         return RemoteConflictAction(rawValue: action.rawValue)!
     }
 
-    private func resolve(source: String, destination: String, sourceInfo: String, destinationInfo: String,
+    func resolve(source: String, destination: String, sourceInfo: String, destinationInfo: String,
                          allowed: [TransferConflictAction], cancelled: @escaping () -> Bool) throws -> TransferConflictAction {
         precondition(!Thread.isMainThread)
         let done = DispatchSemaphore(value: 0)
@@ -84,7 +84,7 @@ final class TransferConflictPrompt: @unchecked Sendable {
         case .merge: return "Ordner zusammenführen – übrige Zielinhalte behalten"
         }
     }
-    private static func describe(_ info: TransferEntryInfo) -> String {
+    static func describe(_ info: TransferEntryInfo) -> String {
         let type: String
         switch info.kind {
         case .file: type = "Datei"
@@ -97,7 +97,7 @@ final class TransferConflictPrompt: @unchecked Sendable {
     private static func describe(_ info: RemoteEntry) -> String {
         describe(type: info.isSymbolicLink ? "Symbolischer Link" : (info.isDirectory ? "Ordner" : "Datei"), size: info.size, modified: info.modified)
     }
-    private static func describe(type: String, size: Int64, modified: Date?) -> String {
+    static func describe(type: String, size: Int64, modified: Date?) -> String {
         type + " · " + ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
             + " · geändert: " + (modified.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .medium) } ?? "unbekannt")
     }

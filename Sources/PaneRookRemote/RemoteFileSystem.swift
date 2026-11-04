@@ -39,6 +39,9 @@ public final class RemoteFileSystem: @unchecked Sendable {
         let path = try Self.normalizedPath(path)
         return try transport.list(path, token: cancellation)
     }
+    func removeEmptyOrFile(_ path: String, directory: Bool, cancellation: RemoteCancellation) throws {
+        try transport.remove(path, directory: directory, token: cancellation)
+    }
     func available(_ path: String, token: RemoteCancellation) throws {
         let parent = (path as NSString).deletingLastPathComponent
         let name = (path as NSString).lastPathComponent

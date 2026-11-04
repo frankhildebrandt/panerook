@@ -26,6 +26,7 @@ final class TransferWorker {
     private let plan: TransferPlan
     private let cancellation: TransferCancellation
     private let progress: (OperationProgress) -> Void
+    private let validateMoveSource: ((_ committed: Bool) throws -> Void)?
     private let resolveConflict: ((TransferConflict) throws -> TransferConflictAction)?
     private var entries: [String: Entry] = [:]
     private var finished = Set<String>()
@@ -36,9 +37,11 @@ final class TransferWorker {
 
     init(plan: TransferPlan, cancellation: TransferCancellation,
          progress: @escaping (OperationProgress) -> Void,
-         resolveConflict: ((TransferConflict) throws -> TransferConflictAction)? = nil) {
+         resolveConflict: ((TransferConflict) throws -> TransferConflictAction)? = nil,
+         validateMoveSource: ((_ committed: Bool) throws -> Void)? = nil) {
         self.plan = plan; self.cancellation = cancellation; self.progress = progress
         self.resolveConflict = resolveConflict
+        self.validateMoveSource = validateMoveSource
     }
 
     func run() throws {
@@ -107,6 +110,8 @@ final class TransferWorker {
         // also the source and must remain in place.
         let moving = plan.kind == .move && key(item.source.path) != key(item.destination.path)
         if moving && replacement == nil {
+            try validateMoveSource?(false)
+            try cancellation.check()
             if renamex_np(item.source.path, target.path, UInt32(RENAME_EXCL)) == 0 {
                 finishTree(item.source); return
             }
@@ -173,6 +178,8 @@ final class TransferWorker {
         guard try TransferStamp.tree(item.source, cancellation: cancellation) == sourceSnapshot,
               try TransferStamp.read(parent)?.identity == parentIdentity,
               item.destination.deletingLastPathComponent().resolvingSymlinksInPath() == parent else { throw FileActionError.transferChanged }
+        if moving { try validateMoveSource?(false) }
+        try cancellation.check()
         if let replacement {
             guard try TransferStamp.tree(item.destination, cancellation: cancellation) == replacement else { throw FileActionError.transferChanged }
             // Exchange publishes the complete new tree atomically and keeps the old
@@ -197,6 +204,7 @@ final class TransferWorker {
             throw fileError(errno, path: item.destination.path)
         }
         if moving {
+            try validateMoveSource?(true)
             guard try TransferStamp.tree(item.source, cancellation: .init()) == sourceSnapshot else { throw FileActionError.transferChanged }
             try removeSource(item.source, snapshot: sourceSnapshot, relative: "")
         }
