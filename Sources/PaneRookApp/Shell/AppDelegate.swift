@@ -64,7 +64,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
         window.makeKeyAndOrderFront(nil)
-        commander.activate(commander.left)
+        commander.activate(commander.active)
         NSApp.activate(ignoringOtherApps: true)
         updater.start()
         commander.preview.remoteEdits.showRecoveryNoticeIfNeeded()

@@ -76,6 +76,8 @@ enum ContextCommands {
         add(.tasks, "tasks.cancel", "Ausgewählte Aufgabe abbrechen")
         add(.tasks, "tasks.clear", "Beendete Aufgaben entfernen")
         add(.tasks, "tasks.background", "Aufgabe in den Hintergrund / Fortschritt schließen", .character("b", modifiers: .option))
+        add(.tasks, "tasks.resume", "Transfer wiederholen / fortsetzen")
+        add(.tasks, "tasks.discardTransfer", "Offenen Transferauftrag verwerfen")
         add(.tasks, "tasks.reveal", "Aufgabenergebnis anzeigen")
         for (id, title) in [("open", "Arbeitskopie im Editor öffnen"), ("upload", "Remote-Änderungen hochladen / wiederholen"),
                             ("cancel", "Remote-Upload abbrechen"), ("stop", "Beobachtung beenden …"),
@@ -84,6 +86,11 @@ enum ContextCommands {
         }
         add(.results, "results.reveal", "Ausgewählten Treffer im Panel zeigen", .physical(36, characters: "\r"))
         add(.results, "results.panelize", "Treffer ins Panel übernehmen")
+        for (id, title) in [("preview", "Synchronisationsvorschau erstellen"), ("execute", "Synchronisation bestätigen …"),
+                            ("selectAll", "Alle Sync-Aktionen auswählen"), ("selectNone", "Keine Sync-Aktionen auswählen"),
+                            ("profile.save", "Synchronisationsprofil speichern"), ("profile.remove", "Synchronisationsprofil entfernen")] {
+            add(.results, "sync." + id, title)
+        }
         add(.network, "network.open", "Ausgewählten Netzwerkserver öffnen", .physical(36, characters: "\r"))
         add(.network, "network.open.keypad", "Netzwerkserver öffnen (Ziffernblock)", .physical(76, characters: "\u{3}"))
         add(.network, "network.connect", "Mit Netzwerkserver verbinden …")

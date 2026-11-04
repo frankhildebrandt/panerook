@@ -13,8 +13,12 @@ protocol FileOperationsHost: PanelPresenting, TaskProviding {
 
 final class FileOperations {
     unowned let owner: any FileOperationsHost
+    let journal = FileOperationJournal()
+    lazy var fileUndoManager = FileOperationUndoManager(operations: self)
+    var isRestoringFiles = false
     private var transferDialog: TransferDialog?
     private var sparseFileDialog: SparseFileDialog?
+    var batchRenameDialog: BatchRenameDialog?
     init(owner: any FileOperationsHost) { self.owner = owner }
     var canCopySelection: Bool {
         guard owner.canUseMenus else { return false }
@@ -29,7 +33,7 @@ final class FileOperations {
         return owner.canUseSelection
     }
     var canMakeDirectory: Bool {
-        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy }
+        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy && !remote.awaitsWorkspaceAuthentication }
         return owner.canUseLocalDirectory
     }
     var canTrashSelection: Bool {
@@ -45,11 +49,12 @@ final class FileOperations {
     var canRenameSelection: Bool {
         guard owner.canUseMenus else { return false }
         if let remote = owner.activePane.remoteContent { return remote.canRename }
-        return owner.canUseSelection && owner.activePane.selectedFiles.count == 1
+        return owner.canUseSelection && (owner.activePane.selectedFiles.count == 1 || canBatchRenameSelection)
     }
     func renameSelection() {
         guard canRenameSelection else { return }
         if let remote = owner.activePane.remoteContent { remote.renameSelection(); return }
+        if owner.activePane.selectedFiles.count > 1 { batchRenameSelection(); return }
         transfer(.move, rename: true)
     }
     func moveSelection() {
@@ -64,18 +69,46 @@ final class FileOperations {
         let sources = owner.activePane.selectedFiles
         guard !sources.isEmpty else { NSSound.beep(); return }
         let destination = rename ? owner.activePane.directory : owner.otherPane.directory
-        let verb = kind == .copy ? "Kopieren" : "Verschieben"
-        let sourcePane = owner.activePane
-        let dialog = TransferDialog(sources: sources, sourceDirectory: sourcePane.directory,
+        confirmTransfer(sources: sources, sourceDirectory: owner.activePane.directory,
+            destination: destination, kind: kind, rename: rename, focusPane: owner.activePane, window: window)
+    }
+
+    /// Every entry point captures its inputs before presenting the shared transfer dialog.
+    func confirmTransfer(sources: [URL], sourceDirectory: URL, destination: URL, kind: TransferKind,
+                         rename: Bool = false, focusPane: any PanelAccess, window: NSWindow) {
+        let verb = rename ? "Umbenennen" : kind == .copy ? "Kopieren" : "Verschieben"
+        let dialog = TransferDialog(sources: sources, sourceDirectory: sourceDirectory,
             destinationDirectory: destination, kind: kind) { [weak self] plan in
             guard let self else { return }
             self.transferDialog = nil
-            self.owner.activate(sourcePane)
+            self.owner.activate(focusPane)
             guard let plan else { return }
+            if !rename && !plan.items.contains(where: { ArchiveFileSystem.location(for: $0.source).map { !$0.memberPath.isEmpty } == true || ArchiveFileSystem.location(for: $0.destination).map { !$0.memberPath.isEmpty } == true }) {
+                let record = RecoverableTransfer(title: verb, moving: kind == .move, roots: plan.items.map {
+                    TransferRoot(source: TransferPath(RecoverableLocalFiles.canonicalPath($0.source)),
+                                 destination: TransferPath(RecoverableLocalFiles.canonicalPath($0.destination)))
+                })
+                self.owner.tasks.submitTransfer(record, journal: self.journal, resolveConflicts: true) { [weak self] in self?.owner.refreshAfterTask() }
+                return
+            }
             let token = TransferCancellation()
-            self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
+            var taskID: UUID?
+            let conflicts = TransferConflictPrompt(parent: self.owner.presentationWindow, onCancel: { [weak self] in
+                token.cancel()
+                if let taskID { self?.owner.tasks.cancel(taskID) }
+            })
+            taskID = self.owner.tasks.submit(title: verb, detail: plan.items.map { "\($0.source.path) → \($0.destination.path)" }.joined(separator: "\n"),
                 cancellation: { token.cancel() }, work: { report in
-                    try plan.execute(cancellation: token, progress: report)
+                    let isLocalMove = kind == .move && plan.items.allSatisfy {
+                        (ArchiveFileSystem.location(for: $0.source)?.memberPath.isEmpty ?? true) && (ArchiveFileSystem.location(for: $0.destination)?.memberPath.isEmpty ?? true)
+                    }
+                    if try isLocalMove && plan.items.allSatisfy({ try TransferEntryInfo.read($0.destination) == nil }) {
+                        try self.journal.move(plan, title: verb, cancellation: token, progress: report)
+                    } else {
+                        try plan.execute(cancellation: token, resolveConflict: {
+                            try conflicts.resolve($0, cancelled: { token.isCancelled })
+                        }, progress: report)
+                    }
                 }, completion: { [weak self] _ in self?.owner.refreshAfterTask() })
         }
         transferDialog = dialog
@@ -99,11 +132,16 @@ final class FileOperations {
         alert.beginSheetModal(for: owner.presentationWindow!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             let name = input.stringValue
-            self?.owner.operations.runArchiveOperation("Ordner anlegen …", detail: directory.path, completion: {
+            guard let self else { return }
+            self.owner.operations.runArchiveOperation("Ordner anlegen …", detail: directory.path, completion: {
                 guard pane.canApplyTaskResult(in: directory) else { return }
                 pane.refresh(select: directory.appendingPathComponent(name))
             }) { token, report in
-                try FileActions.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                if ArchiveFileSystem.location(for: directory) == nil {
+                    try self.journal.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                } else {
+                    try FileActions.createDirectory(named: name, in: directory, cancellation: token, progress: report)
+                }
             }
         }
     }
@@ -153,23 +191,19 @@ final class FileOperations {
             return
         }
         if UserDefaults.standard.object(forKey: "confirmTrash") as? Bool == false {
-            owner.operations.runItemOperation("In den Papierkorb legen", sources: sources) {
-                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
-            }
+            trashLocalFiles(sources)
             return
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "\(sources.count) Einträge in den Papierkorb legen?"
-        alert.informativeText = sources.prefix(5).map(\.lastPathComponent).joined(separator: "\n") + "\n\nDu kannst sie im Finder aus dem Papierkorb zurückholen."
+        alert.informativeText = sources.prefix(5).map(\.lastPathComponent).joined(separator: "\n") + "\n\nDu kannst diese Aktion über Bearbeiten → Rückgängig widerrufen, solange die Einträge unverändert im Papierkorb liegen. Auch die Wiederherstellung im Finder bleibt möglich."
         alert.addButton(withTitle: "In den Papierkorb")
         alert.addButton(withTitle: "Abbrechen")
         alert.configureKeyboardShortcuts()
         alert.beginSheetModal(for: owner.presentationWindow!) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.owner.operations.runItemOperation("In den Papierkorb legen", sources: sources) {
-                try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
-            }
+            self?.trashLocalFiles(sources)
         }
     }
 }

@@ -27,6 +27,14 @@ extension LocalTools {
             }
         ) { self.compareDirectories() }
         registry.add(
+            .command, "Ordner synchronisieren …", id: "inspection.synchronizeDirectories", order: 65, group: 0,
+            enabled: { [weak owner] in
+                guard let owner else { return false }
+                return owner.canUseMenus && owner.leftPane.remoteContent == nil && owner.rightPane.remoteContent == nil
+                    && !owner.leftPane.isArchiveDirectory && !owner.rightPane.isArchiveDirectory
+            }
+        ) { self.synchronizeDirectories() }
+        registry.add(
             .command, "Dateien vergleichen", id: "inspection.compareFiles", order: 70, group: 0,
             enabled: { [weak owner] in
                 guard let owner else { return false }

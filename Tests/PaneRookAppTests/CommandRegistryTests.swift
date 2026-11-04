@@ -66,7 +66,9 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertTrue(Set(registry.commands(in: .file).map(\.id)).isSuperset(of:
             ["preview", "edit", "copy", "move", "mkdir", "trash", "remoteEdit.sessions", "editor.choose"]))
-        XCTAssertEqual(registry.commands(in: .command).count, 33)
+        XCTAssertEqual(registry.commands(in: .command).count, 43)
+        XCTAssertNotNil(registry["inspection.synchronizeDirectories"])
+        XCTAssertNotNil(registry["files.batchRename"])
         XCTAssertNotNil(registry["git.pane"])
         XCTAssertNotNil(registry["left.mode.5"])
         XCTAssertNotNil(registry["right.mode.5"])

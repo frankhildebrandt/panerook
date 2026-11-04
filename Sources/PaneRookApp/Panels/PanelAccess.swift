@@ -1,4 +1,5 @@
 import AppKit
+import PaneRookRemote
 import PaneRookCore
 import PaneRookPanels
 import PaneRookRemote
@@ -11,6 +12,8 @@ struct RemoteEditRequest {
 
 /// A connection occupies one panel while its local directory is retained for disconnecting.
 protocol RemotePanelContent: AnyObject {
+    var workspaceBookmark: ConnectionBookmark? { get }
+    var awaitsWorkspaceAuthentication: Bool { get }
     var onKey: ((NSEvent) -> Bool)? { get set }
     var isActive: Bool { get set }
     var viewController: NSViewController { get }
@@ -53,6 +56,8 @@ protocol RemotePanelContent: AnyObject {
 }
 
 extension RemotePanelContent {
+    var workspaceBookmark: ConnectionBookmark? { nil }
+    var awaitsWorkspaceAuthentication: Bool { false }
     var canMove: Bool { false }
     var canRename: Bool { false }
     var canPreview: Bool { false }
@@ -79,6 +84,12 @@ extension RemotePanelContent {
 
 /// Feature-facing panel API. Table, path field and controller lifetime stay private to Panels/Shell.
 protocol PanelAccess: AnyObject {
+    /// Native exchange is limited to a ready local file list. Search results may export,
+    /// but have no unambiguous background destination.
+    var canExportNativeFiles: Bool { get }
+    var fileExchangeDirectory: URL? { get }
+    var hasFileListKeyboardFocus: Bool { get }
+    func installFileExchange(_ exchange: NativeFileExchange)
     var remoteContent: (any RemotePanelContent)? { get }
     var directory: URL { get }
     var mode: PanelMode { get }
@@ -118,6 +129,10 @@ protocol PanelAccess: AnyObject {
 }
 
 extension PanelAccess {
+    var canExportNativeFiles: Bool { false }
+    var fileExchangeDirectory: URL? { nil }
+    var hasFileListKeyboardFocus: Bool { false }
+    func installFileExchange(_ exchange: NativeFileExchange) {}
     func navigate(to url: URL, recordHistory: Bool = true, select: URL? = nil, preserveDirectorySizes: Bool = false) {
         navigate(to: url, recordHistory: recordHistory, select: select, preserveDirectorySizes: preserveDirectorySizes)
     }
