@@ -7,7 +7,7 @@ import PaneRookCore
 final class RemoteTools {
     unowned let owner: any RemoteHost
     private var browsers: [RemoteBrowser] {
-        [owner.leftPane, owner.rightPane].compactMap { $0.remoteContent as? RemoteBrowser }
+        owner.allPanes.compactMap { $0.remoteContent as? RemoteBrowser }
     }
     private let bookmarkStore = ConnectionBookmarkStore(fileURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("PaneRook/connections.json"))
@@ -22,7 +22,7 @@ final class RemoteTools {
         else {
             do {
                 let timeout = UserDefaults.standard.object(forKey: "remoteTimeout") as? Int ?? 20
-                openBrowser(try bookmark.connection(timeout: timeout), directory: bookmark.path, pane: pane)
+                openBrowser(try bookmark.connection(timeout: timeout), directory: bookmark.path, pane: pane, bookmark: bookmark)
             } catch { owner.showError(error) }
         }
     }
@@ -50,7 +50,7 @@ final class RemoteTools {
                 self.owner.presentationWindow?.makeKeyAndOrderFront(nil)
                 self.owner.activate(pane)
                 switch outcome {
-                case .connect(let connection, let path): self.openBrowser(connection, directory: path, pane: pane)
+                case .connect(let connection, let path): self.openBrowser(connection, directory: path, pane: pane, bookmark: bookmark)
                 case .archive: self.showArchive(pane: pane, kind: kind)
                 default: break
                 }
@@ -77,10 +77,11 @@ final class RemoteTools {
         dialog.begin(on: window)
     }
 
-    func openBrowser(_ connection: RemoteConnection, directory: String, pane: any PanelAccess,
+    func openBrowser(_ connection: RemoteConnection, directory: String, pane: any PanelAccess, bookmark: ConnectionBookmark? = nil,
                      runner: @escaping RemoteFileSystem.Runner = RemoteFileSystem.run) {
-        let peer = pane === owner.leftPane ? owner.rightPane : owner.leftPane
+        let peer = owner.oppositePane(for: pane)
         let browser = RemoteBrowser(connection: connection, peer: peer, tasks: owner.tasks, runner: runner)
+        browser.connectionBookmark = bookmark
         browser.onActivate = { [weak pane] in pane?.activate() }
         browser.onClose = { [weak pane, weak browser] in
             guard let pane, let browser, pane.remoteContent === browser else { return }

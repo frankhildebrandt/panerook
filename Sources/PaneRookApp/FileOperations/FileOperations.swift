@@ -33,7 +33,7 @@ final class FileOperations {
         return owner.canUseSelection
     }
     var canMakeDirectory: Bool {
-        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy }
+        if let remote = owner.activePane.remoteContent { return owner.canUseMenus && !remote.isBusy && !remote.awaitsWorkspaceAuthentication }
         return owner.canUseLocalDirectory
     }
     var canTrashSelection: Bool {

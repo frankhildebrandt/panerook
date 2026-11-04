@@ -2,7 +2,8 @@ import AppKit
 import PaneRookPanels
 
 extension CommanderController {
-    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: PaneController) {
+    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane initialPane: PaneController, resolvePane: (() -> PaneController)? = nil) {
+        var pane: PaneController { resolvePane?() ?? initialPane }
         for (index, pair) in [
             ("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree), ("Netzwerk", .network),
             ("Git-Diff und Verlauf", .gitHistory),

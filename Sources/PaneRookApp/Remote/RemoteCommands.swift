@@ -15,7 +15,8 @@ extension RemoteTools {
 }
 
 extension RemoteTools {
-    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: any PanelAccess) {
+    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane initialPane: any PanelAccess, resolvePane: (() -> any PanelAccess)? = nil) {
+        var pane: any PanelAccess { resolvePane?() ?? initialPane }
         for (index, kind) in RemoteProtocol.available.sorted(by: { $0.provider.menuOrder < $1.provider.menuOrder })
             .enumerated()
         {

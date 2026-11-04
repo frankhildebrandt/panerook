@@ -100,6 +100,8 @@ Für Releases sind die zusätzlichen GitHub-Secrets `PANEROOK_SPARKLE_PUBLIC_KEY
 
 PaneRook verbindet zwei Dateipanels mit Dateiaktionen, Archiven, Git, Remote-Verbindungen, einem Ghostty-Terminal und Hintergrundaufgaben. Die [Nutzerdokumentation](https://frankhildebrandt.github.io/panerook/dokumentation/) erklärt Einstieg und Bedienung; ausführliche zusätzliche Hinweise stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md).
 
+Jedes Panel unterstützt unabhängige Tabs (**⌘T**, Wechsel mit **⌘⇧[ / ⌘⇧]**, Schließen mit **⌘⇧W**). **Befehl → Arbeitsbereiche** speichert beide Tabgruppen mit Orten und Ansichtsoptionen unter einem Projektnamen. Beim Wechsel bleiben Shells und Transfers erhalten; nach einem Neustart werden Remote-Verbindungen bei Bedarf erneut authentifiziert. Details und Grenzen stehen in der [Bedienungsreferenz](docs/bedienungsreferenz.md#tabs-und-benannte-projektarbeitsbereiche).
+
 **Datei → Mehrfachumbenennen …** kombiniert Suchen/Ersetzen (auch reguläre Ausdrücke), Präfix/Suffix, Nummerierung, Datumswerte und Schreibweise für lokale Auswahlen. Alte und neue Namen stehen in einer Live-Vorschau nebeneinander; Regeln lassen sich als Presets speichern. Kollisionen blockieren die Ausführung. Die Aufgabenqueue führt bestätigte Änderungen ohne Überschreiben aus, auch bei Namenszyklen und reinen Groß-/Kleinschreibungswechseln. Details und Wiederherstellungsgrenzen stehen unter [Mehrfachumbenennen](docs/bedienungsreferenz.md#mehrfachumbenennen).
 
 **Befehl → Befehlspalette …** (**⌘⇧P**, frei belegbar) durchsucht verfügbare Aktionen samt aktuellen Tastenkürzeln, Ordnerfavoriten, gespeicherte Verbindungen, bekannte Git-Worktrees und besuchte Ordner beider Panels. Die unscharfe Suche unterstützt Abkürzungen und mehrere Suchbegriffe. Pfeiltasten wählen einen Treffer, Return führt ihn aus und Esc schließt die Palette. Bestehende Verfügbarkeitsprüfungen, Rückfragen und Passwortdialoge gelten auch hier.
@@ -140,7 +142,7 @@ Inhaltssuche und die eigene Textvorschau lesen höchstens 1 MiB pro Datei. Die S
 
 Kopier- und Verschiebeaufträge zwischen lokalen und Remote-Ordnern bleiben über App-Neustarts erhalten. **Wiederholen / Fortsetzen** prüft abgeschlossene Dateien und überträgt offene Dateien erneut auf Dateiebene. Übersprungene Einträge und eindeutige Zielnamen bleiben im Manifest erhalten; destruktive Konfliktentscheidungen werden bei einer offenen Ersetzung erneut abgefragt. Passwörter werden nicht gespeichert. Archivaktionen bleiben auf die Sitzung begrenzt.
 
-Noch offen: interner Editor, Tabs und Linkfolge bei Transfers. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
+Noch offen: interner Editor und Linkfolge bei Transfers. Die Menüeinträge sind native Umsetzungen des MC-Arbeitsablaufs; vollständige Funktions- oder Formatkompatibilität mit MC wird nicht behauptet.
 
 ## Lizenz
 

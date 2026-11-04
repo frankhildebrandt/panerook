@@ -65,7 +65,7 @@ final class CommandRegistryTests: XCTestCase {
         XCTAssertNil(registry.defaultsByID["preferences.keyBindings"])
         XCTAssertEqual(registry.dockCommands.map(\.id), ["preview", "edit", "copy", "move", "mkdir", "trash"])
         XCTAssertEqual(registry.commands(in: .file).count, 29)
-        XCTAssertEqual(registry.commands(in: .command).count, 35)
+        XCTAssertEqual(registry.commands(in: .command).count, 43)
         XCTAssertNotNil(registry["inspection.synchronizeDirectories"])
         XCTAssertNotNil(registry["files.batchRename"])
         XCTAssertNotNil(registry["git.pane"])

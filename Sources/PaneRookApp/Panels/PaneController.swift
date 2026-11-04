@@ -1,3 +1,4 @@
+import PaneRookRemote
 import PaneRookPanels
 import AppKit
 import Darwin
@@ -52,6 +53,11 @@ final class ThemedFileRow: NSTableRowView {
 }
 
 final class PaneController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, PanelAccess {
+    let tabID: UUID
+    var onWorkspaceReconnectRequested: (() -> Void)?
+    var pendingWorkspaceConnection: ConnectionBookmark?
+    private var restoredTerminalDirectory: URL?
+    var hasLiveTerminal: Bool { terminalContent?.isRunning == true }
     let table = FileTable()
     weak var fileExchange: NativeFileExchange?
     let pathField = NSTextField()
@@ -151,12 +157,13 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
     var sortKey: String { get { remoteContent?.sortKey ?? state.sortKey } set { state.sortKey = newValue } }
     var sortAscending: Bool { get { remoteContent?.sortAscending ?? state.sortAscending } set { state.sortAscending = newValue } }
 
-    init(label: String, directory: URL, gitStatusCache: GitStatusCache = .shared,
+    init(label: String, directory: URL, tabID: UUID = UUID(), gitStatusCache: GitStatusCache = .shared,
          terminalContent: (any TerminalPanelContent)? = nil,
          capacityReader: @escaping (URL) -> Int64? = FileSystem.availableCapacity,
          localObservation: LocalDirectoryObservation = LocalDirectoryObservation(),
          directoryReader: @escaping (URL, Bool) throws -> [FileEntry] = { try FileSystem.list($0, showHidden: $1) },
          gitSnapshotReader: @escaping (URL) throws -> GitSnapshot? = { try GitRepository.discover(in: $0)?.snapshot() }) {
+        self.tabID = tabID
         self.label = label
         self.state = PanelState(directory: directory)
         self.gitStatusCache = gitStatusCache
@@ -434,12 +441,14 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         if remoteContent === content { return }
         if content != nil && mode == .gitHistory { setMode(.listing) }
         if content != nil {
+            if content?.awaitsWorkspaceAuthentication != true { pendingWorkspaceConnection = nil }
             if mode == .terminal { setMode(.listing) }
             terminalContent?.stop()
         }
         let brief = isBriefListing
         let key = sortKey, ascending = sortAscending, pattern = filterPattern
         let previous = remoteContent
+        if content == nil { pendingWorkspaceConnection = nil }
         remoteContent = nil
         previous?.disconnect()
         previous?.viewController.view.removeFromSuperview()
@@ -505,7 +514,8 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
                 controller.view.trailingAnchor.constraint(equalTo: content.trailingAnchor)
             ])
         }
-        terminal.start(directory: state.directory)
+        terminal.start(directory: restoredTerminalDirectory ?? state.directory)
+        restoredTerminalDirectory = nil
     }
 
     func setMode(_ mode: PanelMode) {
@@ -632,11 +642,17 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
         summary.isHidden = !showSummary || mode == .gitHistory || mode == .terminal
         if summaryHeight == nil { summaryHeight = summary.constraints.first { $0.firstAttribute == .height } }
         summaryHeight?.constant = showSummary ? 16 : 0
-        table.reloadData()
+        reloadListingPreservingSelection()
         remoteContent?.applyDisplayOptions(rowHeight: table.rowHeight, showIcons: showIcons, showSummary: showSummary)
     }
 
-    func applyHighlights(_ rules: [(pattern: String, color: NSColor)]) { highlights = rules; table.reloadData() }
+    func applyHighlights(_ rules: [(pattern: String, color: NSColor)]) { highlights = rules; reloadListingPreservingSelection() }
+
+    private func reloadListingPreservingSelection() {
+        let selection = table.selectedRowIndexes
+        table.reloadData()
+        table.selectRowIndexes(selection, byExtendingSelection: false)
+    }
 
     var isBriefListing: Bool {
         if let remoteContent { return remoteContent.isBriefListing }
@@ -1308,4 +1324,55 @@ final class PaneController: NSViewController, NSTableViewDataSource, NSTableView
 
 extension Notification.Name {
     static let paneRookGitWatchesChanged = Notification.Name("PaneRookGitWatchesChanged")
+}
+
+
+extension PaneController {
+    var tabTitle: String {
+        if let connection = remoteContent?.workspaceBookmark ?? pendingWorkspaceConnection {
+            return "☁ " + connection.name
+        }
+        let name = directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent
+        return mode == .terminal ? "› " + name : name
+    }
+    var tabLocationDescription: String {
+        if let connection = remoteContent?.workspaceBookmark ?? pendingWorkspaceConnection {
+            return "\(connection.kind.rawValue.uppercased()) · \(connection.host)\(connection.path)"
+        }
+        return directory.path
+    }
+    func workspaceSnapshot() -> WorkspaceTab {
+        var tab = WorkspaceTab(id: tabID, directory: state.directory)
+        tab.mode = String(describing: mode)
+        tab.terminalDirectory = terminalContent?.currentDirectory ?? restoredTerminalDirectory
+        tab.connection = remoteContent?.workspaceBookmark ?? pendingWorkspaceConnection
+        tab.sortKey = sortKey; tab.sortAscending = sortAscending
+        tab.brief = isBriefListing; tab.filter = filterPattern; tab.gitFilter = gitFilter.rawValue
+        tab.encoding = textEncoding.rawValue; tab.showHidden = showHidden
+        return tab
+    }
+    func restoreWorkspaceTab(_ tab: WorkspaceTab) {
+        showHidden = tab.showHidden
+        restoredTerminalDirectory = tab.terminalDirectory
+        pendingWorkspaceConnection = tab.connection
+        setSort(key: tab.sortKey, ascending: tab.sortAscending)
+        setBriefListing(tab.brief); setFilter(tab.filter)
+        setGitFilter(GitFileFilter(rawValue: tab.gitFilter) ?? .all)
+        textEncoding = String.Encoding(rawValue: tab.encoding)
+        let modes: [String: PanelMode] = ["listing": .listing, "quickView": .quickView, "info": .info,
+            "tree": .tree, "network": .network, "gitHistory": .gitHistory, "terminal": .terminal]
+        setMode(tab.connection == nil ? modes[tab.mode] ?? .listing : .listing)
+        if let bookmark = tab.connection {
+            let disconnected = DisconnectedWorkspaceConnection(bookmark: bookmark)
+            disconnected.onReconnect = { [weak self] in self?.onWorkspaceReconnectRequested?() }
+            disconnected.onReturnToLocal = { [weak self] in
+                self?.pendingWorkspaceConnection = nil
+                self?.showRemoteContent(nil)
+                self?.onDirectoryChanged?()
+            }
+            showRemoteContent(disconnected)
+        }
+    }
+    /// Explicit tab close is the only tab action allowed to stop its shell.
+    func closeTabContent() { terminalContent?.stop(); remoteContent?.disconnect() }
 }

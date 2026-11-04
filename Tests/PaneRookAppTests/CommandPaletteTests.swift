@@ -295,7 +295,8 @@ final class CommandPaletteTests: XCTestCase {
         try Data("Inhalt".utf8).write(to: file)
         let pasteboard = try XCTUnwrap(NSPasteboard.withUniqueName())
         defer { pasteboard.releaseGlobally() }
-        let commander = CommanderController()
+        let commander = CommanderController(defaults: defaults())
+        commander.tasks = TaskCenter(parentWindow: { nil }, restoreFocus: {})
         commander.fileExchange = NativeFileExchange(owner: commander, pasteboard: pasteboard)
         commander.commandRegistry = commander.makeCommandRegistry(defaults: defaults())
         let window = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),

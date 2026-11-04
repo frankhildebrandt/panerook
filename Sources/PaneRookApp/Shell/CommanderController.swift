@@ -4,17 +4,26 @@ import Quartz
 import PaneRookCore
 
 final class CommanderController: NSViewController, NSToolbarDelegate {
-    let left: PaneController
-    let right: PaneController
-    private(set) var active: PaneController!
+    var workspaceSession: LiveWorkspace
+    var left: PaneController { workspaceSession.left.selected }
+    var right: PaneController { workspaceSession.right.selected }
+    let workspaceDefaults: UserDefaults
+    let workspaceStore: WorkspaceStore
+    var workspaceArchive = WorkspaceArchive()
+    var liveWorkspaces: [UUID: LiveWorkspace] = [:]
+    var retiredTabPanes: [PaneController] = []
+    var isRestoringWorkspaces = true
+    var reportedWorkspaceError = false
+    lazy var workspaceTools = WorkspaceTools(owner: self)
+    var active: PaneController!
     private let status = NSTextField(labelWithString: "")
     private let statusBar = NSStackView()
     private let progress = NSProgressIndicator()
     private let hiddenButton = NSButton()
     private var availabilityObservers: [NSObjectProtocol] = []
     private var actions: [(NSButton, AppCommand)] = []
-    lazy var commandRegistry = makeCommandRegistry()
-    private var splitController: NSSplitViewController!
+    lazy var commandRegistry = makeCommandRegistry(defaults: workspaceDefaults)
+    var splitController: NSSplitViewController!
     private var actionDock: NSView!
     private var console: NSStackView!
     private let commandInput = NSTextField()
@@ -30,14 +39,14 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     lazy var fileOperations = FileOperations(owner: self)
     lazy var fileExchange = NativeFileExchange(owner: self)
     lazy var workflow = WorkflowTools(owner: self)
-    lazy var preferences = PreferencesTools(owner: self)
+    lazy var preferences = PreferencesTools(owner: self, defaults: workspaceDefaults)
     lazy var localTools = LocalTools(owner: self)
     lazy var metadata = FileMetadataTools(owner: self)
     lazy var remote = RemoteTools(owner: self)
     lazy var git = GitTools(owner: self)
     lazy var commandPalette = CommandPaletteTools(owner: self)
-    private let favoriteDestinations = FavoriteDestinationCache()
-    private var favoritesMenus: [PanelFavoritesController] = []
+    let favoriteDestinations = FavoriteDestinationCache()
+    var favoritesMenus: [PanelFavoritesController] = []
     weak var appUpdater: AppUpdater?
     var onShowMenu: (() -> Void)?
     var menuIsTracking: (() -> Bool)?
@@ -56,16 +65,19 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     }
     var isPerformingOperation: Bool { view.window?.attachedSheet != nil }
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
         let home = FileManager.default.homeDirectoryForCurrentUser
         func restored(_ key: String, fallback: URL) -> URL {
-            if UserDefaults.standard.object(forKey: "restorePanels") as? Bool == false { return fallback }
-            guard let path = UserDefaults.standard.string(forKey: key),
+            if defaults.object(forKey: "restorePanels") as? Bool == false { return fallback }
+            guard let path = defaults.string(forKey: key),
                   let directory = try? FileSystem.directory(from: path, relativeTo: home) else { return fallback }
             return directory
         }
-        left = PaneController(label: "Links", directory: restored("leftDirectory", fallback: home))
-        right = PaneController(label: "Rechts", directory: restored("rightDirectory", fallback: home.appendingPathComponent("Downloads")))
+        workspaceDefaults = defaults
+        workspaceStore = WorkspaceStore(defaults: defaults)
+        workspaceSession = LiveWorkspace(name: "Unbenannt",
+            left: PanelTabGroupController(panes: [PaneController(label: "Links", directory: restored("leftDirectory", fallback: home))]),
+            right: PanelTabGroupController(panes: [PaneController(label: "Rechts", directory: restored("rightDirectory", fallback: home.appendingPathComponent("Downloads")))]))
         super.init(nibName: nil, bundle: nil)
         active = left
     }
@@ -97,42 +109,14 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         hiddenButton.setButtonType(.pushOnPushOff)
         hiddenButton.target = self
         hiddenButton.action = #selector(toggleHidden)
-        hiddenButton.state = UserDefaults.standard.bool(forKey: "showHidden") ? .on : .off
+        hiddenButton.state = workspaceDefaults.bool(forKey: "showHidden") ? .on : .off
 
         let split = NSSplitViewController()
         splitController = split
-        for pane in [left, right] {
-            pane.installFileExchange(fileExchange)
-            favoritesMenus.append(PanelFavoritesController(owner: self, pane: pane, cache: favoriteDestinations))
-            pane.showHidden = hiddenButton.state == .on
-            pane.onActivate = { [weak self, weak pane] in
-                guard let self, let pane else { return }
-                self.active = pane
-                self.left.isActive = pane === self.left
-                self.right.isActive = pane === self.right
-                self.updateDirectoryActionAvailability()
-            }
-            pane.onKey = { [weak self] in self?.handleKey($0) ?? false }
-            pane.onError = { [weak self] in self?.showError($0) }
-            pane.onOpenSelection = { [weak self] in self?.openSelection() }
-            pane.onDirectoryChanged = { [weak self] in self?.saveDirectories() }
-            pane.onRepositoryVisited = { GitRepositoryCatalog.shared.record($0) }
-            pane.onOpenGit = { [weak self, weak pane] in
-                guard let self, let pane else { return }
-                self.git.open(pane: pane)
-            }
-            pane.onGitHistoryRequested = { [weak self, weak pane] in
-                guard let self, let pane else { return }
-                pane.showGitHistory(from: pane === self.left ? self.right : self.left)
-            }
-            pane.onSelectionChanged = { [weak self, weak pane] url in
-                guard let self, let pane else { return }
-                let other = pane === self.left ? self.right : self.left
-                other.showInspection(of: url)
-                other.showGitHistory(from: pane)
-                self.updateDirectoryActionAvailability()
-            }
-            let item = NSSplitViewItem(viewController: pane)
+        configureWorkspace(workspaceSession)
+        for group in [workspaceSession.left, workspaceSession.right] {
+            group.selected.showHidden = hiddenButton.state == .on
+            let item = NSSplitViewItem(viewController: group)
             item.minimumThickness = 390
             split.addSplitViewItem(item)
         }
@@ -207,6 +191,9 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         }
         left.isActive = true
         preferences.restorePanels()
+        restoreWorkspaceSession()
+        isRestoringWorkspaces = false
+        synchronizeTabObservationVisibility()
         preferences.apply()
     }
 
@@ -225,8 +212,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     func togglePanels() {
         panelsHidden.toggle()
         splitController.view.isHidden = panelsHidden
-        left.setLocalObservationVisible(!panelsHidden)
-        right.setLocalObservationVisible(!panelsHidden)
+        synchronizeTabObservationVisibility()
         console.isHidden = !panelsHidden
         if panelsHidden { view.window?.makeFirstResponder(commandInput) }
         else { activate(active) }
@@ -291,14 +277,27 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         return item
     }
 
-    func activate(_ pane: PaneController) {
+    func activate(_ pane: PaneController) { activate(pane, focus: true) }
+    func activate(_ pane: PaneController, focus: Bool) {
+        guard let group = group(containing: pane) else { return }
+        if !workspaceSession.panes.contains(where: { $0 === pane }),
+           let workspace = liveWorkspaces.values.first(where: { $0.panes.contains(where: { $0 === pane }) }) {
+            persistWorkspaces()
+            liveWorkspaces[workspaceSession.id] = workspaceSession
+            workspaceSession = workspace
+            installWorkspaceGroups()
+        }
+        let changedTab = group.selected !== pane
+        if changedTab { group.select(pane, notify: false) }
         active = pane
-        left.isActive = pane === left
-        right.isActive = pane === right
-        pane.focus()
+        workspaceSession.activeRight = pane === right
+        view.window?.subtitle = workspaceSession.name
+        for tab in allTabPanes { tab.isActive = tab === pane }
+        if focus { pane.focus() }
+        if changedTab { synchronizeTabObservationVisibility(); updateTransferPeers(); persistWorkspaces() }
         updateDirectoryActionAvailability()
     }
-    private func updateDirectoryActionAvailability() {
+    func updateDirectoryActionAvailability() {
         let bindings = commandRegistry.bindings
         hiddenButton.toolTip = commandHint("panels.showHidden", title: "Versteckte Dateien", bindings: bindings)
         let toolbarCommands = [ToolbarID.home: "navigation.home", ToolbarID.refresh: "panels.refresh", ToolbarID.swap: "panels.swap", ToolbarID.help: "help", ToolbarID.menu: "menu", ToolbarID.tasks: "tasks.showQueue"]
@@ -323,7 +322,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         active.pathField.selectText(nil)
     }
     @objc func refresh() { left.refresh(); right.refresh(); workflow.applyHighlights() }
-    func refreshAfterTask() { left.refreshAfterTask(); right.refreshAfterTask(); workflow.applyHighlights() }
+    func refreshAfterTask() { allTabPanes.forEach { $0.refreshAfterTask() }; workflow.applyHighlights() }
     @objc func swapPanels() {
         guard left.remoteContent == nil, right.remoteContent == nil else { return }
         let url = left.directory
@@ -332,12 +331,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     }
     @objc func toggleHidden() {
         let show = !left.showHidden
-        left.showHidden = show
-        right.showHidden = show
+        for pane in allTabPanes { pane.showHidden = show }
         hiddenButton.state = show ? .on : .off
-        UserDefaults.standard.set(show, forKey: "showHidden")
-        if left.remoteContent == nil { left.refresh() }
-        if right.remoteContent == nil { right.refresh() }
+        workspaceDefaults.set(show, forKey: "showHidden")
+        for pane in allTabPanes where pane.remoteContent == nil { pane.refresh() }
         workflow.applyHighlights()
     }
     @objc func revealInFinder() {
@@ -347,7 +344,7 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
         NSWorkspace.shared.activateFileViewerSelecting(Array(Set(local)))
     }
 
-    private func handleKey(_ event: NSEvent) -> Bool {
+    func handleKey(_ event: NSEvent) -> Bool {
         guard canHandleMainKeys else { return false }
         if let remote = active.remoteContent as? RemoteBrowser, remote.handleContextKey(event) { return true }
         if let action = commandRegistry.matching(event, scope: .panel)
@@ -432,9 +429,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
     }
     func saveSetup() {
         saveDirectories()
-        UserDefaults.standard.set(left.showHidden, forKey: "showHidden")
+        workspaceDefaults.set(left.showHidden, forKey: "showHidden")
         view.window?.saveFrame(usingName: "PaneRook.MainWindow")
         preferences.savePanels()
+        persistWorkspaces()
     }
 
     @objc func openSelection() {
@@ -466,9 +464,10 @@ final class CommanderController: NSViewController, NSToolbarDelegate {
             statusBar.isHidden = false
         }
     }
-    private func saveDirectories() {
-        UserDefaults.standard.set(left.directory.path, forKey: "leftDirectory")
-        UserDefaults.standard.set(right.directory.path, forKey: "rightDirectory")
+    func saveDirectories() {
+        workspaceDefaults.set(left.directory.path, forKey: "leftDirectory")
+        workspaceDefaults.set(right.directory.path, forKey: "rightDirectory")
+        persistWorkspaces()
     }
     @objc func showHelp() {
         guard view.window?.attachedSheet == nil else { return }

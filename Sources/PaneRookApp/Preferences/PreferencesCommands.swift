@@ -27,7 +27,8 @@ extension PreferencesTools {
 }
 
 extension PreferencesTools {
-    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane: any PanelAccess) {
+    func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane initialPane: any PanelAccess, resolvePane: (() -> any PanelAccess)? = nil) {
+        var pane: any PanelAccess { resolvePane?() ?? initialPane }
         registry.add(
             menu, "Filter …", id: "\(menu.rawValue).filter", order: 30, group: 1, enabled: { self.owner.canUseMenus },
             checked: { !pane.filterPattern.isEmpty }

@@ -4,6 +4,14 @@ import PaneRookRemote
 extension CommanderController: InspectionHost, RemoteHost, MetadataHost, WorkflowHost, PreferencesHost, FavoritesHost,
     FileOperationsHost, PreviewHost, GitHost, NativeFileExchangeHost, CommandPaletteHost
 {
+    var allPanes: [any PanelAccess] { allTabPanes }
+    func oppositePane(for pane: any PanelAccess) -> any PanelAccess {
+        for workspace in [workspaceSession] + Array(liveWorkspaces.values) {
+            if workspace.left.panes.contains(where: { $0 === pane }) { return workspace.right.selected }
+            if workspace.right.panes.contains(where: { $0 === pane }) { return workspace.left.selected }
+        }
+        return other
+    }
     var presentationWindow: NSWindow? { view.window }
     var activePane: any PanelAccess { active }
     var leftPane: any PanelAccess { left }
@@ -19,7 +27,7 @@ extension CommanderController: InspectionHost, RemoteHost, MetadataHost, Workflo
         return scopes
     }
     func activate(_ pane: any PanelAccess) {
-        if pane === left { activate(left) } else if pane === right { activate(right) }
+        if let pane = pane as? PaneController { activate(pane) }
     }
     func recordFiles(_ urls: [URL]) { workflow.recordFiles(urls) }
     func openUsingExtension(_ urls: [URL]) -> Bool { workflow.openUsingExtension(urls) }
@@ -39,6 +47,7 @@ extension CommanderController {
     func makeCommandRegistry(defaults: UserDefaults = .standard) -> CommandRegistry {
         let registry = CommandRegistry(defaults: defaults)
         registerCommands(in: registry)
+        workspaceTools.registerCommands(in: registry)
         registerHelpCommands(in: registry)
         fileOperations.registerCommands(in: registry)
         fileExchange.registerCommands(in: registry)
@@ -51,10 +60,11 @@ extension CommanderController {
         preferences.registerCommands(in: registry)
         commandPalette.registerCommands(in: registry)
         for (menu, pane) in [(CommandMenu.left, left), (.right, right)] {
-            registerPanelCommands(in: registry, menu: menu, pane: pane)
-            remote.registerPanelCommands(in: registry, menu: menu, pane: pane)
-            preferences.registerPanelCommands(in: registry, menu: menu, pane: pane)
-            workflow.registerPanelCommands(in: registry, menu: menu, pane: pane)
+            let resolve = { [unowned self] in menu == .left ? self.left : self.right }
+            registerPanelCommands(in: registry, menu: menu, pane: pane, resolvePane: resolve)
+            remote.registerPanelCommands(in: registry, menu: menu, pane: pane, resolvePane: resolve)
+            preferences.registerPanelCommands(in: registry, menu: menu, pane: pane, resolvePane: resolve)
+            workflow.registerPanelCommands(in: registry, menu: menu, pane: pane, resolvePane: resolve)
         }
         registry.addContextDefinitions()
         return registry
