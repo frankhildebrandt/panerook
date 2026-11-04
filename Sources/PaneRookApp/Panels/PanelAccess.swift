@@ -49,6 +49,7 @@ protocol RemotePanelContent: AnyObject {
     func selectMatching(_ pattern: String, select: Bool)
     func invertSelection()
     func installFavoritesMenu(_ menu: NSMenu)
+    func installFileContextMenu(provider: @escaping () -> NSMenu?)
     func showFavorites()
     func makeDirectory()
     func deleteSelected()
@@ -79,6 +80,7 @@ extension RemotePanelContent {
     func selectMatching(_ pattern: String, select: Bool) {}
     func invertSelection() {}
     func installFavoritesMenu(_ menu: NSMenu) {}
+    func installFileContextMenu(provider: @escaping () -> NSMenu?) {}
     func showFavorites() {}
 }
 

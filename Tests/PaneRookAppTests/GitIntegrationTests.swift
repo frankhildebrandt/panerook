@@ -338,7 +338,7 @@ final class GitIntegrationTests: XCTestCase {
         XCTAssertTrue(column.isHidden)
     }
 
-    func testGitControlsMoveToTrailingPathBarAndBackAsPanelResizes() throws {
+    func testGitControlsKeepADedicatedRowAndWorkingActionsAsPanelResizes() throws {
         let pane = PaneController(label: "Layout Test", directory: repository)
         pane.view.frame = NSRect(x: 0, y: 0, width: 1500, height: 600)
         let column = try gitColumn(pane)
@@ -352,6 +352,10 @@ final class GitIntegrationTests: XCTestCase {
         let listing = try XCTUnwrap(pane.table.enclosingScrollView)
         var openCount = 0
         pane.onOpenGit = { openCount += 1 }
+        pane.view.layoutSubtreeIfNeeded()
+        let initialPathY = pane.pathField.convert(pane.pathField.bounds, to: pane.view).midY
+        let initialGitY = group.convert(group.bounds, to: pane.view).midY
+        let initialListingTop = listing.convert(listing.bounds, to: pane.view).maxY
 
         for width: CGFloat in [1500, 400, 1500, 320, 1500] {
             pane.view.setFrameSize(NSSize(width: width, height: 600))
@@ -362,14 +366,16 @@ final class GitIntegrationTests: XCTestCase {
             XCTAssertFalse(group.isHidden)
             XCTAssertGreaterThanOrEqual(pathFrame.width, 180)
             XCTAssertEqual(group.arrangedSubviews.count, 3)
-            if width == 1500 {
-                XCTAssertEqual(gitFrame.midY, pathFrame.midY, accuracy: 1)
-                XCTAssertGreaterThan(gitFrame.minX, pathFrame.maxX)
-                XCTAssertEqual(gitFrame.maxX, width - 12, accuracy: 1)
-                XCTAssertEqual(listingFrame.maxY, 552, accuracy: 1)
-            } else {
-                XCTAssertLessThanOrEqual(gitFrame.maxY, pathFrame.minY)
-                XCTAssertEqual(listingFrame.maxY, 520, accuracy: 1)
+            XCTAssertLessThanOrEqual(gitFrame.maxY, pathFrame.minY)
+            XCTAssertEqual(pathFrame.midY, initialPathY, accuracy: 1)
+            XCTAssertEqual(gitFrame.midY, initialGitY, accuracy: 1)
+            XCTAssertEqual(listingFrame.maxY, initialListingTop, accuracy: 1)
+            XCTAssertLessThanOrEqual(listingFrame.maxY, gitFrame.minY)
+            for control in group.arrangedSubviews {
+                let frame = control.convert(control.bounds, to: pane.view)
+                XCTAssertGreaterThan(frame.width, 0)
+                XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                XCTAssertLessThanOrEqual(frame.maxX, width)
             }
             let previousOpenCount = openCount
             XCTAssertTrue(branch.sendAction(branch.action, to: branch.target))
@@ -397,7 +403,7 @@ final class GitIntegrationTests: XCTestCase {
         XCTAssertEqual(listing.convert(listing.bounds, to: pane.view).maxY, 552, accuracy: 1)
     }
 
-    func testLongBranchAndPathUseSecondRowUntilThereIsEnoughSpace() throws {
+    func testBranchAndPathLengthNeverMoveTheGitRowOrListing() throws {
         let pane = PaneController(label: "Long Branch Test", directory: repository)
         pane.view.frame = NSRect(x: 0, y: 0, width: 1500, height: 600)
         let column = try gitColumn(pane)
@@ -405,29 +411,52 @@ final class GitIntegrationTests: XCTestCase {
         let branch = try XCTUnwrap(descendants(of: pane.view).compactMap { $0 as? NSButton }
             .first { $0.action == NSSelectorFromString("openGit") })
         let group = try XCTUnwrap(branch.superview)
+        let listing = try XCTUnwrap(pane.table.enclosingScrollView)
         pane.view.layoutSubtreeIfNeeded()
-        let inlineY = pane.pathField.convert(pane.pathField.bounds, to: pane.view).midY
-        XCTAssertEqual(group.convert(group.bounds, to: pane.view).midY, inlineY, accuracy: 1)
+        let initialPathY = pane.pathField.convert(pane.pathField.bounds, to: pane.view).midY
+        let initialGitY = group.convert(group.bounds, to: pane.view).midY
+        let initialListingTop = listing.convert(listing.bounds, to: pane.view).maxY
+        func assertStableHeader(file: StaticString = #filePath, line: UInt = #line) {
+            pane.view.layoutSubtreeIfNeeded()
+            let pathFrame = pane.pathField.convert(pane.pathField.bounds, to: pane.view)
+            let gitFrame = group.convert(group.bounds, to: pane.view)
+            let branchFrame = branch.convert(branch.bounds, to: pane.view)
+            XCTAssertFalse(group.isHidden, file: file, line: line)
+            XCTAssertEqual(pathFrame.midY, initialPathY, accuracy: 1, file: file, line: line)
+            XCTAssertEqual(gitFrame.midY, initialGitY, accuracy: 1, file: file, line: line)
+            XCTAssertEqual(listing.convert(listing.bounds, to: pane.view).maxY,
+                           initialListingTop, accuracy: 1, file: file, line: line)
+            XCTAssertLessThanOrEqual(gitFrame.maxY, pathFrame.minY, file: file, line: line)
+            XCTAssertGreaterThan(branchFrame.width, 0, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(branchFrame.minX, 0, file: file, line: line)
+            XCTAssertLessThanOrEqual(branchFrame.maxX, pane.view.bounds.width, file: file, line: line)
+        }
+        assertStableHeader()
 
         let longBranch = "feature/" + String(repeating: "long-branch-name-", count: 12) + "end"
         try git(["checkout", "-b", longBranch])
         pane.refresh()
         try eventually { branch.title.contains(longBranch) }
-        pane.view.layoutSubtreeIfNeeded()
-        XCTAssertLessThan(group.convert(group.bounds, to: pane.view).maxY,
-                          pane.pathField.convert(pane.pathField.bounds, to: pane.view).minY)
+        assertStableHeader()
 
         try git(["checkout", "main"])
         pane.refresh()
         try eventually { branch.title.hasPrefix("main ·") }
-        pane.view.layoutSubtreeIfNeeded()
-        XCTAssertEqual(group.convert(group.bounds, to: pane.view).midY, inlineY, accuracy: 1)
+        assertStableHeader()
 
-        pane.pathField.stringValue = "/" + String(repeating: "long-directory-name/", count: 20)
-        pane.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: pane.pathField))
-        pane.view.layoutSubtreeIfNeeded()
-        XCTAssertLessThan(group.convert(group.bounds, to: pane.view).maxY,
-                          pane.pathField.convert(pane.pathField.bounds, to: pane.view).minY)
+        for width: CGFloat in [320, 700, 1500] {
+            pane.view.setFrameSize(NSSize(width: width, height: 600))
+            for path in ["/tmp", "/" + String(repeating: "long-directory-name/", count: 20)] {
+                pane.pathField.stringValue = path
+                pane.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: pane.pathField))
+                assertStableHeader()
+                XCTAssertGreaterThanOrEqual(pane.pathField.bounds.width, 180)
+            }
+        }
+        var opened = false
+        pane.onOpenGit = { opened = true }
+        XCTAssertTrue(branch.sendAction(branch.action, to: branch.target))
+        XCTAssertTrue(opened)
     }
 
     func testNewerNavigationKeepsOrdinaryListingWhenInitialRepositoryReadFinishes() throws {

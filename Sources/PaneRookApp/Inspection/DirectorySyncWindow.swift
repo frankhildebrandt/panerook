@@ -19,15 +19,15 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
     private let store: DirectorySyncProfileStore
     private let left = ToolUI.field()
     private let right = ToolUI.field()
-    private let direction = NSPopUpButton()
-    private let deletion = NSButton(checkboxWithTitle: "Zusätzliche Zieleinträge löschen (endgültig)", target: nil, action: nil)
+    private let profileManagement = NSStackView()
+    private let deletion = NSButton(checkboxWithTitle: "Zusätzliche Einträge im Ziel endgültig löschen", target: nil, action: nil)
     private let exclusions = ToolUI.field()
     private let profiles = NSPopUpButton()
     private let profileName = ToolUI.field()
     private let table = NSTableView()
-    private let status = NSTextField(wrappingLabelWithString: "Optionen wählen und eine Vorschau erstellen. Es wird noch nichts verändert.")
-    private let preview = NSButton(title: "Vorschau erstellen", target: nil, action: nil)
-    private let execute = NSButton(title: "Auswahl ausführen …", target: nil, action: nil)
+    private let status = NSTextField(wrappingLabelWithString: "Ordner vergleichen, Änderungen prüfen und anschließend ausführen.")
+    private let preview = NSButton(title: "Vergleichen", target: nil, action: nil)
+    private let execute = NSButton(title: "Änderungen ausführen …", target: nil, action: nil)
     private var buttons: [NSButton] = []
     private var savedProfiles: [DirectorySyncProfile] = []
     private(set) var plan: DirectorySyncPlan?
@@ -50,13 +50,14 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         super.init(window: panel)
         panel.title = "Ordner synchronisieren"; panel.minSize = NSSize(width: 790, height: 560)
         panel.isReleasedWhenClosed = false; panel.delegate = self; panel.center(); panel.contentView = AppStyle.background()
-        for (control, id) in [(left, "left"), (right, "right"), (direction, "direction"), (deletion, "deletion"),
+        for (control, id) in [(left, "left"), (right, "right"), (deletion, "deletion"),
                               (exclusions, "exclusions"), (profiles, "profiles"), (profileName, "profileName")] as [(NSControl, String)] {
             control.identifier = .init("sync." + id)
         }
-        left.stringValue = leftURL.path; right.stringValue = rightURL.path
-        direction.addItems(withTitles: ["Links → Rechts", "Rechts → Links"])
-        direction.target = self; direction.action = #selector(optionsChanged)
+        let fromRight = host.activePane === rightPane
+        left.stringValue = (fromRight ? rightURL : leftURL).path
+        right.stringValue = (fromRight ? leftURL : rightURL).path
+        left.setAccessibilityLabel("Quellordner"); right.setAccessibilityLabel("Zielordner")
         deletion.target = self; deletion.action = #selector(optionsChanged)
         exclusions.placeholderString = "*.tmp; .git; build; Unterordner/cache"
         exclusions.toolTip = "Mit Semikolon getrennte Shell-Muster (*, ?, […]); Groß-/Kleinschreibung beachten. Ohne / gilt ein Muster für Namen auf jeder Ebene. Ausgeschlossene Ordner werden nicht betreten."
@@ -65,17 +66,36 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         profiles.target = self; profiles.action = #selector(loadProfile)
         let save = button("Profil speichern", id: "sync.profile.save", action: #selector(saveProfile))
         let remove = button("Profil entfernen", id: "sync.profile.remove", action: #selector(removeProfile))
-        let profileRow = NSStackView(views: [profiles, profileName, save, remove]); profileRow.spacing = 8
         profiles.widthAnchor.constraint(equalToConstant: 190).isActive = true
         profileName.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
-        let directionRow = NSStackView(views: [direction, deletion, NSView()]); directionRow.spacing = 16
-        let form = NSGridView(views: [
-            [NSTextField(labelWithString: "Linker Ordner"), left],
-            [NSTextField(labelWithString: "Rechter Ordner"), right],
-            [NSTextField(labelWithString: "Richtung"), directionRow],
-            [NSTextField(labelWithString: "Ausschlüsse (; getrennt)"), exclusions]
-        ])
-        form.rowSpacing = 8; form.columnSpacing = 12; form.column(at: 0).xPlacement = .trailing
+        profileManagement.orientation = .horizontal; profileManagement.spacing = 8
+        for view in [profileName, save, remove] { profileManagement.addArrangedSubview(view) }
+        profileManagement.isHidden = true
+        let manage = button("Profile verwalten", id: "sync.profiles.manage", action: #selector(toggleProfileManagement))
+        let profileRow = NSStackView(views: [profiles, manage, NSView()]); profileRow.spacing = 8
+        let sourcePicker = button("Ordner auswählen …", id: "sync.source.choose", action: #selector(chooseSource))
+        let destinationPicker = button("Ordner auswählen …", id: "sync.destination.choose", action: #selector(chooseDestination))
+        sourcePicker.setAccessibilityLabel("Quellordner auswählen")
+        destinationPicker.setAccessibilityLabel("Zielordner auswählen")
+        let swap = button("Tauschen", id: "sync.swap", action: #selector(swapFolders))
+        swap.toolTip = "Quelle und Ziel tauschen"
+        let arrow = NSImageView(image: NSImage(systemSymbolName: "arrow.right", accessibilityDescription: "Von der Quelle zum Ziel")!)
+        let flow = NSStackView(views: [arrow, swap]); flow.orientation = .vertical; flow.spacing = 8
+        func location(_ title: String, field: NSTextField, choose: NSButton) -> NSStackView {
+            let heading = NSTextField(labelWithString: title); heading.font = .systemFont(ofSize: 14, weight: .semibold)
+            let actions = NSStackView(views: [heading, NSView(), choose]); actions.spacing = 8
+            let group = NSStackView(views: [actions, field]); group.orientation = .vertical; group.alignment = .leading; group.spacing = 8
+            for view in [actions, field] { view.widthAnchor.constraint(equalTo: group.widthAnchor).isActive = true }
+            return group
+        }
+        let source = location("Quelle", field: left, choose: sourcePicker)
+        let destination = location("Ziel", field: right, choose: destinationPicker)
+        let locations = NSStackView(views: [source, flow, destination]); locations.spacing = 12; locations.alignment = .centerY
+        source.widthAnchor.constraint(equalTo: destination.widthAnchor).isActive = true
+        let options = NSStackView(views: [deletion, NSView()]); options.spacing = 8
+        let exceptionsLabel = NSTextField(labelWithString: "Ausnahmen")
+        let exclusionsRow = NSStackView(views: [exceptionsLabel, exclusions]); exclusionsRow.spacing = 12
+        exclusions.setAccessibilityLabel("Von der Synchronisation ausgeschlossene Namen oder Pfade")
         table.delegate = self; table.dataSource = self; table.rowHeight = 28; table.style = .inset
         for (id, title, width) in [("selected", "Auswahl", 65.0), ("path", "Relativer Pfad", 330.0), ("action", "Aktion / Hinweis", 360.0), ("bytes", "Umfang", 95.0)] {
             let column = NSTableColumn(identifier: .init(id)); column.title = title; column.width = width
@@ -83,26 +103,26 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         }
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
-        let all = button("Alle auswählen", id: "sync.selectAll", action: #selector(selectAllActions))
-        let none = button("Keine auswählen", id: "sync.selectNone", action: #selector(selectNone))
+        let all = button("Alle", id: "sync.selectAll", action: #selector(selectAllActions))
+        let none = button("Keine", id: "sync.selectNone", action: #selector(selectNone))
+        all.setAccessibilityLabel("Alle Änderungen auswählen"); none.setAccessibilityLabel("Keine Änderungen auswählen")
+        all.toolTip = "Alle Änderungen auswählen"; none.toolTip = "Keine Änderungen auswählen"
         preview.target = self; preview.action = #selector(makePreview); AppStyle.configureButton(preview); ContextCommands.configure(preview, id: "sync.preview")
         execute.target = self; execute.action = #selector(confirmExecution); AppStyle.configureButton(execute); ContextCommands.configure(execute, id: "sync.execute")
         let close = button("Schließen", id: "dialog.cancel", action: #selector(closeSync))
-        let footer = NSStackView(views: [all, none, NSView(), preview, execute, close]); footer.spacing = 8
+        let footer = NSStackView(views: [all, none, NSView(), close, preview, execute]); footer.spacing = 8
         status.font = .systemFont(ofSize: 12); status.setContentCompressionResistancePriority(.required, for: .vertical)
-        let hint = NSTextField(wrappingLabelWithString: "Nur lokale Dateien und Ordner. Links und Typkonflikte bleiben gesperrt. Änderungen an Quelle oder Ziel erfordern eine neue Vorschau. Ordnerauswahl berücksichtigt abhängige Unteraktionen.")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        let root = NSStackView(views: [profileRow, form, hint, scroll, status, footer])
-        root.orientation = .vertical; root.alignment = .leading; root.spacing = 10
-        root.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        let root = NSStackView(views: [locations, options, exclusionsRow, profileRow, profileManagement, scroll, status, footer])
+        root.orientation = .vertical; root.alignment = .leading; root.spacing = 12
+        root.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         root.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(root)
         NSLayoutConstraint.activate([
             root.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor), root.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor),
             root.topAnchor.constraint(equalTo: panel.contentView!.topAnchor), root.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor),
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 150)
         ])
-        for view in [profileRow, form, hint, scroll, status, footer] { view.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -24).isActive = true }
-        panel.initialFirstResponder = direction
+        for view in [locations, options, exclusionsRow, profileRow, profileManagement, scroll, status, footer] { view.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -40).isActive = true }
+        panel.initialFirstResponder = preview
         panel.onCancel = { [weak self] in self?.closeSync() }
         panel.configureCommands(scope: .results) { [weak self] id in self?.performCommand(id) ?? false }
         reloadProfiles(); updateControls()
@@ -113,15 +133,34 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         AppStyle.configureButton(button); ContextCommands.configure(button, id: id); buttons.append(button); return button
     }
     private func performCommand(_ id: String) -> Bool {
-        if let button = ([preview, execute] + buttons).first(where: { $0.identifier?.rawValue == id && $0.isEnabled }) {
+        if let button = ([preview, execute] + buttons).first(where: { $0.identifier?.rawValue == id && $0.isEnabled && !$0.isHiddenOrHasHiddenAncestor }) {
             button.performClick(nil); return true
         }
         return false
     }
     private var options: DirectorySyncOptions {
-        .init(direction: direction.indexOfSelectedItem == 0 ? .leftToRight : .rightToLeft,
+        .init(direction: .leftToRight,
               deleteExtraneous: deletion.state == .on,
               exclusions: exclusions.stringValue.components(separatedBy: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+    }
+    @objc private func toggleProfileManagement() { profileManagement.isHidden.toggle() }
+    @objc private func swapFolders() {
+        guard !busy else { return }
+        let source = left.stringValue; left.stringValue = right.stringValue; right.stringValue = source
+        optionsChanged()
+    }
+    @objc private func chooseSource() { chooseFolder(for: left, title: "Quellordner auswählen") }
+    @objc private func chooseDestination() { chooseFolder(for: right, title: "Zielordner auswählen") }
+    private func chooseFolder(for field: NSTextField, title: String) {
+        guard !busy, let window, window.attachedSheet == nil else { return }
+        let picker = NSOpenPanel(); picker.title = title; picker.prompt = "Auswählen"
+        picker.canChooseFiles = false; picker.canChooseDirectories = true; picker.allowsMultipleSelection = false
+        picker.canCreateDirectories = true
+        picker.directoryURL = URL(fileURLWithPath: (field.stringValue as NSString).expandingTildeInPath, isDirectory: true)
+        picker.beginSheetModal(for: window) { [weak self, weak field] response in
+            guard let self, let field, response == .OK, let url = picker.url else { return }
+            field.stringValue = url.path; self.optionsChanged()
+        }
     }
     private func urls() throws -> (URL, URL) {
         let paths = [left.stringValue, right.stringValue].map { ($0 as NSString).expandingTildeInPath }
@@ -134,9 +173,11 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
     }
     func controlTextDidChange(_ obj: Notification) { optionsChanged() }
     private func updateControls() {
-        for control in [left, right, direction, deletion, exclusions, profiles, profileName] as [NSControl] { control.isEnabled = !busy }
+        for control in [left, right, deletion, exclusions, profiles, profileName] as [NSControl] { control.isEnabled = !busy }
         buttons.forEach { $0.isEnabled = !busy || $0.identifier?.rawValue == "dialog.cancel" }
         preview.isEnabled = !busy; execute.isEnabled = !busy && plan != nil && !selection.isEmpty
+        execute.title = selection.isEmpty ? "Änderungen ausführen …" : "\(selection.count) \(selection.count == 1 ? "Änderung" : "Änderungen") ausführen …"
+        preview.title = plan == nil ? "Vergleichen" : "Erneut vergleichen"
     }
     @objc func makePreview() {
         guard !busy, let host else { return }
@@ -165,7 +206,10 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         let deleted = actions.filter { $0.kind.isDeletion }.count
         let blocked = plan.actions.filter { !$0.isSelectable }.count
         let bytes = ByteCountFormatter.string(fromByteCount: plan.transferBytes(selected: selection), countStyle: .file)
-        status.stringValue = "\(plan.source.path) → \(plan.destination.path)\n\(actions.count) ausgewählt: \(added) neu · \(updated) aktualisieren · \(deleted) endgültig löschen · \(bytes) übertragen · \(blocked) gesperrt · \(plan.excludedCount) ausgeschlossen"
+        status.stringValue = "\(actions.count) \(actions.count == 1 ? "Änderung" : "Änderungen"): \(added) neu · \(updated) aktualisieren · \(deleted) endgültig löschen · \(bytes)" +
+            (blocked > 0 ? " · \(blocked) nicht ausführbar" : "") +
+            (plan.excludedCount > 0 ? " · \(plan.excludedCount) ausgeschlossen" : "")
+        status.toolTip = "\(plan.source.path) → \(plan.destination.path)"
     }
     @objc func confirmExecution() {
         guard !busy, let plan, !selection.isEmpty, let window, let host else { return }
@@ -203,7 +247,7 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
     private func reloadProfiles(select id: UUID? = nil) {
         do {
             savedProfiles = try store.profiles(); profiles.removeAllItems()
-            profiles.addItems(withTitles: ["Neues Profil"] + savedProfiles.map(\.name))
+            profiles.addItems(withTitles: ["Profil laden …"] + savedProfiles.map(\.name))
             profiles.selectItem(at: id.flatMap { id in savedProfiles.firstIndex { $0.id == id }.map { $0 + 1 } } ?? 0)
         } catch { showError(error) }
     }
@@ -211,9 +255,10 @@ final class DirectorySyncWindow: NSWindowController, NSWindowDelegate, NSTableVi
         let index = profiles.indexOfSelectedItem - 1
         guard savedProfiles.indices.contains(index) else { profileName.stringValue = ""; return }
         let profile = savedProfiles[index]
-        left.stringValue = profile.left.path; right.stringValue = profile.right.path
+        let forward = profile.options.direction == .leftToRight
+        left.stringValue = (forward ? profile.left : profile.right).path
+        right.stringValue = (forward ? profile.right : profile.left).path
         profileName.stringValue = profile.name; exclusions.stringValue = profile.options.exclusions.joined(separator: "; ")
-        direction.selectItem(at: profile.options.direction == .leftToRight ? 0 : 1)
         deletion.state = profile.options.deleteExtraneous ? .on : .off
         optionsChanged()
     }

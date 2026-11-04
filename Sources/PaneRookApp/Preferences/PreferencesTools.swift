@@ -10,7 +10,8 @@ final class PreferencesTools {
         self.defaults = defaults
     }
     private func bool(_ key: String, fallback: Bool = true) -> Bool { defaults.object(forKey: key) as? Bool ?? fallback }
-    private var settingsDialog: SettingsDialog?
+    private(set) var settingsDialog: SettingsDialog?
+    var canShowSettings: Bool { owner.canUseMenus || settingsDialog?.window?.isKeyWindow == true }
     var makeUpdateSettingsView: (() -> NSView)?
     static let encodings: [(String, String.Encoding)] = [
         ("Unicode (UTF-8)", .utf8), ("Unicode (UTF-16)", .utf16),
@@ -18,20 +19,18 @@ final class PreferencesTools {
         ("Mac OS Roman", .macOSRoman)
     ]
 
-    func showSettings(section: SettingsSection = .general) {
+    func showSettings(section: SettingsSection? = nil) {
         if let settingsDialog {
-            settingsDialog.show(section)
+            if let section { settingsDialog.show(section) }
             settingsDialog.window?.makeKeyAndOrderFront(nil)
             return
         }
         guard owner.canUseMenus, let window = owner.presentationWindow else { return }
-        let pane = owner.activePane
-        let dialog = SettingsDialog(preferences: self, section: section, defaults: defaults, updaterView: { [weak self] in
+        let initialSection = section ?? defaults.string(forKey: "settings.selectedSection").flatMap(SettingsSection.init(rawValue:)) ?? .general
+        let dialog = SettingsDialog(preferences: self, section: initialSection, defaults: defaults, updaterView: { [weak self] in
             self?.makeUpdateSettingsView?() ?? NSTextField(wrappingLabelWithString: "Die Update-Funktion ist in diesem Startmodus nicht verfügbar.")
-        }) { [weak self, weak pane] in
-            guard let self else { return }
-            self.settingsDialog = nil
-            if let pane { self.owner.activate(pane) }
+        }) { [weak self] in
+            self?.settingsDialog = nil
         }
         settingsDialog = dialog
         dialog.begin(on: window)

@@ -54,6 +54,7 @@ final class DirectorySyncWindowTests: XCTestCase {
         let content = try XCTUnwrap(controller.window?.contentView)
         let execute = try control(NSButton.self, "sync.execute", in: content)
         XCTAssertTrue(execute.isEnabled)
+        XCTAssertEqual(execute.title, "1 Änderung ausführen …")
         let exclusions = try control(NSTextField.self, "sync.exclusions", in: content)
         exclusions.stringValue = "file"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: exclusions))
@@ -61,6 +62,39 @@ final class DirectorySyncWindowTests: XCTestCase {
         controller.makePreview(); waitUntil { controller.plan != nil }
         XCTAssertTrue(controller.selection.isEmpty)
     }
+    @MainActor func testReversedProfileKeepsSourceAndDestinationAndSwappingInvalidatesPreview() throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("PaneRook-sync-direction-\(UUID())")
+        let left = root.appendingPathComponent("left"), right = root.appendingPathComponent("right")
+        for path in [left, right] { try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true) }
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("source".utf8).write(to: right.appendingPathComponent("file"))
+        let suite = "PaneRook-sync-direction-\(UUID())"; let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DirectorySyncProfileStore(defaults: defaults)
+        try store.save(.init(name: "Von rechts", left: left, right: right, options: .init(direction: .rightToLeft)))
+        let host = Host(left: left, right: right)
+        let controller = DirectorySyncWindow(host: host, store: store)
+        defer { controller.close() }
+        let content = try XCTUnwrap(controller.window?.contentView)
+        let profiles = try control(NSPopUpButton.self, "sync.profiles", in: content)
+        profiles.selectItem(at: 1); XCTAssertTrue(profiles.sendAction(profiles.action, to: profiles.target))
+        XCTAssertEqual(try control(NSTextField.self, "sync.left", in: content).stringValue, right.path)
+        XCTAssertEqual(try control(NSTextField.self, "sync.right", in: content).stringValue, left.path)
+        controller.makePreview(); waitUntil { controller.plan != nil }
+        XCTAssertEqual(controller.plan?.source.lastPathComponent, "right")
+        XCTAssertEqual(controller.plan?.destination.lastPathComponent, "left")
+        XCTAssertEqual(controller.selection, ["file"])
+        try control(NSButton.self, "sync.swap", in: content).performClick(nil)
+        XCTAssertNil(controller.plan)
+        XCTAssertFalse(try control(NSButton.self, "sync.execute", in: content).isEnabled)
+        controller.makePreview(); waitUntil { controller.plan != nil }
+        XCTAssertEqual(controller.plan?.source.lastPathComponent, "left")
+        XCTAssertEqual(controller.plan?.destination.lastPathComponent, "right")
+        XCTAssertTrue(controller.selection.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: left.appendingPathComponent("file").path))
+    }
+
     @MainActor func testProfilesAndConfirmedExecutionThroughTaskQueue() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("PaneRook-sync-execution-\(UUID())")
@@ -76,6 +110,7 @@ final class DirectorySyncWindowTests: XCTestCase {
         let controller = DirectorySyncWindow(host: host, store: store)
         defer { controller.close() }
         let content = try XCTUnwrap(controller.window?.contentView)
+        try control(NSButton.self, "sync.profiles.manage", in: content).performClick(nil)
         try control(NSTextField.self, "sync.profileName", in: content).stringValue = "Testprofil"
         try control(NSButton.self, "sync.profile.save", in: content).performClick(nil)
         XCTAssertEqual(try store.profiles().map(\.name), ["Testprofil"])

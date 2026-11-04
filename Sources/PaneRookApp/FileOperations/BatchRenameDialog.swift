@@ -15,6 +15,14 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
     private let summary = NSTextField(labelWithString: "Quellen werden erfasst …")
     private let errors = NSTextView()
     private let submit = NSButton(title: "Umbenennen", target: nil, action: nil)
+    private let addRule = NSPopUpButton()
+    private let token = NSPopUpButton()
+    private let numberOptions = NSStackView(), dateOptions = NSStackView()
+    private let presetManagement = NSStackView()
+    private let errorScroll = NSScrollView()
+    private let emptyRules = NSTextField(wrappingLabelWithString: "Wähle oben eine Regel, zum Beispiel Text ersetzen oder Nummerieren. Die Vorschau zeigt jede Änderung vor dem Umbenennen.")
+    private var sections: [Int: NSStackView] = [:]
+    private var enabledSections = Set<Int>()
     private let store: BatchRenamePresets
     private let completion: (BatchRenamePlan?) -> Void
     private let worker = DispatchQueue(label: "app.panerook.batch-rename-preview", qos: .userInitiated)
@@ -31,7 +39,7 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
 
     init(sources urls: [URL], store: BatchRenamePresets = .init(), completion: @escaping (BatchRenamePlan?) -> Void) {
         self.store = store; self.completion = completion
-        let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 860, height: 690),
+        let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 1020, height: 650),
                               styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         super.init(window: panel)
         panel.title = "Mehrfachumbenennen"
@@ -57,70 +65,133 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
     required init?(coder: NSCoder) { fatalError("init(coder:) is unsupported") }
 
     private func buildUI(in panel: NSPanel) {
-        let stack = NSStackView()
-        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        panel.contentView!.addSubview(stack)
+        let root = NSStackView()
+        root.orientation = .vertical; root.alignment = .leading; root.spacing = 12
+        root.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView!.addSubview(root)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 18),
-            stack.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -18)
+            root.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 20),
+            root.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -20),
+            root.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 20),
+            root.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -20)
         ])
-        func row(_ views: [NSView]) {
-            let row = NSStackView(views: views); row.spacing = 8
-            stack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        }
         func label(_ title: String) -> NSTextField { NSTextField(labelWithString: title) }
-        let title = label("Regeln kombinieren · Vorschau ohne Dateiänderungen")
-        title.font = .systemFont(ofSize: 16, weight: .semibold)
-        stack.addArrangedSubview(title)
-        row([label("Suchen"), search, label("Ersetzen"), replacement])
-        row([regex, matchCase, NSView()])
-        row([label("Schreibweise"), letterCase, includeExtension, NSView()])
-        letterCase.addItems(withTitles: ["Unverändert", "kleinbuchstaben", "GROSSBUCHSTABEN", "Wortanfänge groß"])
-        row([label("Präfix"), prefix, label("Suffix"), suffix])
-        row([label("Nummer {n}: Start"), start, label("Schritt"), step, label("Stellen"), digits])
-        row([label("Datum {date}"), dateSource, label("Format"), dateFormat])
-        dateSource.addItems(withTitles: ["Dialog geöffnet", "Änderungsdatum", "Erstellungsdatum"])
-        let hint = label("Präfix/Suffix: {n} = Nummer, {date} = Datum (z. B. yyyy-MM-dd). Reihenfolge: Suchen → Schreibweise → Präfix/Suffix.")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(hint)
-        presetName.placeholderString = "Preset-Name (gleicher Name ersetzt)"
-        let save = NSButton(title: "Speichern", target: self, action: #selector(savePreset))
-        let remove = NSButton(title: "Entfernen", target: self, action: #selector(removePreset))
-        row([preset, presetName, save, remove])
+        func row(_ views: [NSView]) -> NSStackView {
+            let row = NSStackView(views: views); row.spacing = 8; row.alignment = .centerY
+            return row
+        }
+        func attach(_ view: NSView, to stack: NSStackView) {
+            stack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        addRule.addItems(withTitles: ["Regel hinzufügen …", "Text ersetzen", "Text hinzufügen", "Nummerieren", "Datum hinzufügen", "Schreibweise ändern"])
+        addRule.identifier = .init("rename.addRule")
+        addRule.setAccessibilityLabel("Regel hinzufügen")
+        addRule.target = self; addRule.action = #selector(addSelectedRule)
         preset.target = self; preset.action = #selector(loadPreset)
         preset.setAccessibilityLabel("Gespeicherte Umbenennungsregeln")
-        for (id, title, width) in [("old", "Alter Name", 280.0), ("new", "Neuer Name", 340.0), ("status", "Status", 160.0)] {
+        let manage = NSButton(title: "Vorlagen verwalten", target: self, action: #selector(togglePresets))
+        manage.identifier = .init("rename.presets.manage")
+        AppStyle.configureButton(manage)
+        attach(row([addRule, NSView(), preset, manage]), to: root)
+
+        presetName.placeholderString = "Name der Vorlage"
+        presetName.setAccessibilityLabel("Name der Umbenennungsvorlage")
+        let save = NSButton(title: "Vorlage speichern", target: self, action: #selector(savePreset))
+        let remove = NSButton(title: "Vorlage entfernen", target: self, action: #selector(removePreset))
+        presetManagement.orientation = .horizontal; presetManagement.spacing = 8
+        for view in [presetName, save, remove] { presetManagement.addArrangedSubview(view) }
+        presetManagement.isHidden = true
+        attach(presetManagement, to: root)
+
+        let ruleStack = NSStackView(); ruleStack.orientation = .vertical; ruleStack.alignment = .leading; ruleStack.spacing = 16
+        ruleStack.translatesAutoresizingMaskIntoConstraints = false
+        let ruleScroll = NSScrollView(); ruleScroll.hasVerticalScroller = true
+        ruleScroll.drawsBackground = false; ruleScroll.autohidesScrollers = false
+        ruleScroll.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        let ruleDocument = RenameRulesDocument()
+        ruleDocument.translatesAutoresizingMaskIntoConstraints = false
+        ruleDocument.addSubview(ruleStack); ruleScroll.documentView = ruleDocument
+        NSLayoutConstraint.activate([
+            ruleDocument.widthAnchor.constraint(equalTo: ruleScroll.contentView.widthAnchor),
+            ruleStack.leadingAnchor.constraint(equalTo: ruleDocument.leadingAnchor),
+            ruleStack.topAnchor.constraint(equalTo: ruleDocument.topAnchor),
+            ruleStack.trailingAnchor.constraint(equalTo: ruleDocument.trailingAnchor, constant: -12),
+            ruleStack.bottomAnchor.constraint(equalTo: ruleDocument.bottomAnchor)
+        ])
+        emptyRules.font = .systemFont(ofSize: 12); emptyRules.textColor = .secondaryLabelColor
+        attach(emptyRules, to: ruleStack)
+        func section(_ title: String, id: Int, views: [NSView]) {
+            let heading = label(title); heading.font = .systemFont(ofSize: 13, weight: .semibold)
+            let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "Regel entfernen")!, target: self, action: #selector(removeRule(_:)))
+            remove.tag = id; remove.isBordered = false
+            remove.setAccessibilityLabel("\(title): Regel entfernen")
+            remove.identifier = .init("rename.removeRule.\(id)")
+            let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
+            attach(row([heading, NSView(), remove]), to: stack)
+            for view in views { attach(view, to: stack) }
+            sections[id] = stack
+            attach(stack, to: ruleStack)
+        }
+        search.placeholderString = "Gesuchter Text"; replacement.placeholderString = "Neuer Text"
+        section("Text ersetzen", id: 0, views: [label("Suchen"), search, label("Ersetzen durch"), replacement, regex, matchCase])
+        letterCase.addItems(withTitles: ["Unverändert", "kleinbuchstaben", "GROSSBUCHSTABEN", "Wortanfänge groß"])
+        section("Schreibweise", id: 1, views: [letterCase])
+        prefix.placeholderString = "Text vor dem Namen"; suffix.placeholderString = "Text nach dem Namen"
+        token.addItems(withTitles: ["Einfügen …", "Nummer", "Datum"])
+        token.target = self; token.action = #selector(insertToken)
+        token.setAccessibilityLabel("Nummer oder Datum vor dem Namen einfügen")
+        numberOptions.orientation = .vertical; numberOptions.alignment = .leading; numberOptions.spacing = 8
+        dateOptions.orientation = .vertical; dateOptions.alignment = .leading; dateOptions.spacing = 8
+        for (title, field) in [("Start", start), ("Schritt", step), ("Stellen", digits)] {
+            field.widthAnchor.constraint(equalToConstant: 72).isActive = true
+            numberOptions.addArrangedSubview(row([label(title), NSView(), field]))
+        }
+        for view in numberOptions.arrangedSubviews { view.widthAnchor.constraint(equalTo: numberOptions.widthAnchor).isActive = true }
+        dateSource.addItems(withTitles: ["Heute", "Änderungsdatum", "Erstellungsdatum"])
+        attach(dateSource, to: dateOptions); attach(label("Datumsformat"), to: dateOptions); attach(dateFormat, to: dateOptions)
+        let tokenHint = NSTextField(wrappingLabelWithString: "Nummer und Datum lassen sich auch nach dem Namen platzieren: {n} bzw. {date} in das untere Feld verschieben.")
+        tokenHint.font = .systemFont(ofSize: 11); tokenHint.textColor = .secondaryLabelColor
+        token.toolTip = tokenHint.stringValue
+        section("Name ergänzen", id: 2, views: [label("Vor dem Namen"), prefix, label("Nach dem Namen"), suffix, token, numberOptions, dateOptions])
+        includeExtension.toolTip = "Gilt für alle Regeln. Ohne diese Option bleibt die Dateiendung unverändert."
+        let options = NSStackView(views: [includeExtension]); options.orientation = .vertical; options.alignment = .leading
+        attach(options, to: ruleStack)
+        let order = NSTextField(wrappingLabelWithString: "Reihenfolge: Text ersetzen → Schreibweise → Name ergänzen")
+        order.font = .systemFont(ofSize: 11); order.textColor = .secondaryLabelColor
+        attach(order, to: ruleStack)
+
+        for (id, title, width) in [("old", "Alter Name", 220.0), ("new", "Neuer Name", 260.0), ("status", "Status", 100.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-            column.title = title; column.width = width; column.minWidth = 100
+            column.title = title; column.width = width; column.minWidth = 80
             table.addTableColumn(column)
         }
         table.dataSource = self; table.delegate = self; table.usesAlternatingRowBackgroundColors = true
-        table.rowHeight = 24
+        table.rowHeight = 26
         let scroll = NSScrollView(); scroll.documentView = table
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.borderType = .bezelBorder
-        stack.addArrangedSubview(scroll)
-        scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
-        stack.addArrangedSubview(summary)
+        let content = row([ruleScroll, scroll]); content.alignment = .top
+        attach(content, to: root)
+        content.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+        ruleScroll.heightAnchor.constraint(equalTo: content.heightAnchor).isActive = true
+        scroll.heightAnchor.constraint(equalTo: content.heightAnchor).isActive = true
+        scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 420).isActive = true
+        summary.font = .systemFont(ofSize: 12)
+        attach(summary, to: root)
+        errors.frame = NSRect(x: 0, y: 0, width: 900, height: 54)
+        errors.isVerticallyResizable = true
         errors.isEditable = false; errors.isSelectable = true; errors.drawsBackground = false
         errors.font = .systemFont(ofSize: 12); errors.textColor = .systemRed
-        errors.textContainer?.widthTracksTextView = true
-        errors.autoresizingMask = [.width]
-        let errorScroll = NSScrollView(); errorScroll.documentView = errors; errorScroll.hasVerticalScroller = true
-        errorScroll.drawsBackground = false
-        stack.addArrangedSubview(errorScroll)
-        errorScroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        errors.textContainer?.widthTracksTextView = true; errors.autoresizingMask = [.width]
+        errorScroll.documentView = errors; errorScroll.hasVerticalScroller = true; errorScroll.drawsBackground = false
+        errorScroll.isHidden = true
+        attach(errorScroll, to: root)
         errorScroll.heightAnchor.constraint(equalToConstant: 54).isActive = true
         let cancel = NSButton(title: "Abbrechen", target: self, action: #selector(cancel(_:)))
         submit.target = self; submit.action = #selector(confirm(_:)); submit.isEnabled = false
         for button in [cancel, submit, save, remove] { AppStyle.configureButton(button) }
-        ContextCommands.configure(cancel, id: "dialog.cancel")
-        ContextCommands.configure(submit, id: "dialog.accept")
-        row([NSView(), cancel, submit])
+        ContextCommands.configure(cancel, id: "dialog.cancel"); ContextCommands.configure(submit, id: "dialog.accept")
+        attach(row([NSView(), cancel, submit]), to: root)
         for (field, title) in [(search, "Suchen"), (replacement, "Ersetzen"), (prefix, "Präfix"), (suffix, "Suffix"),
                                (start, "Nummerierung: Start"), (step, "Nummerierung: Schritt"), (digits, "Nummerierung: Stellen"),
                                (dateFormat, "Datumsformat")] {
@@ -128,21 +199,63 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
             field.setAccessibilityLabel(title); field.cell?.isScrollable = true
             field.cell?.sendsActionOnEndEditing = false
             field.target = self; field.action = #selector(confirm(_:))
-            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         }
-        search.widthAnchor.constraint(equalTo: replacement.widthAnchor).isActive = true
-        prefix.widthAnchor.constraint(equalTo: suffix.widthAnchor).isActive = true
         for control: NSControl in [regex, matchCase, includeExtension, letterCase, dateSource] {
             control.target = self; control.action = #selector(rulesChanged)
         }
-        panel.minSize = NSSize(width: 860, height: 660)
-        panel.initialFirstResponder = search
+        panel.minSize = NSSize(width: 820, height: 520)
+        panel.initialFirstResponder = addRule
+    }
+
+    @objc private func addSelectedRule() {
+        let choice = addRule.indexOfSelectedItem
+        switch choice {
+        case 1: enabledSections.insert(0)
+        case 2: enabledSections.insert(2)
+        case 3: addToken("{n}_")
+        case 4: addToken("{date}_")
+        case 5: enabledSections.insert(1)
+        default: return
+        }
+        addRule.selectItem(at: 0)
+        updateRuleVisibility(); updatePreview()
+        window?.makeFirstResponder(choice == 1 ? search : choice == 5 ? letterCase : prefix)
+    }
+    private func addToken(_ value: String) {
+        enabledSections.insert(2)
+        let marker = String(value.dropLast())
+        if !prefix.stringValue.contains(marker) && !suffix.stringValue.contains(marker) {
+            prefix.stringValue += value
+        }
+    }
+    @objc private func insertToken() {
+        if token.indexOfSelectedItem == 1 { addToken("{n}_") }
+        else if token.indexOfSelectedItem == 2 { addToken("{date}_") }
+        token.selectItem(at: 0); updateRuleVisibility(); updatePreview()
+    }
+    @objc private func removeRule(_ sender: NSButton) {
+        enabledSections.remove(sender.tag)
+        switch sender.tag {
+        case 0: search.stringValue = ""; replacement.stringValue = ""; regex.state = .off
+        case 1: letterCase.selectItem(at: 0)
+        case 2: prefix.stringValue = ""; suffix.stringValue = ""
+        default: break
+        }
+        updateRuleVisibility(); updatePreview(); window?.makeFirstResponder(addRule)
+    }
+    @objc private func togglePresets() { presetManagement.isHidden.toggle() }
+    private func updateRuleVisibility() {
+        emptyRules.isHidden = !enabledSections.isEmpty
+        for (id, section) in sections { section.isHidden = !enabledSections.contains(id) }
+        let template = prefix.stringValue + suffix.stringValue
+        numberOptions.isHidden = !template.contains("{n}")
+        dateOptions.isHidden = !template.contains("{date}")
     }
 
     func begin(on parent: NSWindow) {
         guard let window else { return }
         parent.beginSheet(window) { [self] _ in completion(acceptedPlan) }
-        window.makeFirstResponder(search)
+        window.makeFirstResponder(addRule)
     }
     func setRules(_ rules: BatchRenameRules) {
         search.stringValue = rules.search; replacement.stringValue = rules.replacement
@@ -154,16 +267,25 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
         includeExtension.state = rules.includeExtension ? .on : .off
         letterCase.selectItem(at: BatchRenameRules.LetterCase.allCases.firstIndex(of: rules.letterCase)!)
         dateSource.selectItem(at: BatchRenameRules.DateSource.allCases.firstIndex(of: rules.dateSource)!)
-        updatePreview()
+        enabledSections = []
+        if !rules.search.isEmpty || !rules.replacement.isEmpty { enabledSections.insert(0) }
+        if rules.letterCase != .unchanged { enabledSections.insert(1) }
+        if !rules.prefix.isEmpty || !rules.suffix.isEmpty { enabledSections.insert(2) }
+        updateRuleVisibility(); updatePreview()
     }
     private func rules() throws -> BatchRenameRules {
-        guard let first = Int(start.stringValue), let delta = Int(step.stringValue), let width = Int(digits.stringValue) else {
+        let usesNumber = (prefix.stringValue + suffix.stringValue).contains("{n}")
+        let first = Int(start.stringValue), delta = Int(step.stringValue), width = Int(digits.stringValue)
+        if usesNumber && (first == nil || delta == nil || width == nil) {
             throw BatchRenameError("Start, Schritt und Stellen müssen ganze Zahlen sein.")
         }
         var rules = BatchRenameRules()
         rules.search = search.stringValue; rules.replacement = replacement.stringValue
         rules.prefix = prefix.stringValue; rules.suffix = suffix.stringValue
-        rules.numberStart = first; rules.numberStep = delta; rules.numberDigits = width
+        // Inactive number fields must not prevent an unrelated rule from being used.
+        // Preserve valid preferences, but discard invalid dormant values in saved rules.
+        rules.numberStart = first ?? 1; rules.numberStep = delta ?? 1
+        rules.numberDigits = usesNumber ? width! : width.flatMap { (1...18).contains($0) ? $0 : nil } ?? 3
         rules.regularExpression = regex.state == .on; rules.caseSensitive = matchCase.state == .on
         rules.includeExtension = includeExtension.state == .on
         rules.letterCase = BatchRenameRules.LetterCase.allCases[letterCase.indexOfSelectedItem]
@@ -171,7 +293,7 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
         rules.dateFormat = dateFormat.stringValue
         return rules
     }
-    func controlTextDidChange(_ obj: Notification) { updatePreview() }
+    func controlTextDidChange(_ obj: Notification) { updateRuleVisibility(); updatePreview() }
     @objc private func rulesChanged() { updatePreview() }
 
     func updatePreview() {
@@ -184,7 +306,7 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
         if let sourceError { showFailure(sourceError); return }
         do {
             let rules = try rules(), sources = sources, date = referenceDate
-            summary.stringValue = "Vorschau wird geprüft …"; errors.string = ""
+            summary.stringValue = "Vorschau wird geprüft …"; errors.string = ""; errorScroll.isHidden = true
             // Debouncing and a generation check prevent obsolete results from enabling execution.
             let pending = DispatchWorkItem { [weak self] in
                 var names: [String] = []
@@ -199,7 +321,8 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
                     case .success(let plan):
                         self.previewPlan = plan
                         self.submit.isEnabled = !plan.changedItems.isEmpty
-                        self.summary.stringValue = "\(plan.changedItems.count) von \(sources.count) Einträgen ändern sich · Ausführung im jeweiligen Quellordner"
+                        self.summary.stringValue = "\(plan.changedItems.count) von \(sources.count) Namen werden geändert"
+                        self.submit.title = "\(plan.changedItems.count) umbenennen"
                         self.errors.string = ""
                     case .failure(let error): self.showFailure(error.localizedDescription)
                     }
@@ -213,7 +336,7 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
     private func showFailure(_ message: String) {
         isPreviewPending = false; previewPlan = nil; submit.isEnabled = false
         summary.stringValue = "Bitte Regeln oder Auswahl prüfen. Es wurde nichts umbenannt."
-        errors.string = message
+        errors.string = message; errorScroll.isHidden = false
     }
     func numberOfRows(in tableView: NSTableView) -> Int { sources.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -228,7 +351,7 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
         return field
     }
     private func reloadPresets() {
-        preset.removeAllItems(); preset.addItem(withTitle: "Preset laden …")
+        preset.removeAllItems(); preset.addItem(withTitle: "Vorlage laden …")
         preset.addItems(withTitles: store.presets.map(\.name))
     }
     @objc private func loadPreset() {
@@ -263,4 +386,9 @@ final class BatchRenameDialog: NSWindowController, NSTextFieldDelegate, NSTableV
         revision += 1; acceptedPlan = nil
         if let window, let parent = window.sheetParent { parent.endSheet(window, returnCode: .cancel) }
     }
+}
+
+/// A short rule list stays at the top; longer combinations remain scrollable.
+private final class RenameRulesDocument: NSView {
+    override var isFlipped: Bool { true }
 }

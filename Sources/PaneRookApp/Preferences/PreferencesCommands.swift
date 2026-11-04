@@ -4,7 +4,7 @@ extension PreferencesTools {
     func registerCommands(in registry: CommandRegistry) {
         registry.add(
             .options, "Einstellungen …", id: "preferences.configuration", order: 10, group: 0, key: ",",
-            enabled: { self.owner.canUseMenus }
+            enabled: { self.canShowSettings }
         ) { self.showSettings() }
         // Preserve existing action IDs while all pages now live in the settings window.
         for (id, title, section) in [

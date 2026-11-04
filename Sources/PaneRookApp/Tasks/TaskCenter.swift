@@ -43,19 +43,24 @@ final class TaskCenter {
         }
     }
     var hasActiveTasks: Bool { queue.snapshots.contains { $0.state.isActive } }
+    var attentionCount: Int {
+        queue.snapshots.filter { $0.state == .failed || $0.canResume }.count + (transferLoadError == nil ? 0 : 1)
+    }
     var summary: String {
         let tasks = queue.snapshots, waiting = tasks.filter { $0.state == .queued }.count
+        var parts: [String] = []
         if let current = tasks.first(where: { $0.state == .running || $0.state == .cancelling }) {
             let percent = current.progress.fraction.map { " · \(Int($0 * 100)) %" } ?? ""
-            return "\(current.title)\(percent)" + (waiting > 0 ? " · \(waiting) wartend" : "")
+            parts.append("\(current.title)\(percent)")
         }
-        if waiting > 0 { return "\(waiting) Aufgaben wartend" }
-        if transferLoadError != nil { return "Transferaufträge konnten nicht geladen werden" }
-        if tasks.isEmpty { return "Keine Aufgaben" }
-        let open = tasks.filter { $0.canResume }.count
-        if open > 0 { return "\(open) Transferaufträge fortsetzbar" }
+        if waiting > 0 { parts.append("\(waiting) wartend") }
         let failed = tasks.filter { $0.state == .failed }.count
-        return failed > 0 ? "\(failed) Aufgaben mit Fehlern" : "Alle Aufgaben beendet"
+        if failed > 0 { parts.append("\(failed) fehlgeschlagen") }
+        let open = tasks.filter { $0.canResume }.count
+        if open > 0 { parts.append("\(open) fortsetzbar") }
+        if transferLoadError != nil { parts.append("Transferaufträge konnten nicht geladen werden") }
+        if !parts.isEmpty { return parts.joined(separator: " · ") }
+        return tasks.isEmpty ? "Keine Aufgaben" : "Alle Aufgaben beendet"
     }
 
     @discardableResult
@@ -389,7 +394,7 @@ private final class TaskQueueWindow: NSWindowController, NSTableViewDataSource, 
         let panel = ToolPanel(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 400),
                               styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         super.init(window: panel)
-        panel.title = "Aufgaben-Queue"; panel.minSize = NSSize(width: 960, height: 260)
+        panel.title = "Aufgaben"; panel.minSize = NSSize(width: 960, height: 260)
         panel.isReleasedWhenClosed = false; panel.center(); panel.contentView = AppStyle.background()
         table.style = .inset; table.rowHeight = 30; table.delegate = self; table.dataSource = self
         table.target = self; table.doubleAction = #selector(openTask)

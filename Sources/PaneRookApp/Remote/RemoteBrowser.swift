@@ -287,6 +287,7 @@ final class RemoteBrowser: NSViewController, RemotePanelContent, NSTableViewData
         table.selectRowIndexes(IndexSet(entries.indices.filter { entries[$0].name != ".." && !selected.contains($0) }), byExtendingSelection: false)
     }
     func installFavoritesMenu(_ menu: NSMenu) { favoritesButton.menu = menu }
+    func installFileContextMenu(provider: @escaping () -> NSMenu?) { table.makeContextMenu = provider }
     func showFavorites() { favoritesButton.performClick(nil) }
     func updateNavigation() { back.isEnabled = !busy && !history.isEmpty }
     func updateSummary() {

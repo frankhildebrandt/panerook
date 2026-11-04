@@ -5,9 +5,9 @@ extension CommanderController {
     func registerPanelCommands(in registry: CommandRegistry, menu: CommandMenu, pane initialPane: PaneController, resolvePane: (() -> PaneController)? = nil) {
         var pane: PaneController { resolvePane?() ?? initialPane }
         for (index, pair) in [
-            ("Dateiliste", PanelMode.listing), ("Schnellansicht", .quickView), ("Info", .info), ("Baum", .tree), ("Netzwerk", .network),
-            ("Git-Diff und Verlauf", .gitHistory),
-            ("Ghostty-Terminal", .terminal),
+            ("Dateiliste", PanelMode.listing), ("Vorschau", .quickView), ("Informationen", .info), ("Ordnerbaum", .tree), ("Netzwerk", .network),
+            ("Git-Verlauf", .gitHistory),
+            ("Terminal", .terminal),
         ].enumerated() {
             let (title, mode) = pair
             registry.add(

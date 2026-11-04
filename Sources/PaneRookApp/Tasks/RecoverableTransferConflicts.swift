@@ -46,6 +46,7 @@ extension TransferFileAccess {
         else {
             action = try conflicts!.resolve(source: path(root.source), destination: path(root.destination),
                 sourceInfo: description(source, at: root.source), destinationInfo: description(target, at: root.destination), allowed: allowed,
+                remoteDestination: root.destination.endpoint != .local,
                 cancelled: { self.localToken.isCancelled || self.remoteToken.isCancelled })
         }
         guard allowed.contains(action) else { throw RecoverableTransferError.conflict(root.destination.path) }

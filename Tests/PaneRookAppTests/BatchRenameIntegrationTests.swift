@@ -22,7 +22,10 @@ final class BatchRenameIntegrationTests: XCTestCase {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed, file: file, line: line)
     }
-    private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    private func descendants(_ view: NSView) -> [NSView] {
+        let children = (view as? NSStackView)?.arrangedSubviews ?? view.subviews
+        return [view] + children.flatMap(descendants)
+    }
 
     func testPresetsRoundTripReplaceRemoveAndKeepOtherSettings() throws {
         let suite = "BatchRename-\(UUID())"
@@ -80,11 +83,51 @@ final class BatchRenameIntegrationTests: XCTestCase {
         rules = .init(); rules.suffix = "_neu"; dialog.setRules(rules)
         eventually { !dialog.isPreviewPending }
         XCTAssertEqual(dialog.previewNames, ["A_neu.txt", "B_neu.txt"])
+        rules.prefix = "{n}_"; dialog.setRules(rules)
+        eventually { !dialog.isPreviewPending }
         let numeric = try XCTUnwrap(descendants(content).compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Nummerierung: Stellen" })
         numeric.stringValue = "keine Zahl"
         dialog.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: numeric))
         XCTAssertNil(dialog.previewPlan); XCTAssertFalse(submit.isEnabled)
         XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: root.path)), ["A.txt", "B.txt"])
+    }
+
+    @MainActor func testTaskChoicesCombineRulesAndRemovingASectionRemovesOnlyItsChanges() throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("BatchRenameRulesUI-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("Photo.txt"); try Data().write(to: source)
+        let suite = "BatchRenameRulesUI-\(UUID())"; let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dialog = BatchRenameDialog(sources: [source], store: .init(defaults: defaults)) { _ in XCTFail("Preview must not submit") }
+        defer { dialog.close() }
+        let content = try XCTUnwrap(dialog.window?.contentView)
+        let add = try XCTUnwrap(descendants(content).compactMap { $0 as? NSPopUpButton }.first { $0.identifier?.rawValue == "rename.addRule" })
+        add.selectItem(withTitle: "Nummerieren"); XCTAssertTrue(add.sendAction(add.action, to: add.target))
+        eventually { !dialog.isPreviewPending }
+        XCTAssertEqual(dialog.previewNames, ["001_Photo.txt"])
+        let fields = descendants(content).compactMap { $0 as? NSTextField }
+        let number = try XCTUnwrap(fields.first { $0.accessibilityLabel() == "Nummerierung: Start" })
+        let date = try XCTUnwrap(fields.first { $0.accessibilityLabel() == "Datumsformat" })
+        XCTAssertFalse(number.isHiddenOrHasHiddenAncestor)
+        XCTAssertTrue(date.isHiddenOrHasHiddenAncestor)
+        add.selectItem(withTitle: "Text ersetzen"); XCTAssertTrue(add.sendAction(add.action, to: add.target))
+        let search = try XCTUnwrap(fields.first { $0.accessibilityLabel() == "Suchen" })
+        let replacement = try XCTUnwrap(fields.first { $0.accessibilityLabel() == "Ersetzen" })
+        search.stringValue = "Photo"; replacement.stringValue = "Reise"
+        dialog.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search))
+        eventually { !dialog.isPreviewPending }
+        XCTAssertEqual(dialog.previewNames, ["001_Reise.txt"])
+        let remove = try XCTUnwrap(descendants(content).compactMap { $0 as? NSButton }.first { $0.identifier?.rawValue == "rename.removeRule.2" })
+        number.stringValue = "ungültig"
+        dialog.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: number))
+        XCTAssertNil(dialog.previewPlan)
+        remove.performClick(nil)
+        eventually { !dialog.isPreviewPending }
+        XCTAssertEqual(dialog.previewNames, ["Reise.txt"])
+        XCTAssertNotNil(dialog.previewPlan)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
     }
 
     @MainActor func testExistingRenameCommandRoutesMultipleLocalEntriesToBatchDialog() throws {

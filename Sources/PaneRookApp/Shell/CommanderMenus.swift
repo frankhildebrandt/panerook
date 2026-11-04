@@ -55,7 +55,7 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         commander.onShowMenu = { [weak self] in self?.showPopup() }
         commander.menuIsTracking = { [weak self] in
             guard let self else { return false }
-            return self.popupIsTracking || !self.trackingMenus.isEmpty
+            return self.popupIsTracking || !self.trackingMenus.isEmpty || FileContextMenu.isTracking
         }
         commander.onKeyBindingsChanged = { [weak self] in
             guard let self else { return }
@@ -63,9 +63,10 @@ final class CommanderMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, !KeyboardCaptureState.isRecording else { return event }
-            if self.popupIsTracking || !self.trackingMenus.isEmpty {
+            if self.popupIsTracking || !self.trackingMenus.isEmpty || FileContextMenu.isTracking {
                 if ContextCommands.isCancellation(event) {
                     for menu in self.allMenus { menu.cancelTrackingWithoutAnimation() }
+                    FileContextMenu.cancelActiveTracking()
                     return nil
                 }
                 return event
